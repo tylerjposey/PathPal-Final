@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CommunityReportInputCategory = typeof CommunityReportInputCategory[keyof typeof CommunityReportInputCategory];
+/**
+ * @nullable
+ */
+export type CommunityReportInputCategory = typeof CommunityReportInputCategory[keyof typeof CommunityReportInputCategory] | null;
 
 
 export const CommunityReportInputCategory = {

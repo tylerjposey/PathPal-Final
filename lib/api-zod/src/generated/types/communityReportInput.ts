@@ -15,8 +15,19 @@ export interface CommunityReportInput {
      * @maxLength 4000
      */
   description: string;
-  location: CommunityReportInputLocation;
+  location?: CommunityReportInputLocation;
+  /** @nullable */
   category?: CommunityReportInputCategory;
+  /**
+     * @minimum 37
+     * @maximum 37.6
+     */
+  latitude: number;
+  /**
+     * @minimum -122.2
+     * @maximum -121.6
+     */
+  longitude: number;
   /** @maxLength 2796204 */
   photoBase64?: string;
   contentType?: CommunityReportInputContentType;

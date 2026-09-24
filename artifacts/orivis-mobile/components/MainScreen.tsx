@@ -21,6 +21,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteMap } from '@/components/RouteMap';
 import { JourneyScreen } from '@/components/JourneyScreen';
 import {
+  getGetReportQueryKey,
+  useGetReport,
+  useListReports,
+  type CommunityReport,
+} from '@workspace/api-client-react';
+import {
   BrandMark,
   Button,
   Card,
@@ -45,9 +51,15 @@ import {
   useDemo,
 } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
-import { reportError } from '@/lib/reportApi';
+import {
+  loadReportPhotoDataUri,
+  reportAccountScope,
+  reportError,
+  reportListQueryKey,
+  toSafetyReport,
+} from '@/lib/reportApi';
 
-type TabKey = 'home' | 'map' | 'reports' | 'alerts' | 'rewards' | 'tasks' | 'profile';
+type TabKey = 'home' | 'map' | 'reports' | 'history' | 'alerts' | 'rewards' | 'tasks' | 'profile';
 type ModalName = 'report' | 'sos' | 'case' | 'verify' | null;
 
 const tripSteps: { value: TripStep; title: string; subtitle: string; icon: keyof typeof Feather.glyphMap }[] = [
@@ -63,6 +75,7 @@ function tabsForRole(role: Role): { key: TabKey; label: string; icon: keyof type
       { key: 'home', label: 'Overview', icon: 'grid' },
       { key: 'map', label: 'Map', icon: 'map' },
       { key: 'reports', label: 'Cases', icon: 'inbox' },
+      { key: 'history', label: 'History', icon: 'clock' },
       { key: 'profile', label: 'More', icon: 'menu' },
     ];
   }
@@ -71,6 +84,15 @@ function tabsForRole(role: Role): { key: TabKey; label: string; icon: keyof type
       { key: 'home', label: 'Today', icon: 'home' },
       { key: 'map', label: 'Route', icon: 'map' },
       { key: 'tasks', label: 'Tasks', icon: 'check-square' },
+      { key: 'history', label: 'History', icon: 'clock' },
+      { key: 'profile', label: 'More', icon: 'menu' },
+    ];
+  }
+  if (role === 'citizen') {
+    return [
+      { key: 'home', label: 'Home', icon: 'home' },
+      { key: 'reports', label: 'Reports', icon: 'clipboard' },
+      { key: 'history', label: 'History', icon: 'clock' },
       { key: 'profile', label: 'More', icon: 'menu' },
     ];
   }
@@ -78,6 +100,7 @@ function tabsForRole(role: Role): { key: TabKey; label: string; icon: keyof type
     { key: 'home', label: 'Home', icon: 'home' },
     { key: 'map', label: 'Journey', icon: 'map' },
     { key: 'reports', label: 'Report', icon: 'camera' },
+    { key: 'history', label: 'History', icon: 'clock' },
     { key: 'rewards', label: 'Rewards', icon: 'award' },
     { key: 'profile', label: 'More', icon: 'menu' },
   ];
@@ -149,6 +172,7 @@ export function MainScreen({
         {tab === 'home' ? <Home role={role} onNavigate={setTab} onReport={() => setModal('report')} onSOS={() => setModal('sos')} onCase={openCase} /> : null}
         {tab === 'map' ? role === 'parent' || role === 'child' ? <JourneyScreen /> : <MapScreen role={role} onCase={openCase} /> : null}
         {tab === 'reports' ? <ReportsScreen role={role} onCreate={() => setModal('report')} onCase={openCase} /> : null}
+        {tab === 'history' ? <ReportHistoryScreen onCase={openCase} /> : null}
         {tab === 'tasks' ? <WorkerTasks onCase={openCase} /> : null}
         {tab === 'rewards' ? <RewardsScreen /> : null}
         {tab === 'alerts' ? <AlertsScreen /> : null}
@@ -221,6 +245,40 @@ function Home({
   const nowGreeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
   if (role === 'manager') return <ManagerHome onCase={onCase} />;
   if (role === 'worker') return <WorkerHome onCase={onCase} />;
+  if (role === 'citizen') {
+    return (
+      <ScreenScroll>
+        <ScreenHeader
+          eyebrow="Citizen"
+          title={`${nowGreeting}, ${state.account?.name.split(' ')[0] ?? 'there'}.`}
+          subtitle="Make a neighborhood report and follow the reports submitted from your shared demo account."
+        />
+        <Card tone="soft" style={styles.communityCard}>
+          <View style={styles.quickIcon}>
+            <Feather name="map-pin" size={22} color={colors.primary} />
+          </View>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Help improve your neighborhood</Text>
+          <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+            Submit a description, choose a category or let sample AI categorize it, and place an approximate pin for city review.
+          </Text>
+          <Button label="Create community report" icon="camera" onPress={onReport} />
+        </Card>
+        <SectionTitle title="Your saved reports" action="Open history" onAction={() => onNavigate('history')} />
+        <Card>
+          <View style={styles.profileRow}>
+            <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
+              <Feather name="clipboard" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.flex}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Shared report history</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>View saved reports from the server, newest first.</Text>
+            </View>
+          </View>
+          <Button label="View saved reports" icon="arrow-right" variant="secondary" onPress={() => onNavigate('history')} />
+        </Card>
+      </ScreenScroll>
+    );
+  }
 
   const currentIndex = tripSteps.findIndex((step) => step.value === state.tripStep);
   const nextStep = tripSteps[Math.min(currentIndex + 1, tripSteps.length - 1)];
@@ -502,8 +560,23 @@ function MapScreen({ role, onCase }: { role: Role; onCase: (report: SafetyReport
 function ReportsScreen({ role, onCreate, onCase }: { role: Role; onCreate: () => void; onCase: (report: SafetyReport) => void }) {
   const colors = useColors();
   const { state, reportsError, reportsLoading } = useDemo();
+  const citizenScope = state.account ? reportAccountScope(state.account) : 'anonymous';
+  const citizenReportsQuery = useListReports({
+    query: {
+      enabled: role === 'citizen' && !state.account?.reportServiceUnavailable,
+      staleTime: 0,
+      refetchOnMount: 'always',
+      queryKey: reportListQueryKey(citizenScope),
+    },
+  });
+  const citizenQueryMatchesScope = citizenReportsQuery.queryKey[1] === 'account' && citizenReportsQuery.queryKey[2] === citizenScope;
   const [filter, setFilter] = useState<'All' | CaseStatus>('All');
-  const reports = filter === 'All' ? state.reports : state.reports.filter((report) => report.status === filter);
+  const sourceReports = role === 'citizen'
+    ? citizenQueryMatchesScope && citizenReportsQuery.isSuccess && !citizenReportsQuery.isError
+      ? (citizenReportsQuery.data ?? []).map(toSafetyReport)
+      : []
+    : state.reports;
+  const reports = filter === 'All' ? sourceReports : sourceReports.filter((report) => report.status === filter);
   return (
     <ScreenScroll>
       <ScreenHeader
@@ -512,13 +585,25 @@ function ReportsScreen({ role, onCreate, onCase }: { role: Role; onCreate: () =>
         subtitle={role === 'manager' ? 'Open a case to edit its analysis, severity, category, status, or assignment.' : 'Sample AI organizes reports before a city case manager reviews them.'}
         right={role !== 'manager' ? <IconButton icon="plus-circle" onPress={onCreate} color={colors.primary} /> : undefined}
       />
-      {reportsError ? (
+      {state.account?.reportServiceUnavailable ? (
+        <Card tone="danger">
+          <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Report service unavailable</Text>
+          <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{state.account.reportServiceError ?? 'New submissions, shared case updates, and server history require a connection. Local family journey, check-ins, and simulated SOS remain available.'}</Text>
+        </Card>
+      ) : role === 'citizen' && citizenReportsQuery.isPending ? (
+        <Card><Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Loading your reports from the server…</Text></Card>
+      ) : role === 'citizen' && citizenReportsQuery.isError ? (
+        <Card tone="danger">
+          <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Your reports could not be loaded</Text>
+          <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{reportError(citizenReportsQuery.error)}</Text>
+        </Card>
+      ) : role !== 'citizen' && reportsError ? (
         <Card tone="danger">
           <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>
-            Shared reports are unavailable. Showing reports saved on this device; new submissions and edits need the connection.
+            The report service is unavailable. This page may include older device-only reports; they are not confirmation of a database save. New submissions and updates require a server connection.
           </Text>
         </Card>
-      ) : reportsLoading ? (
+      ) : role !== 'citizen' && reportsLoading ? (
         <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Syncing shared cases…</Text>
       ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
@@ -527,10 +612,121 @@ function ReportsScreen({ role, onCreate, onCase }: { role: Role; onCreate: () =>
         ))}
       </ScrollView>
       <View style={styles.reportList}>
+        {role === 'citizen' && !citizenReportsQuery.isPending && !citizenReportsQuery.isError && reports.length === 0 ? (
+          <Card tone="soft"><Text style={[styles.cardBody, { color: colors.mutedForeground }]}>No reports have been submitted from this citizen demo account yet.</Text></Card>
+        ) : null}
         {reports.map((report) => <CaseRow key={report.id} report={report} onPress={() => onCase(report)} />)}
       </View>
       {role !== 'manager' ? <Button label="Create community report" icon="camera" onPress={onCreate} /> : null}
     </ScreenScroll>
+  );
+}
+
+function ReportHistoryScreen({ onCase }: { onCase: (report: SafetyReport) => void }) {
+  const colors = useColors();
+  const { state } = useDemo();
+  const accountScope = state.account ? reportAccountScope(state.account) : 'anonymous';
+  const historyQuery = useListReports({
+    query: {
+      enabled: Boolean(state.account) && !state.account?.reportServiceUnavailable,
+      staleTime: 0,
+      refetchOnMount: 'always',
+      queryKey: reportListQueryKey(accountScope),
+    },
+  });
+  const historyQueryMatchesScope = historyQuery.queryKey[1] === 'account' && historyQuery.queryKey[2] === accountScope;
+  const reports = (historyQueryMatchesScope && historyQuery.isSuccess && !historyQuery.isError ? historyQuery.data ?? [] : [])
+    .slice()
+    .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+
+  return (
+    <ScreenScroll>
+      <ScreenHeader
+        eyebrow="Server history"
+        title="Saved reports"
+        subtitle="Your saved report history is fetched from the server each time this page opens. Device-only drafts are not shown."
+        right={!state.account?.reportServiceUnavailable ? <IconButton icon="refresh-cw" onPress={() => { void historyQuery.refetch(); }} color={colors.primary} /> : undefined}
+      />
+      {state.account?.reportServiceUnavailable ? (
+        <Card tone="danger">
+          <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Report service unavailable</Text>
+          <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{state.account.reportServiceError ?? 'Server report history and new submissions require a connection. Your local family journey, check-ins, and simulated SOS remain available.'}</Text>
+        </Card>
+      ) : historyQuery.isFetching && !historyQuery.isPending ? (
+        <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Refreshing saved reports from the server…</Text>
+      ) : null}
+      {historyQuery.isPending ? (
+        <Card><Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Loading saved reports from the server…</Text></Card>
+      ) : historyQuery.isError ? (
+        <Card tone="danger">
+          <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Saved reports could not be loaded</Text>
+          <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{reportError(historyQuery.error)}</Text>
+          <Button label="Try again" icon="refresh-cw" variant="secondary" onPress={() => { void historyQuery.refetch(); }} />
+        </Card>
+      ) : reports.length === 0 ? (
+        <Card tone="soft"><Text style={[styles.cardBody, { color: colors.mutedForeground }]}>No reports are currently available in the shared database.</Text></Card>
+      ) : (
+        <View style={styles.reportList}>
+          {reports.map((item) => (
+            <ReportHistoryRow
+              key={item.id}
+              report={item}
+              onPress={() => onCase(toSafetyReport(item))}
+            />
+          ))}
+        </View>
+      )}
+    </ScreenScroll>
+  );
+}
+
+function ReportHistoryRow({ report, onPress }: { report: CommunityReport; onPress: () => void }) {
+  const colors = useColors();
+  const [photo, setPhoto] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (!report.photoUri || !report.photoReference || report.photoReference === 'none') {
+      setPhoto(null);
+      return () => { active = false; };
+    }
+    void loadReportPhotoDataUri(report.id).then((uri) => {
+      if (active) setPhoto(uri);
+    }).catch(() => {
+      if (active) setPhoto(null);
+    });
+    return () => { active = false; };
+  }, [report.id, report.photoUri, report.photoReference]);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.historyRow, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}
+    >
+      {photo ? (
+        <Image source={{ uri: photo }} style={styles.historyPhoto} contentFit="cover" />
+      ) : (
+        <View style={[styles.historyPhoto, styles.historyPhotoPlaceholder, { backgroundColor: colors.secondary }]}>
+          <Feather name="image" size={21} color={colors.primary} />
+          <Text style={[styles.historyPhotoText, { color: colors.mutedForeground }]}>{report.photoReference && report.photoReference !== 'none' ? 'Photo' : 'No photo'}</Text>
+        </View>
+      )}
+      <View style={styles.flex}>
+        <View style={styles.caseRowTop}>
+          <Text style={[styles.caseId, { color: colors.primary }]}>{report.id}</Text>
+          <Text style={[styles.caseStatus, { color: colors.mutedForeground }]}>{report.status}</Text>
+        </View>
+        <Text style={[styles.cardTitle, { color: colors.foreground }]}>{report.description}</Text>
+        <Text style={[styles.cardBody, { color: colors.mutedForeground }]} numberOfLines={2}>
+          Selected: {report.selectedCategory ?? 'AI categorized'} · AI: {report.category}
+        </Text>
+        <Text style={[styles.noticeMeta, { color: colors.mutedForeground }]}>
+          {report.location} · {report.latitude == null || report.longitude == null ? 'Pin unavailable' : `${report.latitude.toFixed(5)}, ${report.longitude.toFixed(5)}`}
+        </Text>
+        <Text style={[styles.noticeMeta, { color: colors.mutedForeground }]}>
+          Severity {report.severity}/10 · {report.assignedTeam ?? 'No team'} · {formatDateTime(report.submittedAt)}
+        </Text>
+      </View>
+      <Feather name="chevron-right" size={19} color={colors.mutedForeground} />
+    </Pressable>
   );
 }
 
@@ -639,6 +835,20 @@ function AlertsScreen() {
 function ProfileScreen() {
   const colors = useColors();
   const { state, signOut, resetDemo, simulateMissedCheckin } = useDemo();
+  const [resetError, setResetError] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const restoreDemo = async () => {
+    if (resetting) return;
+    setResetting(true);
+    setResetError('');
+    try {
+      await resetDemo();
+    } catch (error) {
+      setResetError(reportError(error));
+    } finally {
+      setResetting(false);
+    }
+  };
   return (
     <ScreenScroll>
       <ScreenHeader eyebrow={state.account ? ROLE_LABELS[state.account.role] : 'Account'} title={state.account?.name ?? 'Orivis demo'} subtitle={state.account?.username ?? 'Sample account'} />
@@ -666,27 +876,31 @@ function ProfileScreen() {
           <Button label="Simulate missed check-in" variant="secondary" onPress={simulateMissedCheckin} />
         </Card>
       ) : null}
-      <Card style={styles.controlCard}>
-        <View style={styles.controlCopy}>
-          <Feather name="refresh-cw" size={20} color={colors.primary} />
-          <View style={styles.flex}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Reset Demonstration Data</Text>
-            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Restores sample users, routes, reports, rewards, notifications, and SOS state.</Text>
+      {state.account?.role === 'manager' ? (
+        <Card style={styles.controlCard}>
+          <View style={styles.controlCopy}>
+            <Feather name="refresh-cw" size={20} color={colors.primary} />
+            <View style={styles.flex}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Reset Demonstration Data</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Restores local demo state and the six shared sample cases. Your submitted reports remain in the database. Shared sample cases may change for every demo user.</Text>
+            </View>
           </View>
-        </View>
-        <Button
-          label="Reset demo"
-          variant="secondary"
-          onPress={() => Alert.alert('Reset demonstration data?', 'This restores the original Orivis sample state.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Reset', style: 'destructive', onPress: resetDemo },
-          ])}
-        />
-      </Card>
+          {resetError ? <Text style={[styles.cardBody, { color: colors.destructive }]}>{resetError}</Text> : null}
+          <Button
+            label="Reset demo"
+            variant="secondary"
+            loading={resetting}
+            onPress={() => Alert.alert('Reset demonstration data?', 'This restores the shared sample reports and resets this device. Shared sample cases may change for all demo users; user-submitted database reports are preserved.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Reset', style: 'destructive', onPress: () => { void restoreDemo(); } },
+            ])}
+          />
+        </Card>
+      ) : null}
       <Card tone="soft">
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>Prototype limitations</Text>
         <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
-          Authentication, AI analysis, notifications, partner rewards, police contact, and SOS behavior are simulated. Journey routes use Google Maps and 511 SF Bay when configured and available; otherwise the Journey page labels its demo fallback. City issue maps remain illustrative.
+          Authentication uses shared prototype demo identities, not secure personal-account isolation. AI analysis, notifications, partner rewards, police contact, and SOS behavior are simulated. Journey routes use Google Maps and 511 SF Bay when configured and available; otherwise the Journey page labels its demo fallback. City issue maps remain illustrative.
         </Text>
       </Card>
       <Button label="Sign out" icon="log-out" variant="ghost" onPress={signOut} />
@@ -731,9 +945,11 @@ function VerifyScreen({ account, onDone }: { account: { name: string; username: 
 function ReportComposer({ onClose }: { onClose: () => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { createReport } = useDemo();
+  const { state, createReport } = useDemo();
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('Downtown San Jose');
+  const [pin, setPin] = useState<{ latitude: number; longitude: number; x: number; y: number } | null>(null);
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   const [category, setCategory] = useState<ReportCategory | undefined>();
   const [photoUri, setPhotoUri] = useState<string | undefined>();
   const [photoBase64, setPhotoBase64] = useState<string | undefined>();
@@ -741,6 +957,14 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const neighborhoodCenters: Record<string, { latitude: number; longitude: number }> = {
+    'Downtown San Jose': { latitude: 37.3382, longitude: -121.8863 },
+    Japantown: { latitude: 37.3481, longitude: -121.8958 },
+    'Willow Glen': { latitude: 37.3058, longitude: -121.9002 },
+    'East San Jose': { latitude: 37.3514, longitude: -121.8277 },
+    'Alum Rock': { latitude: 37.3666, longitude: -121.8272 },
+    'Santa Clara': { latitude: 37.3541, longitude: -121.9552 },
+  };
 
   const selectPhoto = async () => {
     try {
@@ -767,10 +991,14 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
       setError('Add a short description with at least 12 characters.');
       return;
     }
+    if (!pin || !Number.isFinite(pin.latitude) || !Number.isFinite(pin.longitude)) {
+      setError('Tap the illustrative map to place a report pin before submitting.');
+      return;
+    }
     setSubmitting(true);
     setSubmitError('');
     try {
-      await createReport({ description, location, category, photoBase64, contentType });
+      await createReport({ description: description.trim(), location, category, photoBase64, contentType, latitude: pin.latitude, longitude: pin.longitude });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
       if (Platform.OS !== 'web') Alert.alert('Report submitted', 'Your report was saved for city review.');
@@ -793,10 +1021,18 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
             <Feather name="cpu" size={21} color={colors.primary} />
             <View style={styles.flex}>
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>Simulated AI review</Text>
-              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Orivis will create a sample category, severity score, department, and priority from your description. Your submitted report is saved to the shared case queue.</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+                Orivis will create a sample category, severity score, department, and priority from your description. {state.account?.reportServiceUnavailable ? 'Report service is unavailable; the report cannot be saved until a server connection is restored.' : 'A report is only confirmed after the server accepts it.'}
+              </Text>
             </View>
           </View>
         </Card>
+        {state.account?.reportServiceUnavailable ? (
+          <Card tone="danger">
+            <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Report service unavailable</Text>
+            <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{state.account.reportServiceError ?? 'Connect to the report server before submitting. This form will not save a device-only success.'}</Text>
+          </Card>
+        ) : null}
         <SectionTitle title="Photo" />
         <Pressable onPress={selectPhoto} style={[styles.photoPicker, { backgroundColor: colors.card, borderColor: colors.input }]}>
           {photoUri ? (
@@ -813,19 +1049,83 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
         </Pressable>
         <SectionTitle title="What did you notice?" />
         <Field label="Description" value={description} onChangeText={(value) => { setDescription(value); setError(''); }} multiline placeholder="Describe the issue and why it may affect the community…" error={error} />
-        <SectionTitle title="Optional category" />
+        <SectionTitle title="Selected category (optional)" />
         <View style={styles.wrap}>
           {REPORT_CATEGORIES.map((item) => <Chip key={item} label={item} active={category === item} onPress={() => setCategory(category === item ? undefined : item)} />)}
         </View>
         <SectionTitle title="Drop a map pin" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
           {['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara'].map((item) => (
-            <Chip key={item} label={item} active={location === item} onPress={() => setLocation(item)} />
+            <Chip key={item} label={item} active={location === item} onPress={() => { setLocation(item); setPin(null); }} />
           ))}
         </ScrollView>
-        <RouteMap height={210} />
+        <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+          Choose a neighborhood to center this illustrative map, then tap to drop a pin. Coordinates are approximate, not surveyed.
+        </Text>
+        <View
+          style={styles.coordinateMap}
+          onLayout={(event) => setMapSize({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height })}
+        >
+          <RouteMap height={210} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Place report pin on illustrative map"
+            onPress={(event) => {
+              if (!mapSize.width || !mapSize.height) return;
+              const pointer = event.nativeEvent as typeof event.nativeEvent & {
+                clientX?: number; clientY?: number; offsetX?: number; offsetY?: number;
+              };
+              const bounds = (event.currentTarget as unknown as {
+                getBoundingClientRect?: () => { left: number; top: number };
+              }).getBoundingClientRect?.();
+              // React Native Web press events do not consistently expose locationX/Y.
+              const relativeX = Number.isFinite(pointer.locationX) ? pointer.locationX
+                : bounds && Number.isFinite(pointer.clientX) ? pointer.clientX! - bounds.left
+                : Number.isFinite(pointer.offsetX) ? pointer.offsetX!
+                : mapSize.width / 2;
+              const relativeY = Number.isFinite(pointer.locationY) ? pointer.locationY
+                : bounds && Number.isFinite(pointer.clientY) ? pointer.clientY! - bounds.top
+                : Number.isFinite(pointer.offsetY) ? pointer.offsetY!
+                : mapSize.height / 2;
+              const x = Math.max(0, Math.min(1, relativeX / mapSize.width));
+              const y = Math.max(0, Math.min(1, relativeY / mapSize.height));
+              const center = neighborhoodCenters[location];
+              setPin({
+                latitude: Number((center.latitude + (0.5 - y) * 0.08).toFixed(6)),
+                longitude: Number((center.longitude + (x - 0.5) * 0.10).toFixed(6)),
+                x,
+                y,
+              });
+              setError('');
+            }}
+            style={StyleSheet.absoluteFill}
+          >
+            {pin ? (
+              <View pointerEvents="none" style={[styles.pinMarker, { left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }]}>
+                <Feather name="map-pin" size={25} color={colors.destructive} />
+              </View>
+            ) : (
+              <View pointerEvents="none" style={[styles.tapMapHint, { backgroundColor: colors.card }]}>
+                <Feather name="map-pin" size={15} color={colors.primary} />
+                <Text style={[styles.photoSub, { color: colors.foreground }]}>Tap to drop pin</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
+        {pin && Number.isFinite(pin.latitude) && Number.isFinite(pin.longitude) ? (
+          <Text style={[styles.cardBody, { color: colors.foreground }]}>
+            Approximate pin · {pin.latitude.toFixed(6)}, {pin.longitude.toFixed(6)}
+          </Text>
+        ) : null}
+        {error ? <Text style={[styles.cardBody, { color: colors.destructive }]}>{error}</Text> : null}
         {submitError ? <Text style={[styles.cardBody, { color: colors.destructive }]}>{submitError}</Text> : null}
-        <Button label="Submit for review" icon="send" onPress={() => { void submit(); }} loading={submitting} />
+        <Button
+          label={state.account?.reportServiceUnavailable ? 'Submission unavailable' : 'Submit for review'}
+          icon="send"
+          onPress={() => { void submit(); }}
+          loading={submitting}
+          disabled={Boolean(state.account?.reportServiceUnavailable)}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -835,16 +1135,55 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { state, updateManagerReport, updateWorkerStatus, assignReports } = useDemo();
-  const current = state.reports.find((item) => item.id === report.id) ?? report;
+  const authorizedInList = state.reports.some((item) => item.id === report.id);
+  const detailQuery = useGetReport(report.id, {
+    query: {
+      enabled: authorizedInList && !state.account?.reportServiceUnavailable,
+      staleTime: 0,
+      refetchOnMount: 'always',
+      queryKey: getGetReportQueryKey(report.id),
+    },
+  });
+  const reportServiceUnavailable = Boolean(state.account?.reportServiceUnavailable);
+  const current = detailQuery.data
+    ? toSafetyReport(detailQuery.data)
+    : state.reports.find((item) => item.id === report.id) ?? report;
   const [severity, setSeverity] = useState(`${current.severity}`);
   const [description, setDescription] = useState(current.description);
   const [category, setCategory] = useState(current.category);
   const [location, setLocation] = useState(current.location);
+  const [managerNotes, setManagerNotes] = useState(current.managerNotes ?? '');
+  const [routeAssignment, setRouteAssignment] = useState(current.routeAssignment ?? '');
+  const [photoDataUri, setPhotoDataUri] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const canEdit = role === 'manager';
   const statuses: CaseStatus[] = ['Submitted', 'Under Review', 'Assigned', 'Resolved'];
+  useEffect(() => {
+    if (!authorizedInList || !detailQuery.data) return;
+    const detail = toSafetyReport(detailQuery.data);
+    setSeverity(`${detail.severity}`);
+    setDescription(detail.description);
+    setCategory(detail.category);
+    setLocation(detail.location);
+    setManagerNotes(detail.managerNotes ?? '');
+    setRouteAssignment(detail.routeAssignment ?? '');
+  }, [detailQuery.data, authorizedInList]);
+  useEffect(() => {
+    let active = true;
+    const detail = detailQuery.data;
+    setPhotoDataUri(null);
+    setPhotoError('');
+    if (!authorizedInList || reportServiceUnavailable || !detail?.photoUri || !detail.photoReference || detail.photoReference === 'none') return () => { active = false; };
+    void loadReportPhotoDataUri(report.id).then((uri) => {
+      if (active) setPhotoDataUri(uri);
+    }).catch((error) => {
+      if (active) setPhotoError(reportError(error));
+    });
+    return () => { active = false; };
+  }, [detailQuery.data, report.id, reportServiceUnavailable, authorizedInList]);
   const runUpdate = async (action: () => Promise<void>, message: string) => {
     if (saving) return;
     setSaving(true);
@@ -852,6 +1191,7 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
     setSaveMessage('');
     try {
       await action();
+      await detailQuery.refetch();
       setSaveMessage(message);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -866,8 +1206,34 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
       setSaveError('Enter a description of 12–4000 characters and a whole-number severity from 1–10.');
       return;
     }
-    void runUpdate(() => updateManagerReport(current.id, { description: description.trim(), category, location, severity: score }), 'Case edits saved to the shared queue.');
+    void runUpdate(() => updateManagerReport(current.id, {
+      description: description.trim(),
+      category,
+      ...(location !== current.location ? { location } : {}),
+      severity: score,
+      managerNotes: managerNotes.trim() || null,
+      routeAssignment: routeAssignment.trim() || null,
+    }), 'Case edits saved to the shared queue.');
   };
+  if (!reportServiceUnavailable && !authorizedInList) {
+    return (
+      <View style={[styles.modalPage, { backgroundColor: colors.background }]}>
+        <View style={[styles.modalHeader, { paddingTop: insets.top + 10, borderBottomColor: colors.border }]}>
+          <IconButton icon="x" onPress={onClose} />
+          <Text style={[styles.modalTitle, { color: colors.foreground }]}>Report unavailable</Text>
+          <View style={{ width: 42 }} />
+        </View>
+        <View style={{ padding: 20 }}>
+          <Card tone="danger">
+            <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Not in your authorized report list</Text>
+            <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>
+              {detailQuery.isError ? reportError(detailQuery.error) : 'Report details are hidden until this account’s server-authorized report list includes them.'}
+            </Text>
+          </Card>
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={[styles.modalPage, { backgroundColor: colors.background }]}>
       <View style={[styles.modalHeader, { paddingTop: insets.top + 10, borderBottomColor: colors.border }]}>
@@ -876,12 +1242,26 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
         <View style={{ width: 42 }} />
       </View>
       <ScrollView contentContainerStyle={[styles.modalScroll, { paddingBottom: insets.bottom + 30 }]}>
-        {current.photoUri ? <Image source={{ uri: current.photoUri }} style={styles.casePhoto} contentFit="cover" /> : (
+        {reportServiceUnavailable ? (
+          <Card tone="danger">
+            <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Report service unavailable</Text>
+            <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{state.account?.reportServiceError ?? 'These are local demonstration details. Server history and report submissions require a connection.'}</Text>
+          </Card>
+        ) : detailQuery.isPending ? <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Loading complete report details…</Text> : null}
+        {!reportServiceUnavailable && detailQuery.isError ? (
+          <Card tone="danger">
+            <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Complete report details could not be loaded</Text>
+            <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{reportError(detailQuery.error)}</Text>
+            <Button label="Try again" icon="refresh-cw" variant="secondary" onPress={() => { void detailQuery.refetch(); }} />
+          </Card>
+        ) : null}
+        {photoDataUri ? <Image source={{ uri: photoDataUri }} style={styles.casePhoto} contentFit="cover" /> : (
           <View style={[styles.casePlaceholder, { backgroundColor: colors.secondary }]}>
             <Feather name="image" size={30} color={colors.primary} />
-            <Text style={[styles.photoSub, { color: colors.mutedForeground }]}>Sample report image unavailable</Text>
+            <Text style={[styles.photoSub, { color: colors.mutedForeground }]}>{reportServiceUnavailable ? 'Photo unavailable while report service is offline' : current.photoUri ? 'Loading protected report photo…' : 'No photo was submitted'}</Text>
           </View>
         )}
+        {photoError ? <Text style={[styles.cardBody, { color: colors.destructive }]}>{photoError}</Text> : null}
         <View style={styles.caseHeadline}>
           <View style={[styles.severityLarge, { backgroundColor: heatColor(heatScore(current, state.reports)) }]}>
             <Text style={styles.severityLargeValue}>{current.severity}</Text>
@@ -896,6 +1276,23 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
           <Chip label={current.status} active />
           <Chip label={`${current.priority} priority`} active tone={current.priority === 'High' ? 'danger' : 'warning'} />
         </View>
+        <SectionTitle title="Original report input and AI output" />
+        <Card>
+          <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Original description</Text>
+          <Text style={[styles.cardBody, { color: colors.foreground }]}>{detailQuery.data?.description ?? current.description}</Text>
+          <Divider />
+          <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Selected category</Text>
+          <Text style={[styles.detailValue, { color: colors.foreground }]}>{detailQuery.data?.selectedCategory ?? current.selectedCategory ?? 'Not selected; AI generated category'}</Text>
+          <Divider />
+          <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>AI category and analysis</Text>
+          <Text style={[styles.detailValue, { color: colors.foreground }]}>{current.category}</Text>
+          <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{current.summary}</Text>
+          <Divider />
+          <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Approximate map pin coordinates</Text>
+          <Text style={[styles.detailValue, { color: colors.foreground }]}>
+            {current.latitude == null || current.longitude == null ? 'Coordinates unavailable' : `${current.latitude.toFixed(6)}, ${current.longitude.toFixed(6)}`}
+          </Text>
+        </Card>
         <SectionTitle title="Report details" />
         {canEdit ? (
           <>
@@ -911,6 +1308,8 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
                 <Chip key={item} label={item} active={location === item} onPress={() => setLocation(item)} />
               ))}
             </View>
+            <Field label="Manager notes" value={managerNotes} onChangeText={setManagerNotes} multiline placeholder="Internal case notes" />
+            <Field label="Route assignment" value={routeAssignment} onChangeText={setRouteAssignment} placeholder="Route or work order" />
             <Button label="Save case edits" icon="save" onPress={save} loading={saving} />
           </>
         ) : (
@@ -928,7 +1327,31 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
             <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Assigned team</Text>
             <Text style={[styles.detailValue, { color: colors.foreground }]}>{current.assignedTeam ?? 'Not assigned'}</Text>
           </View>
+          <Divider />
+          <View style={styles.detailRow}>
+            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Route assignment</Text>
+            <Text style={[styles.detailValue, { color: colors.foreground }]}>{current.routeAssignment ?? 'Not assigned'}</Text>
+          </View>
+          <Divider />
+          <View style={styles.detailRow}>
+            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Manager notes</Text>
+            <Text style={[styles.detailValue, { color: colors.foreground }]}>{current.managerNotes || 'None'}</Text>
+          </View>
         </Card>
+        <SectionTitle title="Report timestamps" />
+        <Card>
+          <Text style={[styles.cardBody, { color: colors.foreground }]}>Submitted · {formatDateTime(current.submittedAt)}</Text>
+          <Text style={[styles.cardBody, { color: colors.foreground }]}>Last updated · {current.updatedAt ? formatDateTime(current.updatedAt) : 'Unavailable'}</Text>
+          <Text style={[styles.cardBody, { color: colors.foreground }]}>Assigned · {current.assignedAt ? formatDateTime(current.assignedAt) : 'Not assigned'}</Text>
+          <Text style={[styles.cardBody, { color: colors.foreground }]}>Resolved · {current.resolvedAt ? formatDateTime(current.resolvedAt) : 'Not resolved'}</Text>
+        </Card>
+        <SectionTitle title="Status history" />
+        {detailQuery.data?.statusHistory?.length ? detailQuery.data.statusHistory.map((entry, index) => (
+          <Card key={`${entry.changedAt}-${index}`}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>{entry.fromStatus ? `${entry.fromStatus} → ` : ''}{entry.toStatus}</Text>
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{formatDateTime(entry.changedAt)} · {entry.changedBy}</Text>
+          </Card>
+        )) : <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>No status history available.</Text>}
         {(role === 'manager' || role === 'worker') ? (
           <>
             <SectionTitle title="Case status" />
@@ -1102,6 +1525,12 @@ function formatTime(value: string) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unavailable';
+  return date.toLocaleString();
+}
+
 const styles = StyleSheet.create({
   app: { flex: 1 },
   topbar: { minHeight: 68, paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
@@ -1169,6 +1598,10 @@ const styles = StyleSheet.create({
   filters: { gap: 8, paddingBottom: 15 },
   reportList: { gap: 10, marginBottom: 16 },
   caseRow: { borderWidth: 1, borderRadius: 20, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
+  historyRow: { borderWidth: 1, borderRadius: 20, padding: 11, flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
+  historyPhoto: { width: 72, height: 82, borderRadius: 14 },
+  historyPhotoPlaceholder: { alignItems: 'center', justifyContent: 'center', gap: 4 },
+  historyPhotoText: { fontFamily: 'Inter_500Medium', fontSize: 8 },
   severity: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   severityText: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 15 },
   caseRowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 },
@@ -1204,6 +1637,9 @@ const styles = StyleSheet.create({
   photoIcon: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   photoTitle: { fontFamily: 'Inter_700Bold', fontSize: 14 },
   photoSub: { fontFamily: 'Inter_400Regular', fontSize: 11 },
+  coordinateMap: { height: 210, borderRadius: 24, overflow: 'hidden', position: 'relative' },
+  pinMarker: { position: 'absolute', marginLeft: -12, marginTop: -25, elevation: 4 },
+  tapMapHint: { position: 'absolute', top: '42%', alignSelf: 'center', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 7 },
   casePhoto: { width: '100%', height: 210, borderRadius: 23 },
   casePlaceholder: { width: '100%', height: 180, borderRadius: 23, alignItems: 'center', justifyContent: 'center', gap: 8 },
   caseHeadline: { flexDirection: 'row', gap: 14, alignItems: 'center' },

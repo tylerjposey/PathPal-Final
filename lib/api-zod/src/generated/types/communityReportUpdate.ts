@@ -28,4 +28,24 @@ export interface CommunityReportUpdate {
      * @nullable
      */
   assignedTeam?: string | null;
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  managerNotes?: string | null;
+  /**
+     * @maxLength 160
+     * @nullable
+     */
+  routeAssignment?: string | null;
+  /**
+     * @minimum 37
+     * @maximum 37.6
+     */
+  latitude?: number;
+  /**
+     * @minimum -122.2
+     * @maximum -121.6
+     */
+  longitude?: number;
 }

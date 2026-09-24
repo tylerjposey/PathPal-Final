@@ -8,12 +8,14 @@
 
 export * from './communityReport';
 export * from './communityReportCategory';
+export * from './communityReportDetail';
 export * from './communityReportInput';
 export * from './communityReportInputCategory';
 export * from './communityReportInputContentType';
 export * from './communityReportInputLocation';
 export * from './communityReportLocation';
 export * from './communityReportPriority';
+export * from './communityReportSelectedCategory';
 export * from './communityReportStatus';
 export * from './communityReportUpdate';
 export * from './communityReportUpdateCategory';
@@ -42,3 +44,5 @@ export * from './reportSessionInput';
 export * from './reportSessionInputRole';
 export * from './reportSessionRole';
 export * from './reportSessionTokenType';
+export * from './reportStatusEvent';
+export * from './reportStatusEventToStatus';

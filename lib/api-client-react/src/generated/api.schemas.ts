@@ -134,6 +134,22 @@ export const CommunityReportPriority = {
   High: 'High',
 } as const;
 
+/**
+ * @nullable
+ */
+export type CommunityReportSelectedCategory = typeof CommunityReportSelectedCategory[keyof typeof CommunityReportSelectedCategory] | null;
+
+
+export const CommunityReportSelectedCategory = {
+  Blight: 'Blight',
+  Illegal_dumping: 'Illegal dumping',
+  Unsafe_bus_stops: 'Unsafe bus stops',
+  Damaged_sidewalks: 'Damaged sidewalks',
+  Poor_lighting: 'Poor lighting',
+  Suspicious_activity: 'Suspicious activity',
+  Other_concerns: 'Other concerns',
+} as const;
+
 export interface CommunityReport {
   id: string;
   category: CommunityReportCategory;
@@ -150,13 +166,63 @@ export interface CommunityReport {
   y: number;
   /** @nullable */
   photoUri: string | null;
+  photoReference: string;
   submittedAt: string;
   recommendedDepartment: string;
   priority: CommunityReportPriority;
   /** @nullable */
   assignedTeam: string | null;
   awardedPoints: boolean;
+  /** @nullable */
+  reporterAccountId: string | null;
+  /** @nullable */
+  familyAccountId: string | null;
+  /** @nullable */
+  selectedCategory: CommunityReportSelectedCategory;
+  /**
+     * @minimum 37
+     * @maximum 37.6
+     * @nullable
+     */
+  latitude: number | null;
+  /**
+     * @minimum -122.2
+     * @maximum -121.6
+     * @nullable
+     */
+  longitude: number | null;
+  /** @nullable */
+  managerNotes: string | null;
+  /** @nullable */
+  routeAssignment: string | null;
+  updatedAt: string;
+  /** @nullable */
+  assignedAt: string | null;
+  /** @nullable */
+  resolvedAt: string | null;
 }
+
+export type ReportStatusEventToStatus = typeof ReportStatusEventToStatus[keyof typeof ReportStatusEventToStatus];
+
+
+export const ReportStatusEventToStatus = {
+  Submitted: 'Submitted',
+  Under_Review: 'Under Review',
+  Assigned: 'Assigned',
+  Resolved: 'Resolved',
+} as const;
+
+export interface ReportStatusEvent {
+  /** @nullable */
+  fromStatus: string | null;
+  toStatus: ReportStatusEventToStatus;
+  changedBy: string;
+  changedAt: string;
+}
+
+export type CommunityReportDetail = CommunityReport & {
+  statusHistory: ReportStatusEvent[];
+};
 
 export type CommunityReportInputLocation = typeof CommunityReportInputLocation[keyof typeof CommunityReportInputLocation];
 
@@ -170,7 +236,10 @@ export const CommunityReportInputLocation = {
   Santa_Clara: 'Santa Clara',
 } as const;
 
-export type CommunityReportInputCategory = typeof CommunityReportInputCategory[keyof typeof CommunityReportInputCategory];
+/**
+ * @nullable
+ */
+export type CommunityReportInputCategory = typeof CommunityReportInputCategory[keyof typeof CommunityReportInputCategory] | null;
 
 
 export const CommunityReportInputCategory = {
@@ -198,8 +267,19 @@ export interface CommunityReportInput {
      * @maxLength 4000
      */
   description: string;
-  location: CommunityReportInputLocation;
+  location?: CommunityReportInputLocation;
+  /** @nullable */
   category?: CommunityReportInputCategory;
+  /**
+     * @minimum 37
+     * @maximum 37.6
+     */
+  latitude: number;
+  /**
+     * @minimum -122.2
+     * @maximum -121.6
+     */
+  longitude: number;
   /** @maxLength 2796204 */
   photoBase64?: string;
   contentType?: CommunityReportInputContentType;
@@ -209,6 +289,9 @@ export type ReportSessionInputRole = typeof ReportSessionInputRole[keyof typeof 
 
 
 export const ReportSessionInputRole = {
+  parent: 'parent',
+  child: 'child',
+  citizen: 'citizen',
   manager: 'manager',
   worker: 'worker',
 } as const;
@@ -238,6 +321,9 @@ export type ReportSessionRole = typeof ReportSessionRole[keyof typeof ReportSess
 
 
 export const ReportSessionRole = {
+  parent: 'parent',
+  child: 'child',
+  citizen: 'citizen',
   manager: 'manager',
   worker: 'worker',
 } as const;
@@ -247,6 +333,7 @@ export interface ReportSession {
   tokenType: ReportSessionTokenType;
   expiresAt: string;
   role: ReportSessionRole;
+  prototypeOnly: true;
 }
 
 export type CommunityReportUpdateCategory = typeof CommunityReportUpdateCategory[keyof typeof CommunityReportUpdateCategory];
@@ -303,6 +390,26 @@ export interface CommunityReportUpdate {
      * @nullable
      */
   assignedTeam?: string | null;
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  managerNotes?: string | null;
+  /**
+     * @maxLength 160
+     * @nullable
+     */
+  routeAssignment?: string | null;
+  /**
+     * @minimum 37
+     * @maximum 37.6
+     */
+  latitude?: number;
+  /**
+     * @minimum -122.2
+     * @maximum -121.6
+     */
+  longitude?: number;
 }
 
 export interface CommunityReportUpdateResult {

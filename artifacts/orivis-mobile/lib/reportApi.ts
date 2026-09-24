@@ -1,10 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setAuthTokenGetter, type CommunityReport, type ReportSession } from '@workspace/api-client-react';
+import { getListReportsQueryKey, getReportPhoto, setAuthTokenGetter, type CommunityReport, type ReportSession } from '@workspace/api-client-react';
 import type { SafetyReport } from '@/context/DemoContext';
 
 const SESSION_KEY = 'orivis-report-session';
 
-// Only demo manager/worker sessions are issued by the server. Never persist passwords.
+export function reportAccountScope(account: { role: string; username: string }) {
+  return `${account.role}:${account.username.trim().toLowerCase()}`;
+}
+
+export function reportListQueryKey(scope: string) {
+  return [...getListReportsQueryKey(), 'account', scope] as const;
+}
+
+// These prototype sessions share role demo identities; they are not secure personal accounts.
 setAuthTokenGetter(async () => {
   const raw = await AsyncStorage.getItem(SESSION_KEY);
   if (!raw) return null;
@@ -26,7 +34,7 @@ export async function clearReportSession() {
   await AsyncStorage.removeItem(SESSION_KEY);
 }
 
-export async function hasReportSession(role: 'manager' | 'worker') {
+export async function hasReportSession(role: 'parent' | 'child' | 'citizen' | 'manager' | 'worker') {
   const raw = await AsyncStorage.getItem(SESSION_KEY);
   if (!raw) return false;
   try {
@@ -44,6 +52,19 @@ export function toSafetyReport(report: CommunityReport): SafetyReport {
     photoUri: report.photoUri ? `${base}${report.photoUri}` : undefined,
     assignedTeam: report.assignedTeam ?? undefined,
   };
+}
+
+export async function loadReportPhotoDataUri(id: string): Promise<string> {
+  const blob = await getReportPhoto(id);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('The report photo could not be displayed.'));
+    };
+    reader.onerror = () => reject(new Error('The report photo could not be loaded.'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 export function reportError(error: unknown): string {

@@ -200,9 +200,15 @@ export const GetJourneyCatalogResponse = zod.object({
 
 
 /**
- * @summary List community reports
+ * @summary List reports visible to the signed demo role
  */
 export const listReportsResponseSeverityMax = 10;
+
+export const listReportsResponseLatitudeMin = 37;
+export const listReportsResponseLatitudeMax = 37.6;
+
+export const listReportsResponseLongitudeMin = -122.2;
+export const listReportsResponseLongitudeMax = -121.6;
 
 
 
@@ -217,20 +223,37 @@ export const ListReportsResponseItem = zod.object({
   "x": zod.number(),
   "y": zod.number(),
   "photoUri": zod.string().nullable(),
+  "photoReference": zod.string(),
   "submittedAt": zod.coerce.date(),
   "recommendedDepartment": zod.string(),
   "priority": zod.enum(['Low', 'Medium', 'High']),
   "assignedTeam": zod.string().nullable(),
-  "awardedPoints": zod.boolean()
+  "awardedPoints": zod.boolean(),
+  "reporterAccountId": zod.string().nullable(),
+  "familyAccountId": zod.string().nullable(),
+  "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
+  "latitude": zod.number().min(listReportsResponseLatitudeMin).max(listReportsResponseLatitudeMax).nullable(),
+  "longitude": zod.number().min(listReportsResponseLongitudeMin).max(listReportsResponseLongitudeMax).nullable(),
+  "managerNotes": zod.string().nullable(),
+  "routeAssignment": zod.string().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "assignedAt": zod.coerce.date().nullable(),
+  "resolvedAt": zod.coerce.date().nullable()
 })
 export const ListReportsResponse = zod.array(ListReportsResponseItem)
 
 
 /**
- * @summary Submit an anonymous community report
+ * @summary Submit a report for the signed demo account
  */
 export const createReportBodyDescriptionMin = 12;
 export const createReportBodyDescriptionMax = 4000;
+
+export const createReportBodyLatitudeMin = 37;
+export const createReportBodyLatitudeMax = 37.6;
+
+export const createReportBodyLongitudeMin = -122.2;
+export const createReportBodyLongitudeMax = -121.6;
 
 export const createReportBodyPhotoBase64Max = 2796204;
 
@@ -238,13 +261,21 @@ export const createReportBodyPhotoBase64Max = 2796204;
 
 export const CreateReportBody = zod.object({
   "description": zod.string().min(createReportBodyDescriptionMin).max(createReportBodyDescriptionMax),
-  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']),
-  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']).optional(),
+  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']).optional(),
+  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']).nullish(),
+  "latitude": zod.number().min(createReportBodyLatitudeMin).max(createReportBodyLatitudeMax),
+  "longitude": zod.number().min(createReportBodyLongitudeMin).max(createReportBodyLongitudeMax),
   "photoBase64": zod.string().max(createReportBodyPhotoBase64Max).optional(),
   "contentType": zod.enum(['image/jpeg', 'image/png', 'image/webp']).optional()
 })
 
 export const createReportResponseSeverityMax = 10;
+
+export const createReportResponseLatitudeMin = 37;
+export const createReportResponseLatitudeMax = 37.6;
+
+export const createReportResponseLongitudeMin = -122.2;
+export const createReportResponseLongitudeMax = -121.6;
 
 
 
@@ -259,16 +290,27 @@ export const CreateReportResponse = zod.object({
   "x": zod.number(),
   "y": zod.number(),
   "photoUri": zod.string().nullable(),
+  "photoReference": zod.string(),
   "submittedAt": zod.coerce.date(),
   "recommendedDepartment": zod.string(),
   "priority": zod.enum(['Low', 'Medium', 'High']),
   "assignedTeam": zod.string().nullable(),
-  "awardedPoints": zod.boolean()
+  "awardedPoints": zod.boolean(),
+  "reporterAccountId": zod.string().nullable(),
+  "familyAccountId": zod.string().nullable(),
+  "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
+  "latitude": zod.number().min(createReportResponseLatitudeMin).max(createReportResponseLatitudeMax).nullable(),
+  "longitude": zod.number().min(createReportResponseLongitudeMin).max(createReportResponseLongitudeMax).nullable(),
+  "managerNotes": zod.string().nullable(),
+  "routeAssignment": zod.string().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "assignedAt": zod.coerce.date().nullable(),
+  "resolvedAt": zod.coerce.date().nullable()
 })
 
 
 /**
- * @summary Create a manager or worker demo session
+ * @summary Create a prototype-only signed demo session; these roles are not secure real accounts
  */
 export const createReportSessionBodyUsernameMax = 100;
 
@@ -279,19 +321,78 @@ export const createReportSessionBodyPasswordMax = 200;
 export const CreateReportSessionBody = zod.object({
   "username": zod.string().min(1).max(createReportSessionBodyUsernameMax),
   "password": zod.string().min(1).max(createReportSessionBodyPasswordMax),
-  "role": zod.enum(['manager', 'worker'])
+  "role": zod.enum(['parent', 'child', 'citizen', 'manager', 'worker'])
 })
 
 export const CreateReportSessionResponse = zod.object({
   "accessToken": zod.string(),
   "tokenType": zod.enum(['Bearer']),
   "expiresAt": zod.coerce.date(),
-  "role": zod.enum(['manager', 'worker'])
+  "role": zod.enum(['parent', 'child', 'citizen', 'manager', 'worker']),
+  "prototypeOnly": zod.literal(true)
 })
 
 
 /**
- * @summary Update a report as manager or assigned worker
+ * @summary Get complete report details and status history
+ */
+export const getReportPathIdMax = 80;
+
+
+
+export const GetReportParams = zod.object({
+  "id": zod.coerce.string().min(1).max(getReportPathIdMax)
+})
+
+export const getReportResponseOneSeverityMax = 10;
+
+export const getReportResponseOneLatitudeMin = 37;
+export const getReportResponseOneLatitudeMax = 37.6;
+
+export const getReportResponseOneLongitudeMin = -122.2;
+export const getReportResponseOneLongitudeMax = -121.6;
+
+
+
+export const GetReportResponse = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
+  "summary": zod.string(),
+  "description": zod.string(),
+  "severity": zod.number().int().min(1).max(getReportResponseOneSeverityMax),
+  "status": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']),
+  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']),
+  "x": zod.number(),
+  "y": zod.number(),
+  "photoUri": zod.string().nullable(),
+  "photoReference": zod.string(),
+  "submittedAt": zod.coerce.date(),
+  "recommendedDepartment": zod.string(),
+  "priority": zod.enum(['Low', 'Medium', 'High']),
+  "assignedTeam": zod.string().nullable(),
+  "awardedPoints": zod.boolean(),
+  "reporterAccountId": zod.string().nullable(),
+  "familyAccountId": zod.string().nullable(),
+  "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
+  "latitude": zod.number().min(getReportResponseOneLatitudeMin).max(getReportResponseOneLatitudeMax).nullable(),
+  "longitude": zod.number().min(getReportResponseOneLongitudeMin).max(getReportResponseOneLongitudeMax).nullable(),
+  "managerNotes": zod.string().nullable(),
+  "routeAssignment": zod.string().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "assignedAt": zod.coerce.date().nullable(),
+  "resolvedAt": zod.coerce.date().nullable()
+}).and(zod.object({
+  "statusHistory": zod.array(zod.object({
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']),
+  "changedBy": zod.string(),
+  "changedAt": zod.coerce.date()
+}))
+}))
+
+
+/**
+ * @summary Update case metadata as manager or status as assigned worker
  */
 export const updateReportPathIdMax = 80;
 
@@ -308,6 +409,16 @@ export const updateReportBodySeverityMax = 10;
 
 export const updateReportBodyAssignedTeamMax = 120;
 
+export const updateReportBodyManagerNotesMax = 4000;
+
+export const updateReportBodyRouteAssignmentMax = 160;
+
+export const updateReportBodyLatitudeMin = 37;
+export const updateReportBodyLatitudeMax = 37.6;
+
+export const updateReportBodyLongitudeMin = -122.2;
+export const updateReportBodyLongitudeMax = -121.6;
+
 
 
 export const UpdateReportBody = zod.object({
@@ -316,10 +427,20 @@ export const UpdateReportBody = zod.object({
   "severity": zod.number().int().min(1).max(updateReportBodySeverityMax).optional(),
   "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']).optional(),
   "status": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']).optional(),
-  "assignedTeam": zod.string().max(updateReportBodyAssignedTeamMax).nullish()
+  "assignedTeam": zod.string().max(updateReportBodyAssignedTeamMax).nullish(),
+  "managerNotes": zod.string().max(updateReportBodyManagerNotesMax).nullish(),
+  "routeAssignment": zod.string().max(updateReportBodyRouteAssignmentMax).nullish(),
+  "latitude": zod.number().min(updateReportBodyLatitudeMin).max(updateReportBodyLatitudeMax).optional(),
+  "longitude": zod.number().min(updateReportBodyLongitudeMin).max(updateReportBodyLongitudeMax).optional()
 })
 
 export const updateReportResponseReportSeverityMax = 10;
+
+export const updateReportResponseReportLatitudeMin = 37;
+export const updateReportResponseReportLatitudeMax = 37.6;
+
+export const updateReportResponseReportLongitudeMin = -122.2;
+export const updateReportResponseReportLongitudeMax = -121.6;
 
 
 
@@ -335,11 +456,22 @@ export const UpdateReportResponse = zod.object({
   "x": zod.number(),
   "y": zod.number(),
   "photoUri": zod.string().nullable(),
+  "photoReference": zod.string(),
   "submittedAt": zod.coerce.date(),
   "recommendedDepartment": zod.string(),
   "priority": zod.enum(['Low', 'Medium', 'High']),
   "assignedTeam": zod.string().nullable(),
-  "awardedPoints": zod.boolean()
+  "awardedPoints": zod.boolean(),
+  "reporterAccountId": zod.string().nullable(),
+  "familyAccountId": zod.string().nullable(),
+  "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
+  "latitude": zod.number().min(updateReportResponseReportLatitudeMin).max(updateReportResponseReportLatitudeMax).nullable(),
+  "longitude": zod.number().min(updateReportResponseReportLongitudeMin).max(updateReportResponseReportLongitudeMax).nullable(),
+  "managerNotes": zod.string().nullable(),
+  "routeAssignment": zod.string().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "assignedAt": zod.coerce.date().nullable(),
+  "resolvedAt": zod.coerce.date().nullable()
 }),
   "awardedPoints": zod.boolean().describe('True only when this update newly resolves the report for the first time.')
 })
@@ -357,5 +489,49 @@ export const GetReportPhotoParams = zod.object({
 })
 
 export const GetReportPhotoResponse = zod.unknown()
+
+
+/**
+ * @summary Restore six demonstration reports without deleting user reports
+ */
+export const resetDemoReportsResponseSeverityMax = 10;
+
+export const resetDemoReportsResponseLatitudeMin = 37;
+export const resetDemoReportsResponseLatitudeMax = 37.6;
+
+export const resetDemoReportsResponseLongitudeMin = -122.2;
+export const resetDemoReportsResponseLongitudeMax = -121.6;
+
+
+
+export const ResetDemoReportsResponseItem = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
+  "summary": zod.string(),
+  "description": zod.string(),
+  "severity": zod.number().int().min(1).max(resetDemoReportsResponseSeverityMax),
+  "status": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']),
+  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']),
+  "x": zod.number(),
+  "y": zod.number(),
+  "photoUri": zod.string().nullable(),
+  "photoReference": zod.string(),
+  "submittedAt": zod.coerce.date(),
+  "recommendedDepartment": zod.string(),
+  "priority": zod.enum(['Low', 'Medium', 'High']),
+  "assignedTeam": zod.string().nullable(),
+  "awardedPoints": zod.boolean(),
+  "reporterAccountId": zod.string().nullable(),
+  "familyAccountId": zod.string().nullable(),
+  "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
+  "latitude": zod.number().min(resetDemoReportsResponseLatitudeMin).max(resetDemoReportsResponseLatitudeMax).nullable(),
+  "longitude": zod.number().min(resetDemoReportsResponseLongitudeMin).max(resetDemoReportsResponseLongitudeMax).nullable(),
+  "managerNotes": zod.string().nullable(),
+  "routeAssignment": zod.string().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "assignedAt": zod.coerce.date().nullable(),
+  "resolvedAt": zod.coerce.date().nullable()
+})
+export const ResetDemoReportsResponse = zod.array(ResetDemoReportsResponseItem)
 
 

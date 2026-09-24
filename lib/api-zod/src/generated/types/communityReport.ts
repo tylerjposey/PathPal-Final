@@ -8,6 +8,7 @@
 import type { CommunityReportCategory } from './communityReportCategory';
 import type { CommunityReportLocation } from './communityReportLocation';
 import type { CommunityReportPriority } from './communityReportPriority';
+import type { CommunityReportSelectedCategory } from './communityReportSelectedCategory';
 import type { CommunityReportStatus } from './communityReportStatus';
 
 export interface CommunityReport {
@@ -26,10 +27,38 @@ export interface CommunityReport {
   y: number;
   /** @nullable */
   photoUri: string | null;
+  photoReference: string;
   submittedAt: Date;
   recommendedDepartment: string;
   priority: CommunityReportPriority;
   /** @nullable */
   assignedTeam: string | null;
   awardedPoints: boolean;
+  /** @nullable */
+  reporterAccountId: string | null;
+  /** @nullable */
+  familyAccountId: string | null;
+  /** @nullable */
+  selectedCategory: CommunityReportSelectedCategory;
+  /**
+     * @minimum 37
+     * @maximum 37.6
+     * @nullable
+     */
+  latitude: number | null;
+  /**
+     * @minimum -122.2
+     * @maximum -121.6
+     * @nullable
+     */
+  longitude: number | null;
+  /** @nullable */
+  managerNotes: string | null;
+  /** @nullable */
+  routeAssignment: string | null;
+  updatedAt: Date;
+  /** @nullable */
+  assignedAt: Date | null;
+  /** @nullable */
+  resolvedAt: Date | null;
 }

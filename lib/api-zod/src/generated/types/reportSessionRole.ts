@@ -10,6 +10,9 @@ export type ReportSessionRole = typeof ReportSessionRole[keyof typeof ReportSess
 
 
 export const ReportSessionRole = {
+  parent: 'parent',
+  child: 'child',
+  citizen: 'citizen',
   manager: 'manager',
   worker: 'worker',
 } as const;

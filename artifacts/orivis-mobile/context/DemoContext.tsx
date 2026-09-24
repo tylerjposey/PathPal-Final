@@ -2,13 +2,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createReport as submitCommunityReport,
   getListReportsQueryKey,
+  listReports,
+  resetDemoReports,
   updateReport as saveCommunityReport,
   useListReports,
   type CommunityReportInput,
   type CommunityReportUpdate,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { clearReportSession, hasReportSession, toSafetyReport } from '@/lib/reportApi';
+import {
+  clearReportSession,
+  hasReportSession,
+  reportAccountScope,
+  reportListQueryKey,
+  toSafetyReport,
+} from '@/lib/reportApi';
 import React, {
   createContext,
   useCallback,
@@ -19,7 +27,7 @@ import React, {
   type ReactNode,
 } from 'react';
 
-export type Role = 'parent' | 'child' | 'manager' | 'worker';
+export type Role = 'parent' | 'child' | 'citizen' | 'manager' | 'worker';
 export type ReportCategory =
   | 'Blight'
   | 'Illegal dumping'
@@ -48,6 +56,7 @@ export interface SelectedJourney {
 export const ROLE_LABELS: Record<Role, string> = {
   parent: 'Parent',
   child: 'Child',
+  citizen: 'Citizen',
   manager: 'City Case Manager',
   worker: 'City Worker',
 };
@@ -75,6 +84,8 @@ export interface DemoUser {
   name: string;
   username: string;
   role: Role;
+  reportServiceUnavailable?: boolean;
+  reportServiceError?: string;
 }
 
 export interface ChildProfile {
@@ -90,6 +101,17 @@ export interface SafetyReport {
   severity: number;
   status: CaseStatus;
   location: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  selectedCategory?: ReportCategory | null;
+  managerNotes?: string | null;
+  routeAssignment?: string | null;
+  updatedAt?: string;
+  assignedAt?: string | null;
+  resolvedAt?: string | null;
+  photoReference?: string;
+  reporterAccountId?: string | null;
+  familyAccountId?: string | null;
   x: number;
   y: number;
   photoUri?: string;
@@ -140,6 +162,8 @@ export interface DemoState {
   rewardPoints: number;
   rewardHistory: string[];
   reports: SafetyReport[];
+  legacyReportsByAccount: Record<string, SafetyReport[]>;
+  reportScopeKey: string | null;
   notifications: DemoNotification[];
   sosActive: boolean;
   sosTriggers: string[];
@@ -268,6 +292,8 @@ export function createInitialDemoState(): DemoState {
         92,
       ),
     ],
+    legacyReportsByAccount: {},
+    reportScopeKey: null,
     notifications: [
       {
         id: 'notif-demo-sos',
@@ -312,6 +338,27 @@ export function createInitialDemoState(): DemoState {
       },
     ],
   };
+}
+
+const SAMPLE_REPORT_IDS = new Set(createInitialDemoState().reports.map((report) => report.id));
+
+function legacyReportsFrom(reports: SafetyReport[]) {
+  return reports.filter((report) =>
+    !SAMPLE_REPORT_IDS.has(report.id) &&
+    !report.reporterAccountId &&
+    !report.familyAccountId,
+  );
+}
+
+function uniqueReports(reports: SafetyReport[]) {
+  return [...new Map(reports.map((report) => [report.id, report])).values()];
+}
+
+function visibleReports(serverReports: SafetyReport[], legacyReports: SafetyReport[]) {
+  const merged = new Map<string, SafetyReport>();
+  for (const report of legacyReportsFrom(legacyReports)) if (!merged.has(report.id)) merged.set(report.id, report);
+  for (const report of serverReports) merged.set(report.id, report);
+  return [...merged.values()].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 }
 
 const STORAGE_KEY = 'orivis-demo-v1';
@@ -379,7 +426,7 @@ interface DemoContextValue {
   joinFamily: (code: string, childName: string, username: string, password: string) => boolean;
   setAccount: (account: DemoUser | null) => void;
   signOut: () => void;
-  resetDemo: () => void;
+  resetDemo: () => Promise<void>;
   updateTripStep: (step: TripStep) => void;
   selectJourney: (journey: SelectedJourney) => void;
   simulateMissedCheckin: () => void;
@@ -390,8 +437,10 @@ interface DemoContextValue {
     photoBase64?: string;
     contentType?: 'image/jpeg' | 'image/png' | 'image/webp';
     category?: ReportCategory;
+    latitude: number;
+    longitude: number;
   }) => Promise<void>;
-  updateManagerReport: (id: string, changes: Partial<Pick<SafetyReport, 'category' | 'description' | 'severity' | 'status' | 'location'>>) => Promise<void>;
+  updateManagerReport: (id: string, changes: Partial<Pick<SafetyReport, 'category' | 'description' | 'severity' | 'status' | 'location' | 'managerNotes' | 'routeAssignment'>>) => Promise<void>;
   assignReports: (ids: string[], team: string) => Promise<void>;
   updateWorkerStatus: (id: string, status: CaseStatus) => Promise<void>;
   redeemReward: (rewardName: string, cost: number) => boolean;
@@ -408,27 +457,36 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(createInitialDemoState);
   const [hydrated, setHydrated] = useState(false);
   const queryClient = useQueryClient();
+  const activeReportScope = state.account ? reportAccountScope(state.account) : 'anonymous';
   const reportsQuery = useListReports({
-    query: { queryKey: getListReportsQueryKey(), enabled: hydrated && Boolean(state.account), refetchInterval: 30_000, staleTime: 5_000 },
+    query: {
+      queryKey: reportListQueryKey(activeReportScope),
+      enabled: hydrated && Boolean(state.account) && !state.account?.reportServiceUnavailable,
+      refetchInterval: 30_000,
+      staleTime: 5_000,
+    },
   });
 
   useEffect(() => {
-    if (!reportsQuery.data || !hydrated || !state.account) return;
+    if (!reportsQuery.isSuccess || reportsQuery.isError || !reportsQuery.data || !hydrated || !state.account || state.account.reportServiceUnavailable) return;
+    const scope = reportAccountScope(state.account);
+    if (reportsQuery.queryKey[1] !== 'account' || reportsQuery.queryKey[2] !== scope) return;
     const serverReports = reportsQuery.data.map(toSafetyReport);
-    const serverIds = new Set(serverReports.map((report) => report.id));
-    const initialIds = new Set(createInitialDemoState().reports.map((report) => report.id));
     setState((current) => {
-      // Preserve older device-only submissions until they can be resubmitted.
-      const legacy = current.reports.filter((report) => !serverIds.has(report.id) && !initialIds.has(report.id));
-      const reports = [...serverReports, ...legacy].sort(
-        (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
-      );
-      if (JSON.stringify(current.reports) === JSON.stringify(reports)) return current;
-      const next = { ...current, reports };
+      if (!current.account || reportAccountScope(current.account) !== scope) return current;
+      const buckets = { ...current.legacyReportsByAccount };
+      const legacy = uniqueReports([
+        ...legacyReportsFrom(buckets[scope] ?? []),
+        ...(current.reportScopeKey === scope ? legacyReportsFrom(current.reports) : []),
+      ]);
+      buckets[scope] = legacy;
+      const reports = visibleReports(serverReports, legacy);
+      if (JSON.stringify(current.reports) === JSON.stringify(reports) && JSON.stringify(current.legacyReportsByAccount) === JSON.stringify(buckets)) return current;
+      const next = { ...current, reports, legacyReportsByAccount: buckets, reportScopeKey: scope };
       void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-  }, [reportsQuery.data, hydrated, state.account]);
+  }, [reportsQuery.data, reportsQuery.isSuccess, reportsQuery.isError, reportsQuery.queryKey, hydrated, state.account]);
 
   useEffect(() => {
     let mounted = true;
@@ -438,11 +496,29 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         if (raw) {
           try {
             const saved = { ...createInitialDemoState(), ...JSON.parse(raw) as Partial<DemoState> };
-            if (saved.account?.role === 'manager' || saved.account?.role === 'worker') {
+            const buckets = { ...saved.legacyReportsByAccount };
+            for (const [scope, rows] of Object.entries(buckets)) {
+              buckets[scope] = uniqueReports(legacyReportsFrom(rows));
+            }
+            const savedScope = saved.reportScopeKey ?? (saved.account ? reportAccountScope(saved.account) : null);
+            const migrationScope = savedScope ?? 'legacy:unattributed';
+            if (migrationScope) {
+              buckets[migrationScope] = uniqueReports([
+                ...legacyReportsFrom(buckets[migrationScope] ?? []),
+                ...legacyReportsFrom(saved.reports),
+              ]);
+            }
+            saved.legacyReportsByAccount = buckets;
+            saved.reportScopeKey = savedScope;
+            saved.reports = visibleReports([], savedScope ? buckets[savedScope] ?? [] : []);
+            if (saved.account && !(saved.account.reportServiceUnavailable && ['parent', 'child'].includes(saved.account.role))) {
               const valid = await hasReportSession(saved.account.role);
               if (!valid) saved.account = null;
             }
-            if (mounted) setState(saved);
+            if (mounted) {
+              setState(saved);
+              void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+            }
           } catch {
             setState(createInitialDemoState());
           }
@@ -470,6 +546,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       const names: Record<Role, string> = {
         parent: 'Jordan Chen',
         child: state.child.name,
+        citizen: 'Taylor Morgan',
         manager: 'Avery Patel',
         worker: 'Luis Rivera',
       };
@@ -514,20 +591,75 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }, [update, verifyFamilyInvite]);
 
   const setAccount = useCallback((account: DemoUser | null) => {
-    update((current) => ({ ...current, account }));
-  }, [update]);
+    const isReportQuery = (query: { queryKey: readonly unknown[] }) =>
+      typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/reports');
+    void queryClient.cancelQueries({ predicate: isReportQuery });
+    queryClient.removeQueries({ predicate: isReportQuery });
+    const scope = account ? reportAccountScope(account) : null;
+    update((current) => {
+      const buckets = { ...current.legacyReportsByAccount };
+      const sourceScope = current.reportScopeKey ?? (current.account ? reportAccountScope(current.account) : null);
+      if (sourceScope) {
+        buckets[sourceScope] = uniqueReports([
+          ...legacyReportsFrom(buckets[sourceScope] ?? []),
+          ...legacyReportsFrom(current.reports),
+        ]);
+      }
+      const legacy = scope ? buckets[scope] ?? [] : [];
+      return {
+        ...current,
+        account,
+        reportScopeKey: scope,
+        legacyReportsByAccount: buckets,
+        reports: visibleReports([], legacy),
+      };
+    });
+  }, [update, queryClient]);
 
   const signOut = useCallback(() => {
     void clearReportSession();
-    update((current) => ({ ...current, account: null }));
-  }, [update]);
+    const isReportQuery = (query: { queryKey: readonly unknown[] }) =>
+      typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/reports');
+    void queryClient.cancelQueries({ predicate: isReportQuery });
+    queryClient.removeQueries({ predicate: isReportQuery });
+    update((current) => {
+      const scope = current.reportScopeKey ?? (current.account ? reportAccountScope(current.account) : null);
+      const buckets = { ...current.legacyReportsByAccount };
+      if (scope) {
+        buckets[scope] = uniqueReports([
+          ...legacyReportsFrom(buckets[scope] ?? []),
+          ...legacyReportsFrom(current.reports),
+        ]);
+      }
+      return {
+        ...current,
+        account: null,
+        reportScopeKey: scope,
+        legacyReportsByAccount: buckets,
+        reports: visibleReports([], scope ? buckets[scope] ?? [] : []),
+      };
+    });
+  }, [update, queryClient]);
 
-  const resetDemo = useCallback(() => {
-    void clearReportSession();
+  const resetDemo = useCallback(async () => {
+    if (state.account?.role !== 'manager') throw new Error('Only a city case manager can restore shared demonstration cases.');
+    await resetDemoReports();
+    const restoredReports = await listReports();
     const initial = createInitialDemoState();
-    setState(initial);
-    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(initial)).catch(() => undefined);
-  }, []);
+    const serverReports = restoredReports.map(toSafetyReport);
+    const serverIds = new Set(serverReports.map((report) => report.id));
+    const originalIds = new Set(createInitialDemoState().reports.map((report) => report.id));
+    const legacyReports = state.reports.filter((report) => !serverIds.has(report.id) && !originalIds.has(report.id));
+    const next = {
+      ...initial,
+      reports: visibleReports(serverReports, legacyReports),
+      legacyReportsByAccount: state.legacyReportsByAccount,
+    };
+    await clearReportSession();
+    setState(next);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
+  }, [state.account?.role, state.reports, queryClient]);
 
   const updateTripStep = useCallback((step: TripStep) => {
     update((current) => {
@@ -593,11 +725,14 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const createReport = useCallback(async (input: {
     description: string; location: string; photoBase64?: string;
     contentType?: 'image/jpeg' | 'image/png' | 'image/webp'; category?: ReportCategory;
+    latitude: number; longitude: number;
   }) => {
     const created = await submitCommunityReport({
       description: input.description.trim(),
       location: input.location as CommunityReportInput['location'],
       category: input.category,
+      latitude: input.latitude,
+      longitude: input.longitude,
       photoBase64: input.photoBase64,
       contentType: input.contentType,
     });
@@ -631,7 +766,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
   const updateManagerReport = useCallback(async (
     id: string,
-    changes: Partial<Pick<SafetyReport, 'category' | 'description' | 'severity' | 'status' | 'location'>>,
+    changes: Partial<Pick<SafetyReport, 'category' | 'description' | 'severity' | 'status' | 'location' | 'managerNotes' | 'routeAssignment'>>,
   ) => {
     if (state.account?.role !== 'manager') throw new Error('Only case managers can edit reports.');
     applySavedReport(await saveCommunityReport(id, changes as CommunityReportUpdate));
@@ -757,11 +892,53 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     }));
   }, [update]);
 
+  const currentQueryMatchesScope = Boolean(
+    state.account &&
+    reportsQuery.queryKey[1] === 'account' &&
+    reportsQuery.queryKey[2] === reportAccountScope(state.account),
+  );
+  const authorizedReports = useMemo(() => {
+    const account = state.account;
+    if (!account) return [];
+    const scope = reportAccountScope(account);
+    const legacy = legacyReportsFrom(state.legacyReportsByAccount[scope] ?? []);
+    const serverReports = reportsQuery.isSuccess &&
+      !reportsQuery.isError &&
+      !account.reportServiceUnavailable &&
+      currentQueryMatchesScope
+      ? (reportsQuery.data ?? []).map(toSafetyReport)
+      : [];
+    const roleScopedServerReports = account.role === 'worker'
+      ? serverReports.filter((report) => report.assignedTeam === 'San Jose – West Clean Team')
+      : serverReports;
+    const roleScopedLegacy = account.role === 'worker'
+      ? legacy.filter((report) => report.assignedTeam === 'San Jose – West Clean Team')
+      : legacy;
+    return visibleReports(roleScopedServerReports, roleScopedLegacy);
+  }, [
+    state.account,
+    state.legacyReportsByAccount,
+    reportsQuery.data,
+    reportsQuery.isSuccess,
+    reportsQuery.isError,
+    currentQueryMatchesScope,
+  ]);
+  const visibleState = useMemo<DemoState>(() => {
+    const scope = state.account ? reportAccountScope(state.account) : null;
+    const currentLegacy = scope ? legacyReportsFrom(state.legacyReportsByAccount[scope] ?? []) : [];
+    return {
+      ...state,
+      reports: authorizedReports,
+      legacyReportsByAccount: scope ? { [scope]: currentLegacy } : {},
+      reportScopeKey: scope,
+    };
+  }, [state, authorizedReports]);
+
   const value = useMemo<DemoContextValue>(() => ({
-    state,
+    state: visibleState,
     hydrated,
-    reportsError: reportsQuery.isError,
-    reportsLoading: reportsQuery.isPending || reportsQuery.isFetching,
+    reportsError: Boolean(currentQueryMatchesScope && reportsQuery.isError && !state.account?.reportServiceUnavailable),
+    reportsLoading: Boolean(currentQueryMatchesScope && state.account && !state.account.reportServiceUnavailable && (reportsQuery.isPending || reportsQuery.isFetching)),
     authenticate,
     verifyFamilyInvite,
     createFamily,
@@ -785,10 +962,12 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     endSOS,
   }), [
     state,
+    visibleState,
     hydrated,
     reportsQuery.isError,
     reportsQuery.isPending,
     reportsQuery.isFetching,
+    currentQueryMatchesScope,
     authenticate,
     verifyFamilyInvite,
     createFamily,

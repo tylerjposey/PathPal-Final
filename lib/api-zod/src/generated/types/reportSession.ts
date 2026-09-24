@@ -13,4 +13,5 @@ export interface ReportSession {
   tokenType: ReportSessionTokenType;
   expiresAt: Date;
   role: ReportSessionRole;
+  prototypeOnly: true;
 }

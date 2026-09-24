@@ -8,7 +8,7 @@ import { BrandMark, Button, Card, Chip, Field } from '@/components/OrivisUI';
 import { ROLE_LABELS, type DemoUser, type Role, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
 import { createReportSession } from '@workspace/api-client-react';
-import { reportError, saveReportSession } from '@/lib/reportApi';
+import { clearReportSession, reportError, saveReportSession } from '@/lib/reportApi';
 
 type AuthMode = 'signin' | 'family' | 'join';
 
@@ -41,14 +41,24 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
     }
     setSigningIn(true);
     try {
-      if (role === 'manager' || role === 'worker') {
-        const session = await createReportSession({ username, password, role });
-        await saveReportSession(session);
-      }
+      const session = await createReportSession({
+        username: role === 'parent' || role === 'child' || role === 'citizen' ? 'AI4SG' : username,
+        password: role === 'parent' || role === 'child' || role === 'citizen' ? '1234' : password,
+        role,
+      });
+      await saveReportSession(session);
       setError('');
       onVerified(account);
     } catch (error) {
-      setError(reportError(error));
+      const detail = reportError(error);
+      if (role === 'parent' || role === 'child') {
+        await clearReportSession().catch(() => undefined);
+        const serviceMessage = `Report service unavailable: ${detail}. You can continue using the local family journey, check-ins, and simulated SOS; reports require a server connection.`;
+        setError(serviceMessage);
+        onVerified({ ...account, reportServiceUnavailable: true, reportServiceError: serviceMessage });
+      } else {
+        setError(detail);
+      }
     } finally {
       setSigningIn(false);
     }
@@ -150,7 +160,7 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
                   ]}
                 >
                   <Feather
-                    name={item === 'parent' ? 'users' : item === 'child' ? 'smile' : item === 'manager' ? 'clipboard' : 'tool'}
+                    name={item === 'parent' ? 'users' : item === 'child' ? 'smile' : item === 'citizen' ? 'user' : item === 'manager' ? 'clipboard' : 'tool'}
                     size={19}
                     color={role === item ? colors.primary : colors.mutedForeground}
                   />
@@ -166,7 +176,7 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
             <View style={[styles.demoNote, { backgroundColor: colors.muted }]}>
               <Feather name="info" size={15} color={colors.primary} />
               <Text style={[styles.demoText, { color: colors.mutedForeground }]}>
-                Demo for every role: AI4SG · 1234 · verification 1234
+                Shared prototype identities: AI4SG · 1234 · verification 1234. Demo accounts are not securely isolated.
               </Text>
             </View>
           </>

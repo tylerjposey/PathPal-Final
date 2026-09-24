@@ -143,7 +143,9 @@ paths:
     get:
       operationId: listReports
       tags: [reports]
-      summary: List community reports
+      summary: List reports visible to the signed demo role
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Community reports ordered newest first
@@ -162,7 +164,9 @@ paths:
     post:
       operationId: createReport
       tags: [reports]
-      summary: Submit an anonymous community report
+      summary: Submit a report for the signed demo account
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -189,7 +193,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
-          description: Anonymous report rate limit reached
+          description: Report rate limit reached
           content:
             application/json:
               schema:
@@ -204,7 +208,7 @@ paths:
     post:
       operationId: createReportSession
       tags: [reports]
-      summary: Create a manager or worker demo session
+      summary: Create a prototype-only signed demo session; these roles are not secure real accounts
       requestBody:
         required: true
         content:
@@ -237,18 +241,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   /reports/{id}:
+    get:
+      operationId: getReport
+      tags: [reports]
+      summary: Get complete report details and status history
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Complete report detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityReportDetail"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Role is not authorized to view this report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     patch:
       operationId: updateReport
       tags: [reports]
-      summary: Update a report as manager or assigned worker
+      summary: Update case metadata as manager or status as assigned worker
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 80
+        - $ref: "#/components/parameters/ReportId"
       security:
         - bearerAuth: []
       requestBody:
@@ -293,14 +324,10 @@ paths:
       operationId: getReportPhoto
       tags: [reports]
       summary: Stream a report photo from private object storage
+      security:
+        - bearerAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 80
+        - $ref: "#/components/parameters/ReportId"
       responses:
         "200":
           description: Report image
@@ -323,8 +350,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Private object storage is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /reports/demo/reset:
+    post:
+      operationId: resetDemoReports
+      tags: [reports]
+      summary: Restore six demonstration reports without deleting user reports
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Restored demonstration report rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityReport"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Only the manager demo role may reset demonstration reports
           content:
             application/json:
               schema:
@@ -359,6 +420,14 @@ components:
         type: string
         minLength: 1
         maxLength: 150
+    ReportId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 80
   schemas:
     HealthStatus:
       type: object
@@ -505,6 +574,7 @@ components:
         x: { type: number }
         y: { type: number }
         photoUri: { type: ["string", "null"] }
+        photoReference: { type: string }
         submittedAt: { type: string, format: date-time }
         recommendedDepartment: { type: string }
         priority:
@@ -512,7 +582,37 @@ components:
           enum: [Low, Medium, High]
         assignedTeam: { type: ["string", "null"] }
         awardedPoints: { type: boolean }
-      required: [id, category, summary, description, severity, status, location, x, y, photoUri, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints]
+        reporterAccountId: { type: ["string", "null"] }
+        familyAccountId: { type: ["string", "null"] }
+        selectedCategory:
+          type: ["string", "null"]
+          enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns, null]
+        latitude: { type: ["number", "null"], minimum: 37.0, maximum: 37.6 }
+        longitude: { type: ["number", "null"], minimum: -122.2, maximum: -121.6 }
+        managerNotes: { type: ["string", "null"] }
+        routeAssignment: { type: ["string", "null"] }
+        updatedAt: { type: string, format: date-time }
+        assignedAt: { type: ["string", "null"], format: date-time }
+        resolvedAt: { type: ["string", "null"], format: date-time }
+      required: [id, category, summary, description, severity, status, location, x, y, photoUri, photoReference, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints, reporterAccountId, familyAccountId, selectedCategory, latitude, longitude, managerNotes, routeAssignment, updatedAt, assignedAt, resolvedAt]
+    CommunityReportDetail:
+      allOf:
+        - $ref: "#/components/schemas/CommunityReport"
+        - type: object
+          properties:
+            statusHistory:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReportStatusEvent"
+          required: [statusHistory]
+    ReportStatusEvent:
+      type: object
+      properties:
+        fromStatus: { type: ["string", "null"] }
+        toStatus: { type: string, enum: [Submitted, Under Review, Assigned, Resolved] }
+        changedBy: { type: string }
+        changedAt: { type: string, format: date-time }
+      required: [fromStatus, toStatus, changedBy, changedAt]
     CommunityReportInput:
       type: object
       properties:
@@ -521,19 +621,21 @@ components:
           type: string
           enum: [Downtown San Jose, Japantown, Willow Glen, East San Jose, Alum Rock, Santa Clara]
         category:
-          type: string
+          type: ["string", "null"]
           enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns]
+        latitude: { type: number, minimum: 37.0, maximum: 37.6 }
+        longitude: { type: number, minimum: -122.2, maximum: -121.6 }
         photoBase64: { type: string, maxLength: 2796204 }
         contentType:
           type: string
           enum: [image/jpeg, image/png, image/webp]
-      required: [description, location]
+      required: [description, latitude, longitude]
     ReportSessionInput:
       type: object
       properties:
         username: { type: string, minLength: 1, maxLength: 100 }
         password: { type: string, minLength: 1, maxLength: 200 }
-        role: { type: string, enum: [manager, worker] }
+        role: { type: string, enum: [parent, child, citizen, manager, worker] }
       required: [username, password, role]
     ReportSession:
       type: object
@@ -541,8 +643,9 @@ components:
         accessToken: { type: string }
         tokenType: { type: string, enum: [Bearer] }
         expiresAt: { type: string, format: date-time }
-        role: { type: string, enum: [manager, worker] }
-      required: [accessToken, tokenType, expiresAt, role]
+        role: { type: string, enum: [parent, child, citizen, manager, worker] }
+        prototypeOnly: { type: boolean, enum: [true] }
+      required: [accessToken, tokenType, expiresAt, role, prototypeOnly]
     CommunityReportUpdate:
       type: object
       properties:
@@ -558,6 +661,10 @@ components:
           type: string
           enum: [Submitted, Under Review, Assigned, Resolved]
         assignedTeam: { type: ["string", "null"], maxLength: 120 }
+        managerNotes: { type: ["string", "null"], maxLength: 4000 }
+        routeAssignment: { type: ["string", "null"], maxLength: 160 }
+        latitude: { type: number, minimum: 37.0, maximum: 37.6 }
+        longitude: { type: number, minimum: -122.2, maximum: -121.6 }
     CommunityReportUpdateResult:
       type: object
       properties:

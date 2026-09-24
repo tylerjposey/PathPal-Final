@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Orivis"
+description = "A family-friendly Santa Clara County safety prototype for coordinating planned bus journeys, reviewing community reports, managing cleanup assignments, earning rewards, and demonstrating a clearly simulated SOS flow."
+version = "1.0.0"
+id = "artifacts/orivis"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19271
+
+[services.development]
+run = "pnpm --filter @workspace/orivis run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/orivis", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/orivis/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19271"
+BASE_PATH = "/"

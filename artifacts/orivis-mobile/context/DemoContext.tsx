@@ -8,8 +8,7 @@ import {
   type CommunityReportUpdate,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAuth, useClerk } from '@clerk/expo';
-import { toSafetyReport } from '@/lib/reportApi';
+import { clearReportSession, hasReportSession, toSafetyReport } from '@/lib/reportApi';
 import React, {
   createContext,
   useCallback,
@@ -95,7 +94,6 @@ export interface SafetyReport {
   y: number;
   photoUri?: string;
   submittedAt: string;
-  updatedAt?: string;
   recommendedDepartment: string;
   priority: 'Low' | 'Medium' | 'High';
   assignedTeam?: string;
@@ -168,7 +166,6 @@ function makeReport(
     : category === 'Damaged sidewalks'
       ? 'Public Works'
       : 'Environmental Services';
-  const submittedAt = ago(hoursAgo);
   return {
     id,
     category,
@@ -179,8 +176,7 @@ function makeReport(
     location,
     x,
     y,
-    submittedAt,
-    updatedAt: submittedAt,
+    submittedAt: ago(hoursAgo),
     recommendedDepartment: department,
     priority: severity >= 8 ? 'High' : severity >= 5 ? 'Medium' : 'Low',
     assignedTeam,
@@ -318,7 +314,7 @@ export function createInitialDemoState(): DemoState {
   };
 }
 
-const STORAGE_KEY = 'orivis-demo-v2';
+const STORAGE_KEY = 'orivis-demo-v1';
 
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -377,6 +373,7 @@ interface DemoContextValue {
   hydrated: boolean;
   reportsError: boolean;
   reportsLoading: boolean;
+  authenticate: (username: string, password: string, role: Role) => DemoUser | null;
   verifyFamilyInvite: (code: string) => boolean;
   createFamily: (familyName: string, childName: string, inviteCode: string) => void;
   joinFamily: (code: string, childName: string, username: string, password: string) => boolean;
@@ -411,20 +408,12 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(createInitialDemoState);
   const [hydrated, setHydrated] = useState(false);
   const queryClient = useQueryClient();
-  const { isLoaded: authLoaded, userId } = useAuth();
-  const { signOut: clerkSignOut } = useClerk();
-  const storageKey = userId ? `${STORAGE_KEY}:${userId}` : null;
   const reportsQuery = useListReports({
-    query: {
-      queryKey: [...getListReportsQueryKey(), userId ?? 'signed-out'],
-      enabled: authLoaded && hydrated && Boolean(userId),
-      refetchInterval: 30_000,
-      staleTime: 5_000,
-    },
+    query: { queryKey: getListReportsQueryKey(), enabled: hydrated && Boolean(state.account), refetchInterval: 30_000, staleTime: 5_000 },
   });
 
   useEffect(() => {
-    if (!reportsQuery.data || !hydrated || !userId || !storageKey) return;
+    if (!reportsQuery.data || !hydrated || !state.account) return;
     const serverReports = reportsQuery.data.map(toSafetyReport);
     const serverIds = new Set(serverReports.map((report) => report.id));
     const initialIds = new Set(createInitialDemoState().reports.map((report) => report.id));
@@ -436,27 +425,23 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       );
       if (JSON.stringify(current.reports) === JSON.stringify(reports)) return current;
       const next = { ...current, reports };
-      void AsyncStorage.setItem(storageKey, JSON.stringify({ ...next, account: null }));
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-  }, [reportsQuery.data, hydrated, userId, storageKey]);
+  }, [reportsQuery.data, hydrated, state.account]);
 
   useEffect(() => {
-    if (!authLoaded) return;
-    setHydrated(false);
-    setState(createInitialDemoState());
-    if (!storageKey) {
-      setHydrated(true);
-      return;
-    }
     let mounted = true;
-    AsyncStorage.getItem(storageKey)
-      .then((raw) => {
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then(async (raw) => {
         if (!mounted) return;
         if (raw) {
           try {
             const saved = { ...createInitialDemoState(), ...JSON.parse(raw) as Partial<DemoState> };
-            saved.account = null;
+            if (saved.account?.role === 'manager' || saved.account?.role === 'worker') {
+              const valid = await hasReportSession(saved.account.role);
+              if (!valid) saved.account = null;
+            }
             if (mounted) setState(saved);
           } catch {
             setState(createInitialDemoState());
@@ -470,17 +455,36 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [authLoaded, storageKey]);
+  }, []);
 
   const update = useCallback((recipe: (current: DemoState) => DemoState) => {
     setState((current) => {
       const next = recipe(current);
-      if (storageKey) {
-        void AsyncStorage.setItem(storageKey, JSON.stringify({ ...next, account: null })).catch(() => undefined);
-      }
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
       return next;
     });
-  }, [storageKey]);
+  }, []);
+
+  const authenticate = useCallback((username: string, password: string, role: Role) => {
+    if (username.trim().toLowerCase() === 'ai4sg' && password === '1234') {
+      const names: Record<Role, string> = {
+        parent: 'Jordan Chen',
+        child: state.child.name,
+        manager: 'Avery Patel',
+        worker: 'Luis Rivera',
+      };
+      return { username: 'AI4SG', name: names[role], role };
+    }
+    if (
+      role === 'child' &&
+      state.childLogin &&
+      username.trim().toLowerCase() === state.childLogin.username.toLowerCase() &&
+      password === state.childLogin.password
+    ) {
+      return { username: state.childLogin.username, name: state.child.name, role: 'child' as const };
+    }
+    return null;
+  }, [state.child.name, state.childLogin]);
 
   const verifyFamilyInvite = useCallback(
     (code: string) => code.trim() === state.invitationCode && code.trim().length > 0,
@@ -514,18 +518,16 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }, [update]);
 
   const signOut = useCallback(() => {
-    void queryClient.clear();
-    void clerkSignOut();
+    void clearReportSession();
     update((current) => ({ ...current, account: null }));
-  }, [clerkSignOut, queryClient, update]);
+  }, [update]);
 
   const resetDemo = useCallback(() => {
-    const initial = { ...createInitialDemoState(), account: state.account };
+    void clearReportSession();
+    const initial = createInitialDemoState();
     setState(initial);
-    if (storageKey) {
-      void AsyncStorage.setItem(storageKey, JSON.stringify({ ...initial, account: null })).catch(() => undefined);
-    }
-  }, [state.account, storageKey]);
+    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(initial)).catch(() => undefined);
+  }, []);
 
   const updateTripStep = useCallback((step: TripStep) => {
     update((current) => {
@@ -760,6 +762,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     hydrated,
     reportsError: reportsQuery.isError,
     reportsLoading: reportsQuery.isPending || reportsQuery.isFetching,
+    authenticate,
     verifyFamilyInvite,
     createFamily,
     joinFamily,
@@ -786,6 +789,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     reportsQuery.isError,
     reportsQuery.isPending,
     reportsQuery.isFetching,
+    authenticate,
     verifyFamilyInvite,
     createFamily,
     joinFamily,

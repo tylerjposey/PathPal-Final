@@ -14,24 +14,13 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { DemoProvider } from '@/context/DemoContext';
-import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react';
-import { ClerkLoaded, ClerkProvider, useAuth } from '@clerk/expo';
-import { tokenCache } from '@clerk/expo/token-cache';
+import { setBaseUrl } from '@workspace/api-client-react';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
-const apiDomain = process.env.EXPO_PUBLIC_DOMAIN;
-if (apiDomain) setBaseUrl(`https://${apiDomain}`);
-const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
-const clerkProxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
-
-function AuthenticatedApp({ children }: { children: React.ReactNode }) {
-  const { getToken, isSignedIn } = useAuth();
-  setAuthTokenGetter(isSignedIn ? () => getToken() : null);
-  return <DemoProvider>{children}</DemoProvider>;
-}
+setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
 
 function RootLayoutNav() {
   return (
@@ -64,17 +53,9 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView>
             <KeyboardProvider>
-              <ClerkProvider
-                publishableKey={clerkPublishableKey!}
-                proxyUrl={clerkProxyUrl}
-                tokenCache={tokenCache}
-              >
-                <ClerkLoaded>
-                  <AuthenticatedApp>
-                    <RootLayoutNav />
-                  </AuthenticatedApp>
-                </ClerkLoaded>
-              </ClerkProvider>
+              <DemoProvider>
+                <RootLayoutNav />
+              </DemoProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

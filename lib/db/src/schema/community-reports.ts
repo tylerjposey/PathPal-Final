@@ -14,9 +14,7 @@ export const communityReportsTable = pgTable("community_reports", {
   y: integer("y").notNull(),
   photoObjectKey: text("photo_object_key"),
   photoContentType: varchar("photo_content_type", { length: 40 }),
-  reporterId: text("reporter_id"),
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   recommendedDepartment: varchar("recommended_department", { length: 100 }).notNull(),
   priority: varchar("priority", { length: 10 }).notNull(),
   assignedTeam: varchar("assigned_team", { length: 120 }),
@@ -25,7 +23,6 @@ export const communityReportsTable = pgTable("community_reports", {
 
 export const insertCommunityReportSchema = createInsertSchema(communityReportsTable).omit({
   submittedAt: true,
-  updatedAt: true,
 });
 export type InsertCommunityReport = z.infer<typeof insertCommunityReportSchema>;
 export type CommunityReportRow = typeof communityReportsTable.$inferSelect;

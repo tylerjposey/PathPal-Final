@@ -1,0 +1,381 @@
+Build a polished prototype called **Orivis**, a family-friendly community safety application for Santa Clara County.
+
+Orivis helps families coordinate children’s bus journeys, report community safety issues, and access a simulated emergency SOS feature.
+
+This is a prototype demonstration. Use simulated AI, simulated authentication, simulated notifications, simulated police contact, simulated transit data, and sample data. Do not connect to real emergency services yet.
+
+## Design
+
+Create a sleek, modern, family-friendly interface inspired by Tesla’s simplicity, but use a lighter color palette:
+
+- White background
+- Navy and dark-blue text
+- Teal or blue highlights
+- Red accents for safety and SOS features
+- Rounded cards
+- Minimal clutter
+- Simple navigation
+- Mobile-friendly responsive design
+- Clear icons and large buttons for children
+
+Use the app name **Orivis** throughout the interface.
+
+## Authentication
+
+Create a sign-in screen with a dropdown menu labeled **“Select Account Type.”**
+
+Dropdown options:
+
+- Parent
+- Child
+- City Case Manager
+- City Worker
+
+The user must select an account type before entering their credentials. After sign-in, display the dashboard associated with the selected role.
+
+Use this demonstration account for all role options:
+
+- Username: `AI4SG`
+- Password: `1234`
+- Verification code: `1234`
+
+Include a simulated two-factor authentication screen after sign-in.
+
+For family registration:
+
+1. A parent creates a family account.
+2. The parent enters their child’s information.
+3. The parent generates or enters a child invitation code.
+4. The child joins the family using the valid code.
+5. The child creates their own username and password.
+
+Use this sample child invitation code:
+
+`1234`
+
+## Parent Dashboard
+
+The Parent Dashboard should display:
+
+- Children connected to the family account
+- Each child’s assigned bus route
+- Starting bus stop
+- Destination bus stop
+- Bus route path on a map
+- Child’s boarding confirmation
+- Child’s arrival/off-bus confirmation
+- Reported bus delays
+- Safety alerts
+- Reward points
+- SOS notifications
+
+In regular, non-emergency use, do not provide live child tracking. Parents should see the planned route and check-in confirmations only.
+
+## Child Dashboard
+
+The Child Dashboard should display:
+
+- Assigned bus route
+- Nearest bus stop
+- Starting bus stop
+- Destination bus stop
+- Route map
+- “I boarded the bus” button
+- “I got off the bus” button
+- “I reached my destination” confirmation
+- “Report a Community Issue” button
+- “Report Bus Delay” button
+- Prominent SOS button
+
+The child should be able to confirm:
+
+1. They boarded the bus.
+2. They got off the bus.
+3. They safely reached their destination.
+
+If the child does not confirm a required step within the expected time, simulate both:
+
+- An in-app parent alert
+- A simulated text-message notification to the parent
+
+## Transit and Map Prototype
+
+The intended future integrations are:
+
+- 511 SF Bay API for nearby VTA bus stops, routes, schedules, delays, and transit data
+- Google Maps 3D Maps JavaScript API for 3D map visualization, route lines, markers, and locations
+
+Do not require these API keys for the initial prototype to function.
+
+Create a fallback demonstration mode using simulated transit data and preset routes. Include clear code placeholders for:
+
+- `511_API_KEY`
+- `GOOGLE_MAPS_API_KEY`
+
+The prototype should be structured so these APIs can be connected later through Replit Secrets.
+
+The map should show:
+
+- Bus stops
+- Planned bus routes
+- Child’s starting stop
+- Child’s destination
+- Community issue report locations
+- City cleanup routes
+- Heat-map indicators showing community safety concerns
+
+If possible, provide a simulated 3D map view or a **“3D View”** button that can later be connected to Google’s 3D Maps API.
+
+## Community Safety Heat Map
+
+Keep heat indicators visible on the City Case Manager map.
+
+Use the heat map to show the concentration and severity of community safety reports:
+
+- Red: high concentration or high-severity safety concerns
+- Orange: medium concentration or medium-severity concerns
+- Yellow: lower concentration or lower-severity concerns
+- Green or blue: few or no reported concerns
+
+Heat intensity should be based on:
+
+- Number of nearby reports
+- Severity scores
+- Issue type
+- Report recency
+
+Display the heat map alongside:
+
+- Individual report markers
+- Bus stops
+- Bus routes
+- City-worker routes
+- Cleanup assignments
+
+Allow users to click a heat-map area or report marker to view the underlying reports and their details.
+
+## Community Issue Reporting
+
+Children and parents should be able to report community safety concerns by submitting:
+
+- A photo
+- A short description
+- A dropped map pin
+- Optional issue category
+
+Supported issue categories:
+
+- Blight
+- Illegal dumping
+- Unsafe bus stops
+- Damaged sidewalks
+- Poor lighting
+- Suspicious activity
+- Other concerns
+
+Use simulated AI to evaluate each report and generate:
+
+- Issue category
+- Short summary
+- Location
+- Timestamp
+- Severity score
+- Recommended department
+- Recommended priority
+- Case status
+
+The AI should simulate severity analysis based on the photo and description. Do not use a real AI image-recognition API yet.
+
+Use these case statuses:
+
+- Submitted
+- Under Review
+- Assigned
+- Resolved
+
+When a report is verified and resolved, award points to the family account.
+
+## Rewards
+
+Create a reward system where families earn points when community reports are verified and resolved.
+
+Display:
+
+- Current points balance
+- Points earned from resolved reports
+- Example partnered coffee shop rewards
+- Example partnered boba shop rewards
+- Example discounts or free-drink rewards
+
+Use simulated partner businesses and simulated redemption behavior.
+
+## City Case Manager Dashboard
+
+The City Case Manager Dashboard should display:
+
+- All community reports
+- Uploaded photos
+- Report descriptions
+- Map locations
+- AI-generated categories
+- Severity scores
+- Case statuses
+- Heat-map visualization
+- Suggested cleanup routes
+- Assigned city teams
+
+The City Case Manager can:
+
+- Review reports
+- Edit report details
+- Edit severity scores
+- Edit case categories
+- Update case statuses
+- Approve or modify route assignments
+- Delegate tasks to city teams
+
+Example route delegation:
+
+“Route/task delegated to San Jose – West Clean Team.”
+
+Generate suggested routes using a logical prototype algorithm based on:
+
+- Severity
+- Number of nearby reports
+- Distance between reports
+- Issue category
+- Assigned city team
+
+Routes should be displayed on the map alongside the heat indicators.
+
+## City Worker Dashboard
+
+The City Worker Dashboard should display:
+
+- Assigned cleanup or safety tasks
+- Assigned route
+- Report locations
+- Issue descriptions
+- Severity
+- Current task status
+
+City Workers can:
+
+- View assigned reports
+- Analyze case information
+- Update only the case status
+
+City Workers cannot edit report details, severity scores, or route assignments.
+
+## Simulated SOS Feature
+
+The SOS feature is simulated only. Do not contact real police, emergency services, or dispatch systems.
+
+When the child presses SOS:
+
+1. Display a short countdown.
+2. Provide a Cancel SOS button.
+3. If the countdown finishes, activate simulated SOS mode.
+4. Simulate notifying the parent.
+5. Simulate notifying a police contact dashboard.
+6. Display the child’s simulated emergency location.
+7. Open an AI safety guidance interface.
+8. Display guidance in a quiet, whisper-style format.
+9. Provide a chat window where the child can type or share information.
+10. Simulate transmitting child-provided information to the police contact.
+
+The simulated police notification may include:
+
+- Child’s name
+- Family account
+- Current simulated location
+- Emergency activation time
+- Situation description
+- Information entered in the AI chat
+- Simulated prolonged silence
+- Simulated unusual movement
+
+For the prototype, include controls for:
+
+- “Simulate prolonged silence”
+- “Simulate unusual movement”
+- “Send information to police contact”
+- “End simulated SOS”
+
+The AI should provide calm, safety-focused guidance. Make it clear that this is a prototype simulation and not a replacement for real emergency services.
+
+Do not claim that the AI can reliably detect danger, silence, unusual movement, or emergencies in real life. Simulate these conditions for demonstration purposes only.
+
+## Reset Demonstration Data
+
+Add a visible development/demo control called:
+
+**Reset Demonstration Data**
+
+When selected, restore:
+
+- Sample users
+- Family relationships
+- Bus routes
+- Boarding status
+- Arrival status
+- Bus delays
+- Community reports
+- Severity scores
+- Heat-map values
+- Case statuses
+- Route assignments
+- Reward points
+- SOS state
+- Notifications
+
+The reset should return the app to its original demonstration state.
+
+## Prototype Data
+
+Preload sample data for:
+
+- At least one parent account
+- At least one child account
+- Several bus stops
+- Multiple bus routes
+- Several community reports
+- Different severity levels
+- Different heat-map areas
+- At least one delayed bus
+- At least one assigned city cleanup route
+- At least one resolved issue
+- Sample reward points
+- A simulated SOS event
+
+## Important Scope Limitations
+
+This is a prototype demo, not a production application.
+
+Use:
+
+- Simulated AI
+- Simulated authentication
+- Simulated 2FA
+- Simulated notifications
+- Simulated police contact
+- Simulated SOS behavior
+- Simulated transit data fallback
+- Sample reports
+- Sample heat-map data
+- Sample rewards
+
+Prepare placeholders for future integration with:
+
+- 511 SF Bay transit API
+- Google Maps 3D API
+- Real authentication
+- Real push notifications
+- Real police or emergency-service systems
+- Real AI image and safety analysis
+
+Make the final application functional, visually polished, easy to navigate, and suitable for demonstrating the three core experiences:
+
+1. Family bus-safety coordination
+2. AI-supported community issue reporting with heat indicators
+3. Simulated emergency SOS assistance

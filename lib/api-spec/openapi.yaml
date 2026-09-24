@@ -143,12 +143,10 @@ paths:
     get:
       operationId: listReports
       tags: [reports]
-      summary: List reports visible to the signed-in user
-      security:
-        - bearerAuth: []
+      summary: List community reports
       responses:
         "200":
-          description: Reports scoped to the reporter, manager, or assigned worker
+          description: Community reports ordered newest first
           content:
             application/json:
               schema:
@@ -164,9 +162,7 @@ paths:
     post:
       operationId: createReport
       tags: [reports]
-      summary: Submit a report from a verified account
-      security:
-        - bearerAuth: []
+      summary: Submit an anonymous community report
       requestBody:
         required: true
         content:
@@ -186,18 +182,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: A valid signed-in session is required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: A verified email address is required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "413":
           description: Photo exceeds the 2 MB decoded limit
           content:
@@ -205,7 +189,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
-          description: Report submission rate limit reached
+          description: Anonymous report rate limit reached
           content:
             application/json:
               schema:
@@ -216,28 +200,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /reports/access:
-    get:
-      operationId: getReportAccess
+  /reports/session:
+    post:
+      operationId: createReportSession
       tags: [reports]
-      summary: Get the signed-in user's verified report role
-      security:
-        - bearerAuth: []
+      summary: Create a manager or worker demo session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportSessionInput"
       responses:
         "200":
-          description: Verified user identity and server-assigned role
+          description: Signed bearer session, valid for 24 hours
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ReportAccess"
-        "401":
-          description: A valid signed-in session is required
+                $ref: "#/components/schemas/ReportSession"
+        "400":
+          description: Invalid session input
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: A verified email address is required
+        "401":
+          description: Invalid demo credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Session signing is not configured
           content:
             application/json:
               schema:
@@ -299,8 +293,6 @@ paths:
       operationId: getReportPhoto
       tags: [reports]
       summary: Stream a report photo from private object storage
-      security:
-        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -326,19 +318,7 @@ paths:
                 type: string
                 format: binary
         "404":
-          description: Report or photo not found or not visible to this user
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: A valid signed-in session is required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Email verification is required
+          description: Report or photo not found
           content:
             application/json:
               schema:
@@ -526,14 +506,13 @@ components:
         y: { type: number }
         photoUri: { type: ["string", "null"] }
         submittedAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
         recommendedDepartment: { type: string }
         priority:
           type: string
           enum: [Low, Medium, High]
         assignedTeam: { type: ["string", "null"] }
         awardedPoints: { type: boolean }
-      required: [id, category, summary, description, severity, status, location, x, y, photoUri, submittedAt, updatedAt, recommendedDepartment, priority, assignedTeam, awardedPoints]
+      required: [id, category, summary, description, severity, status, location, x, y, photoUri, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints]
     CommunityReportInput:
       type: object
       properties:
@@ -549,12 +528,21 @@ components:
           type: string
           enum: [image/jpeg, image/png, image/webp]
       required: [description, location]
-    ReportAccess:
+    ReportSessionInput:
       type: object
       properties:
-        role: { type: string, enum: [reporter, manager, worker] }
-        workerTeam: { type: ["string", "null"] }
-      required: [role, workerTeam]
+        username: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 1, maxLength: 200 }
+        role: { type: string, enum: [manager, worker] }
+      required: [username, password, role]
+    ReportSession:
+      type: object
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { type: string, format: date-time }
+        role: { type: string, enum: [manager, worker] }
+      required: [accessToken, tokenType, expiresAt, role]
     CommunityReportUpdate:
       type: object
       properties:

@@ -4,9 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '@clerk/expo';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -836,10 +834,8 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
 function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Role; onClose: () => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { getToken } = useAuth();
   const { state, updateManagerReport, updateWorkerStatus, assignReports } = useDemo();
   const current = state.reports.find((item) => item.id === report.id) ?? report;
-  const [photoToken, setPhotoToken] = useState<string | null>(null);
   const [severity, setSeverity] = useState(`${current.severity}`);
   const [description, setDescription] = useState(current.description);
   const [category, setCategory] = useState(current.category);
@@ -849,20 +845,6 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
   const [saveMessage, setSaveMessage] = useState('');
   const canEdit = role === 'manager';
   const statuses: CaseStatus[] = ['Submitted', 'Under Review', 'Assigned', 'Resolved'];
-  useEffect(() => {
-    let active = true;
-    setPhotoToken(null);
-    if (current.photoUri) {
-      void getToken().then((token) => {
-        if (active) setPhotoToken(token);
-      }).catch(() => {
-        if (active) setPhotoToken(null);
-      });
-    }
-    return () => {
-      active = false;
-    };
-  }, [current.photoUri, getToken]);
   const runUpdate = async (action: () => Promise<void>, message: string) => {
     if (saving) return;
     setSaving(true);
@@ -894,18 +876,7 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
         <View style={{ width: 42 }} />
       </View>
       <ScrollView contentContainerStyle={[styles.modalScroll, { paddingBottom: insets.bottom + 30 }]}>
-        {current.photoUri && photoToken ? (
-          <Image
-            source={{ uri: current.photoUri, headers: { Authorization: `Bearer ${photoToken}` } }}
-            style={styles.casePhoto}
-            contentFit="cover"
-          />
-        ) : current.photoUri ? (
-          <View style={[styles.casePlaceholder, { backgroundColor: colors.secondary }]}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={[styles.photoSub, { color: colors.mutedForeground }]}>Loading private report photo</Text>
-          </View>
-        ) : (
+        {current.photoUri ? <Image source={{ uri: current.photoUri }} style={styles.casePhoto} contentFit="cover" /> : (
           <View style={[styles.casePlaceholder, { backgroundColor: colors.secondary }]}>
             <Feather name="image" size={30} color={colors.primary} />
             <Text style={[styles.photoSub, { color: colors.mutedForeground }]}>Sample report image unavailable</Text>
@@ -918,10 +889,7 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
           </View>
           <View style={styles.flex}>
             <Text style={[styles.verifyTitle, { color: colors.foreground, fontSize: 25 }]}>{current.category}</Text>
-            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{current.location}</Text>
-            <Text style={[styles.noticeMeta, { color: colors.mutedForeground }]}>
-              Reported {formatDateTime(current.submittedAt)} · Updated {formatDateTime(current.updatedAt ?? current.submittedAt)}
-            </Text>
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{current.location} · {formatTime(current.submittedAt)}</Text>
           </View>
         </View>
         <View style={styles.wrap}>
@@ -1119,7 +1087,6 @@ function CaseRow({ report, onPress }: { report: SafetyReport; onPress: () => voi
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>{report.category}</Text>
         <Text style={[styles.cardBody, { color: colors.mutedForeground }]} numberOfLines={2}>{report.description}</Text>
         <Text style={[styles.noticeMeta, { color: colors.mutedForeground }]}>{report.location}{report.assignedTeam ? ` · ${report.assignedTeam}` : ''}</Text>
-        <Text style={[styles.noticeMeta, { color: colors.mutedForeground }]}>Reported {formatDateTime(report.submittedAt)}</Text>
       </View>
       <Feather name="chevron-right" size={20} color={colors.mutedForeground} />
     </Pressable>
@@ -1133,12 +1100,6 @@ function formatTime(value: string) {
   if (hours < 1) return 'Just now';
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Time unavailable';
-  return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 const styles = StyleSheet.create({

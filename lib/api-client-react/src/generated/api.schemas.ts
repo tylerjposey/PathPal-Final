@@ -151,7 +151,6 @@ export interface CommunityReport {
   /** @nullable */
   photoUri: string | null;
   submittedAt: string;
-  updatedAt: string;
   recommendedDepartment: string;
   priority: CommunityReportPriority;
   /** @nullable */
@@ -206,19 +205,48 @@ export interface CommunityReportInput {
   contentType?: CommunityReportInputContentType;
 }
 
-export type ReportAccessRole = typeof ReportAccessRole[keyof typeof ReportAccessRole];
+export type ReportSessionInputRole = typeof ReportSessionInputRole[keyof typeof ReportSessionInputRole];
 
 
-export const ReportAccessRole = {
-  reporter: 'reporter',
+export const ReportSessionInputRole = {
   manager: 'manager',
   worker: 'worker',
 } as const;
 
-export interface ReportAccess {
-  role: ReportAccessRole;
-  /** @nullable */
-  workerTeam: string | null;
+export interface ReportSessionInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  username: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  password: string;
+  role: ReportSessionInputRole;
+}
+
+export type ReportSessionTokenType = typeof ReportSessionTokenType[keyof typeof ReportSessionTokenType];
+
+
+export const ReportSessionTokenType = {
+  Bearer: 'Bearer',
+} as const;
+
+export type ReportSessionRole = typeof ReportSessionRole[keyof typeof ReportSessionRole];
+
+
+export const ReportSessionRole = {
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
+export interface ReportSession {
+  accessToken: string;
+  tokenType: ReportSessionTokenType;
+  expiresAt: string;
+  role: ReportSessionRole;
 }
 
 export type CommunityReportUpdateCategory = typeof CommunityReportUpdateCategory[keyof typeof CommunityReportUpdateCategory];

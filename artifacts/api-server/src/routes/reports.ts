@@ -1,15 +1,15 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
 import { Storage } from "@google-cloud/storage";
-import { clerkClient, getAuth } from "@clerk/express";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { db, communityReportsTable, type CommunityReportRow } from "@workspace/db";
 import {
   CreateReportBody,
   CreateReportResponse,
+  CreateReportSessionBody,
+  CreateReportSessionResponse,
   GetReportPhotoParams,
   ListReportsResponse,
-  GetReportAccessResponse,
   UpdateReportBody,
   UpdateReportParams,
   UpdateReportResponse,
@@ -44,8 +44,8 @@ const storage = new Storage({
   projectId: "",
 });
 
-type Role = "reporter" | "manager" | "worker";
-type Viewer = { userId: string; role: Role; workerTeam: string | null };
+type Role = "manager" | "worker";
+type Claims = { role: Role; sub: string; exp: number };
 
 class HttpError extends Error {
   constructor(readonly status: number, message: string) {
@@ -66,7 +66,6 @@ function reportResponse(row: CommunityReportRow) {
     y: row.y,
     photoUri: row.photoObjectKey ? `/api/reports/${encodeURIComponent(row.id)}/photo` : null,
     submittedAt: row.submittedAt,
-    updatedAt: row.updatedAt,
     recommendedDepartment: row.recommendedDepartment,
     priority: row.priority,
     assignedTeam: row.assignedTeam,
@@ -166,7 +165,6 @@ async function seedInitialReportsIdempotently(): Promise<void> {
       x,
       y,
       submittedAt: new Date(now - hoursAgo * 3_600_000),
-      updatedAt: new Date(now - hoursAgo * 3_600_000),
       recommendedDepartment: analysis.recommendedDepartment,
       priority: severity >= 8 ? "High" : severity >= 5 ? "Medium" : "Low",
       assignedTeam,
@@ -176,44 +174,38 @@ async function seedInitialReportsIdempotently(): Promise<void> {
   await db.insert(communityReportsTable).values(values).onConflictDoNothing();
 }
 
-async function authenticate(req: Request): Promise<Viewer> {
-  const { userId } = getAuth(req);
-  if (!userId) throw new HttpError(401, "A signed-in account is required.");
-
-  let user;
-  try {
-    user = await clerkClient.users.getUser(userId);
-  } catch {
-    throw new HttpError(503, "Account verification is temporarily unavailable.");
-  }
-
-  const hasVerifiedEmail = user.emailAddresses.some(
-    (email) => email.verification?.status === "verified",
-  );
-  if (!hasVerifiedEmail) {
-    throw new HttpError(403, "Verify an email address before accessing community reports.");
-  }
-
-  const metadata = user.publicMetadata as Record<string, unknown>;
-  const assignedRole = metadata.orivisRole;
-  const role: Role = assignedRole === "manager" || assignedRole === "worker"
-    ? assignedRole
-    : "reporter";
-  const workerTeam = role === "worker" && metadata.orivisTeam === westCleanTeam
-    ? westCleanTeam
-    : null;
-  return { userId, role, workerTeam };
+function createToken(claims: Claims, secret: string): string {
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
 }
 
-function canViewReport(
-  row: Pick<CommunityReportRow, "reporterId" | "assignedTeam">,
-  viewer: Viewer,
-): boolean {
-  if (viewer.role === "manager") return true;
-  if (viewer.role === "worker") {
-    return viewer.workerTeam !== null && row.assignedTeam === viewer.workerTeam;
+function authenticate(req: Request): Claims {
+  const auth = req.get("authorization") ?? "";
+  const match = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(auth);
+  const secret = process.env.SESSION_SECRET;
+  if (!match || !secret) throw new HttpError(401, "A valid bearer session is required.");
+  const [payload, signature, extra] = match[1].split(".");
+  if (!payload || !signature || extra) throw new HttpError(401, "A valid bearer session is required.");
+  const expected = createHmac("sha256", secret).update(payload).digest();
+  let received: Buffer;
+  try {
+    received = Buffer.from(signature, "base64url");
+  } catch {
+    throw new HttpError(401, "A valid bearer session is required.");
   }
-  return row.reporterId === viewer.userId;
+  if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
+    throw new HttpError(401, "A valid bearer session is required.");
+  }
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Claims;
+    if ((claims.role !== "manager" && claims.role !== "worker") || !claims.sub || claims.exp <= Math.floor(Date.now() / 1000)) {
+      throw new Error("invalid");
+    }
+    return claims;
+  } catch {
+    throw new HttpError(401, "A valid bearer session is required.");
+  }
 }
 
 function errorResponse(error: unknown, res: Response): void {
@@ -226,18 +218,8 @@ function errorResponse(error: unknown, res: Response): void {
 
 router.get("/reports", async (req, res): Promise<void> => {
   try {
-    const viewer = await authenticate(req);
     await seedInitialReportsIdempotently();
-    const query = db.select().from(communityReportsTable);
-    const rows = viewer.role === "manager"
-      ? await query.orderBy(desc(communityReportsTable.submittedAt))
-      : viewer.role === "worker"
-        ? viewer.workerTeam
-          ? await query.where(eq(communityReportsTable.assignedTeam, viewer.workerTeam))
-            .orderBy(desc(communityReportsTable.submittedAt))
-          : []
-        : await query.where(eq(communityReportsTable.reporterId, viewer.userId))
-          .orderBy(desc(communityReportsTable.submittedAt));
+    const rows = await db.select().from(communityReportsTable).orderBy(desc(communityReportsTable.submittedAt));
     res.json(ListReportsResponse.parse(rows.map(reportResponse)));
   } catch (error) {
     req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "Community reports list failed");
@@ -245,28 +227,10 @@ router.get("/reports", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/reports/access", async (req, res): Promise<void> => {
-  try {
-    const viewer = await authenticate(req);
-    res.json(GetReportAccessResponse.parse({
-      role: viewer.role,
-      workerTeam: viewer.workerTeam,
-    }));
-  } catch (error) {
-    if (error instanceof HttpError) {
-      errorResponse(error, res);
-      return;
-    }
-    req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "Report access lookup failed");
-    errorResponse(error, res);
-  }
-});
-
 router.post("/reports", async (req, res): Promise<void> => {
   let uploadedKey: string | undefined;
   try {
-    const viewer = await authenticate(req);
-    enforceCreateRateLimit(`${viewer.userId}:${req.ip || req.socket.remoteAddress || "unknown"}`);
+    enforceCreateRateLimit(req.ip || req.socket.remoteAddress || "unknown");
     const parsed = CreateReportBody.safeParse(req.body);
     if (!parsed.success) throw new HttpError(400, "Invalid community report input.");
     const { description: rawDescription, location: locationName, category, photoBase64, contentType } = parsed.data;
@@ -309,7 +273,6 @@ router.post("/reports", async (req, res): Promise<void> => {
       y: location.y,
       photoObjectKey,
       photoContentType,
-      reporterId: viewer.userId,
       recommendedDepartment: analysis.recommendedDepartment,
       priority: analysis.priority,
     }).returning();
@@ -333,11 +296,40 @@ router.post("/reports", async (req, res): Promise<void> => {
   }
 });
 
+router.post("/reports/session", (req, res): void => {
+  const parsed = CreateReportSessionBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid session input." });
+    return;
+  }
+  if (parsed.data.username.trim().toLowerCase() !== "ai4sg" || parsed.data.password !== "1234") {
+    res.status(401).json({ error: "Invalid demo credentials." });
+    return;
+  }
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    res.status(503).json({ error: "Manager and worker sessions are not configured." });
+    return;
+  }
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
+  const accessToken = createToken({
+    role: parsed.data.role,
+    sub: parsed.data.role === "manager" ? "Avery Patel" : "Luis Rivera",
+    exp: Math.floor(expiresAt.getTime() / 1000),
+  }, secret);
+  res.json(CreateReportSessionResponse.parse({
+    accessToken,
+    tokenType: "Bearer",
+    expiresAt,
+    role: parsed.data.role,
+  }));
+});
+
 router.patch("/reports/:id", async (req, res): Promise<void> => {
   try {
     const params = UpdateReportParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
-    const viewer = await authenticate(req);
+    const claims = authenticate(req);
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
       throw new HttpError(400, "Provide a valid report update.");
     }
@@ -349,21 +341,17 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       throw new HttpError(400, "Provide at least one valid report update.");
     }
-    if (viewer.role === "reporter") {
-      throw new HttpError(403, "Reporters may not edit community reports.");
-    }
-    if (viewer.role === "worker" && (Object.keys(parsed.data).some((key) => key !== "status") || !parsed.data.status)) {
+    if (claims.role === "worker" && (Object.keys(parsed.data).some((key) => key !== "status") || !parsed.data.status)) {
       throw new HttpError(403, "Workers may update only report status.");
     }
     const [current] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!current) throw new HttpError(404, "Report not found.");
-    if (viewer.role === "worker" && (!viewer.workerTeam || current.assignedTeam !== viewer.workerTeam)) {
-      throw new HttpError(403, "Workers may update only reports assigned to their team.");
+    if (claims.role === "worker" && current.assignedTeam !== westCleanTeam) {
+      throw new HttpError(403, "Workers may update reports assigned to the West Clean Team.");
     }
     const update = parsed.data;
     const changes: Partial<typeof communityReportsTable.$inferInsert> = {};
-    changes.updatedAt = new Date();
     if (update.description !== undefined) {
       changes.description = update.description.trim();
       changes.summary = update.description.trim().slice(0, 105);
@@ -416,17 +404,11 @@ router.get("/reports/:id/photo", async (req, res): Promise<void> => {
   try {
     const params = GetReportPhotoParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
-    const viewer = await authenticate(req);
     const [report] = await db.select({
       photoObjectKey: communityReportsTable.photoObjectKey,
       photoContentType: communityReportsTable.photoContentType,
-      reporterId: communityReportsTable.reporterId,
-      assignedTeam: communityReportsTable.assignedTeam,
     }).from(communityReportsTable).where(eq(communityReportsTable.id, params.data.id)).limit(1);
-    if (!report || !canViewReport(report, viewer)) {
-      throw new HttpError(404, "Report photo not found.");
-    }
-    if (!report.photoObjectKey || !report.photoContentType || !["image/jpeg", "image/png", "image/webp"].includes(report.photoContentType)) {
+    if (!report?.photoObjectKey || !report.photoContentType || !["image/jpeg", "image/png", "image/webp"].includes(report.photoContentType)) {
       throw new HttpError(404, "Report photo not found.");
     }
     const { bucket } = storageLocation();

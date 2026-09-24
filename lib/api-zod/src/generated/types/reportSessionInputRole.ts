@@ -6,11 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type ReportAccessRole = typeof ReportAccessRole[keyof typeof ReportAccessRole];
+export type ReportSessionInputRole = typeof ReportSessionInputRole[keyof typeof ReportSessionInputRole];
 
 
-export const ReportAccessRole = {
-  reporter: 'reporter',
+export const ReportSessionInputRole = {
   manager: 'manager',
   worker: 'worker',
 } as const;

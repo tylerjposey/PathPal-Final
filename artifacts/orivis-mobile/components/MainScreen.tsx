@@ -889,7 +889,10 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
           </View>
           <View style={styles.flex}>
             <Text style={[styles.verifyTitle, { color: colors.foreground, fontSize: 25 }]}>{current.category}</Text>
-            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{current.location} · {formatTime(current.submittedAt)}</Text>
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{current.location}</Text>
+            <Text style={[styles.noticeMeta, { color: colors.mutedForeground }]}>
+              Reported {formatDateTime(current.submittedAt)} · Updated {formatDateTime(current.updatedAt ?? current.submittedAt)}
+            </Text>
           </View>
         </View>
         <View style={styles.wrap}>
@@ -1087,6 +1090,7 @@ function CaseRow({ report, onPress }: { report: SafetyReport; onPress: () => voi
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>{report.category}</Text>
         <Text style={[styles.cardBody, { color: colors.mutedForeground }]} numberOfLines={2}>{report.description}</Text>
         <Text style={[styles.noticeMeta, { color: colors.mutedForeground }]}>{report.location}{report.assignedTeam ? ` · ${report.assignedTeam}` : ''}</Text>
+        <Text style={[styles.noticeMeta, { color: colors.mutedForeground }]}>Reported {formatDateTime(report.submittedAt)}</Text>
       </View>
       <Feather name="chevron-right" size={20} color={colors.mutedForeground} />
     </Pressable>
@@ -1100,6 +1104,12 @@ function formatTime(value: string) {
   if (hours < 1) return 'Just now';
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Time unavailable';
+  return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 const styles = StyleSheet.create({

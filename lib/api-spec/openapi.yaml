@@ -506,13 +506,14 @@ components:
         y: { type: number }
         photoUri: { type: ["string", "null"] }
         submittedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
         recommendedDepartment: { type: string }
         priority:
           type: string
           enum: [Low, Medium, High]
         assignedTeam: { type: ["string", "null"] }
         awardedPoints: { type: boolean }
-      required: [id, category, summary, description, severity, status, location, x, y, photoUri, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints]
+      required: [id, category, summary, description, severity, status, location, x, y, photoUri, submittedAt, updatedAt, recommendedDepartment, priority, assignedTeam, awardedPoints]
     CommunityReportInput:
       type: object
       properties:

@@ -151,6 +151,7 @@ export interface CommunityReport {
   /** @nullable */
   photoUri: string | null;
   submittedAt: string;
+  updatedAt: string;
   recommendedDepartment: string;
   priority: CommunityReportPriority;
   /** @nullable */

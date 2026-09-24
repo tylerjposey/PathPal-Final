@@ -94,6 +94,7 @@ export interface SafetyReport {
   y: number;
   photoUri?: string;
   submittedAt: string;
+  updatedAt?: string;
   recommendedDepartment: string;
   priority: 'Low' | 'Medium' | 'High';
   assignedTeam?: string;
@@ -166,6 +167,7 @@ function makeReport(
     : category === 'Damaged sidewalks'
       ? 'Public Works'
       : 'Environmental Services';
+  const submittedAt = ago(hoursAgo);
   return {
     id,
     category,
@@ -176,7 +178,8 @@ function makeReport(
     location,
     x,
     y,
-    submittedAt: ago(hoursAgo),
+    submittedAt,
+    updatedAt: submittedAt,
     recommendedDepartment: department,
     priority: severity >= 8 ? 'High' : severity >= 5 ? 'Medium' : 'Low',
     assignedTeam,

@@ -66,6 +66,7 @@ function reportResponse(row: CommunityReportRow) {
     y: row.y,
     photoUri: row.photoObjectKey ? `/api/reports/${encodeURIComponent(row.id)}/photo` : null,
     submittedAt: row.submittedAt,
+    updatedAt: row.updatedAt,
     recommendedDepartment: row.recommendedDepartment,
     priority: row.priority,
     assignedTeam: row.assignedTeam,
@@ -165,6 +166,7 @@ async function seedInitialReportsIdempotently(): Promise<void> {
       x,
       y,
       submittedAt: new Date(now - hoursAgo * 3_600_000),
+      updatedAt: new Date(now - hoursAgo * 3_600_000),
       recommendedDepartment: analysis.recommendedDepartment,
       priority: severity >= 8 ? "High" : severity >= 5 ? "Medium" : "Low",
       assignedTeam,
@@ -352,6 +354,7 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
     }
     const update = parsed.data;
     const changes: Partial<typeof communityReportsTable.$inferInsert> = {};
+    changes.updatedAt = new Date();
     if (update.description !== undefined) {
       changes.description = update.description.trim();
       changes.summary = update.description.trim().slice(0, 105);

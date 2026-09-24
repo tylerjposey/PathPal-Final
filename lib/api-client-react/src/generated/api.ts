@@ -33,8 +33,7 @@ import type {
   JourneyCatalogResponse,
   JourneyMapResponse,
   JourneyOptionsResponse,
-  ReportSession,
-  ReportSessionInput
+  ReportAccess
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -487,7 +486,7 @@ export const getListReportsUrl = () => {
 }
 
 /**
- * @summary List community reports
+ * @summary List reports visible to the signed-in user
  */
 export const listReports = async ( options?: Parameters<typeof customFetch>[1]): Promise<CommunityReport[]> => {
 
@@ -534,7 +533,7 @@ export type ListReportsQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary List community reports
+ * @summary List reports visible to the signed-in user
  */
 
 export function useListReports<TData = Awaited<ReturnType<typeof listReports>>, TError = ErrorType<ErrorResponse>>(
@@ -564,7 +563,7 @@ export const getCreateReportUrl = () => {
 }
 
 /**
- * @summary Submit an anonymous community report
+ * @summary Submit a report from a verified account
  */
 export const createReport = async (communityReportInput: CommunityReportInput, options?: Parameters<typeof customFetch>[1]): Promise<CommunityReport> => {
 
@@ -630,7 +629,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateReportMutationVariables = {data: BodyType<CommunityReportInput>}
 
     /**
- * @summary Submit an anonymous community report
+ * @summary Submit a report from a verified account
  */
 export const useCreateReport = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReport>>, TError,CreateReportMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -643,39 +642,25 @@ export const useCreateReport = <TError = ErrorType<ErrorResponse>,
       return useMutation(getCreateReportMutationOptions(options));
     }
 
-export const getCreateReportSessionUrl = () => {
+export const getGetReportAccessUrl = () => {
 
 
 
 
-  return `/api/reports/session`
+  return `/api/reports/access`
 }
 
 /**
- * @summary Create a manager or worker demo session
+ * @summary Get the signed-in user's verified report role
  */
-export const createReportSession = async (reportSessionInput: ReportSessionInput, options?: Parameters<typeof customFetch>[1]): Promise<ReportSession> => {
+export const getReportAccess = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReportAccess> => {
 
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return customFetch<ReportSession>(getCreateReportSessionUrl(),
+  return customFetch<ReportAccess>(getGetReportAccessUrl(),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(reportSessionInput)
+    method: 'GET'
+
+
   }
 );}
 
@@ -683,53 +668,56 @@ return customFetch<ReportSession>(getCreateReportSessionUrl(),
 
 
 
-export const getCreateReportSessionMutationKey = () => ['createReportSession'] as const;
-
-export const getCreateReportSessionMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReportSession>>, TError,CreateReportSessionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createReportSession>>, TError,CreateReportSessionMutationVariables, TContext> => {
-
-const mutationKey = getCreateReportSessionMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReportSession>>, CreateReportSessionMutationVariables> = (props) => {
-          const {data} = props ?? {};
-
-          return  createReportSession(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type CreateReportSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createReportSession>>>
-    export type CreateReportSessionMutationBody = BodyType<ReportSessionInput>
-    export type CreateReportSessionMutationError = ErrorType<ErrorResponse>
-    export type CreateReportSessionMutationVariables = {data: BodyType<ReportSessionInput>}
-
-    /**
- * @summary Create a manager or worker demo session
- */
-export const useCreateReportSession = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReportSession>>, TError,CreateReportSessionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof createReportSession>>,
-        TError,
-        CreateReportSessionMutationVariables,
-        TContext
-      > => {
-      return useMutation(getCreateReportSessionMutationOptions(options));
+export const getGetReportAccessQueryKey = () => {
+    return [
+    `/api/reports/access`
+    ] as const;
     }
+
+
+export const getGetReportAccessQueryOptions = <TData = Awaited<ReturnType<typeof getReportAccess>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReportAccessQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReportAccess>>> = ({ signal }) => getReportAccess({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReportAccess>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReportAccessQueryResult = NonNullable<Awaited<ReturnType<typeof getReportAccess>>>
+export type GetReportAccessQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the signed-in user's verified report role
+ */
+
+export function useGetReportAccess<TData = Awaited<ReturnType<typeof getReportAccess>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReportAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReportAccessQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getUpdateReportUrl = (id: string,) => {
 

@@ -24,13 +24,14 @@ Orivis is a native, family-friendly community safety prototype for Santa Clara C
 ## Where things live
 
 - `artifacts/orivis-mobile/` — primary Expo app
-- `artifacts/orivis-mobile/context/DemoContext.tsx` — persistent simulated data and role permissions
+- `artifacts/orivis-mobile/context/DemoContext.tsx` — persistent local-first family simulation
 - `artifacts/orivis-mobile/constants/colors.ts` — Orivis visual tokens
 - `artifacts/orivis/` — companion web artifact scaffold
 
 ## Architecture decisions
 
-- This is intentionally a local-first prototype: AsyncStorage preserves demo state without requiring real accounts or services.
+- Family and journey features remain local-first simulations. Community reports require a verified Clerk account; the server grants staff roles only from Clerk `publicMetadata` (`orivisRole: "manager"` or `"worker"`). Assign a worker's team with `orivisTeam: "San Jose – West Clean Team"`. Do not accept role or team claims from app clients.
+- Reporters can read their own reports and photos, managers can read all reports and photos, and workers can read reports assigned to their configured team. Photos stay in private object storage and are streamed only after the same server-side visibility check.
 - Journey uses server-proxied Google Maps transit routes and 511 SF Bay VTA information when the API credentials and upstream services work. The UI clearly labels fallback demo data when they do not.
 - The 511 credential is read server-side from `TRANSIT_511_API_KEY` because Replit secret names cannot begin with a numeral.
 - Location permission is requested only by the Journey page's Use My Location action; exact coordinates are not stored as selected journey state.

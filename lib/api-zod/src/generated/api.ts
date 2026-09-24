@@ -200,7 +200,7 @@ export const GetJourneyCatalogResponse = zod.object({
 
 
 /**
- * @summary List community reports
+ * @summary List reports visible to the signed-in user
  */
 export const listReportsResponseSeverityMax = 10;
 
@@ -228,7 +228,7 @@ export const ListReportsResponse = zod.array(ListReportsResponseItem)
 
 
 /**
- * @summary Submit an anonymous community report
+ * @summary Submit a report from a verified account
  */
 export const createReportBodyDescriptionMin = 12;
 export const createReportBodyDescriptionMax = 4000;
@@ -270,25 +270,11 @@ export const CreateReportResponse = zod.object({
 
 
 /**
- * @summary Create a manager or worker demo session
+ * @summary Get the signed-in user's verified report role
  */
-export const createReportSessionBodyUsernameMax = 100;
-
-export const createReportSessionBodyPasswordMax = 200;
-
-
-
-export const CreateReportSessionBody = zod.object({
-  "username": zod.string().min(1).max(createReportSessionBodyUsernameMax),
-  "password": zod.string().min(1).max(createReportSessionBodyPasswordMax),
-  "role": zod.enum(['manager', 'worker'])
-})
-
-export const CreateReportSessionResponse = zod.object({
-  "accessToken": zod.string(),
-  "tokenType": zod.enum(['Bearer']),
-  "expiresAt": zod.coerce.date(),
-  "role": zod.enum(['manager', 'worker'])
+export const GetReportAccessResponse = zod.object({
+  "role": zod.enum(['reporter', 'manager', 'worker']),
+  "workerTeam": zod.string().nullable()
 })
 
 

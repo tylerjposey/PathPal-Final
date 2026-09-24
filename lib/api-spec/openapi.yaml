@@ -143,10 +143,12 @@ paths:
     get:
       operationId: listReports
       tags: [reports]
-      summary: List community reports
+      summary: List reports visible to the signed-in user
+      security:
+        - bearerAuth: []
       responses:
         "200":
-          description: Community reports ordered newest first
+          description: Reports scoped to the reporter, manager, or assigned worker
           content:
             application/json:
               schema:
@@ -162,7 +164,9 @@ paths:
     post:
       operationId: createReport
       tags: [reports]
-      summary: Submit an anonymous community report
+      summary: Submit a report from a verified account
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -182,6 +186,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: A valid signed-in session is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: A verified email address is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "413":
           description: Photo exceeds the 2 MB decoded limit
           content:
@@ -189,7 +205,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
-          description: Anonymous report rate limit reached
+          description: Report submission rate limit reached
           content:
             application/json:
               schema:
@@ -200,38 +216,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /reports/session:
-    post:
-      operationId: createReportSession
+  /reports/access:
+    get:
+      operationId: getReportAccess
       tags: [reports]
-      summary: Create a manager or worker demo session
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReportSessionInput"
+      summary: Get the signed-in user's verified report role
+      security:
+        - bearerAuth: []
       responses:
         "200":
-          description: Signed bearer session, valid for 24 hours
+          description: Verified user identity and server-assigned role
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ReportSession"
-        "400":
-          description: Invalid session input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ReportAccess"
         "401":
-          description: Invalid demo credentials
+          description: A valid signed-in session is required
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "503":
-          description: Session signing is not configured
+        "403":
+          description: A verified email address is required
           content:
             application/json:
               schema:
@@ -293,6 +299,8 @@ paths:
       operationId: getReportPhoto
       tags: [reports]
       summary: Stream a report photo from private object storage
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -318,7 +326,19 @@ paths:
                 type: string
                 format: binary
         "404":
-          description: Report or photo not found
+          description: Report or photo not found or not visible to this user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: A valid signed-in session is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Email verification is required
           content:
             application/json:
               schema:
@@ -529,21 +549,12 @@ components:
           type: string
           enum: [image/jpeg, image/png, image/webp]
       required: [description, location]
-    ReportSessionInput:
+    ReportAccess:
       type: object
       properties:
-        username: { type: string, minLength: 1, maxLength: 100 }
-        password: { type: string, minLength: 1, maxLength: 200 }
-        role: { type: string, enum: [manager, worker] }
-      required: [username, password, role]
-    ReportSession:
-      type: object
-      properties:
-        accessToken: { type: string }
-        tokenType: { type: string, enum: [Bearer] }
-        expiresAt: { type: string, format: date-time }
-        role: { type: string, enum: [manager, worker] }
-      required: [accessToken, tokenType, expiresAt, role]
+        role: { type: string, enum: [reporter, manager, worker] }
+        workerTeam: { type: ["string", "null"] }
+      required: [role, workerTeam]
     CommunityReportUpdate:
       type: object
       properties:

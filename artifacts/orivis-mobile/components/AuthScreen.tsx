@@ -1,82 +1,135 @@
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useSignIn, useSignUp } from '@clerk/expo';
 import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { BrandMark, Button, Card, Chip, Field } from '@/components/OrivisUI';
-import { ROLE_LABELS, type DemoUser, type Role, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
-import { createReportSession } from '@workspace/api-client-react';
-import { reportError, saveReportSession } from '@/lib/reportApi';
 
-type AuthMode = 'signin' | 'family' | 'join';
+type AuthMode = 'signin' | 'signup';
+type AuthStep = 'credentials' | 'verify-signup' | 'verify-signin';
 
-export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => void }) {
+function messageFrom(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return 'We could not complete sign-in. Please try again.';
+}
+
+export function AuthScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { authenticate, createFamily, joinFamily } = useDemo();
+  const { signIn } = useSignIn();
+  const { signUp } = useSignUp();
   const [mode, setMode] = useState<AuthMode>('signin');
-  const [role, setRole] = useState<Role | null>(null);
-  const [username, setUsername] = useState('AI4SG');
-  const [password, setPassword] = useState('1234');
-  const [familyName, setFamilyName] = useState('The Chen family');
-  const [childName, setChildName] = useState('Maya Chen');
-  const [invite, setInvite] = useState('1234');
-  const [newUsername, setNewUsername] = useState('maya');
-  const [newPassword, setNewPassword] = useState('1234');
+  const [step, setStep] = useState<AuthStep>('credentials');
+  const [emailAddress, setEmailAddress] = useState('');
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
-  const [signingIn, setSigningIn] = useState(false);
+  const [working, setWorking] = useState(false);
 
-  const signIn = async () => {
-    if (signingIn) return;
-    if (!role) {
-      setError('Select an account type first.');
-      return;
-    }
-    const account = authenticate(username, password, role);
-    if (!account) {
-      setError('Use AI4SG and 1234 for this prototype.');
-      return;
-    }
-    setSigningIn(true);
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setStep('credentials');
+    setError('');
+    setCode('');
+    signIn.reset();
+    signUp.reset();
+  };
+
+  const finishSignIn = async () => {
+    await signIn.finalize({ navigate: () => {} });
+  };
+
+  const finishSignUp = async () => {
+    await signUp.finalize({ navigate: () => {} });
+  };
+
+  const submitCredentials = async () => {
+    if (working) return;
+    setWorking(true);
+    setError('');
     try {
-      if (role === 'manager' || role === 'worker') {
-        const session = await createReportSession({ username, password, role });
-        await saveReportSession(session);
+      if (mode === 'signup') {
+        const { error: startError } = await signUp.password({
+          emailAddress: emailAddress.trim(),
+          password,
+        });
+        if (startError) throw startError;
+        await signUp.verifications.sendEmailCode();
+        setStep('verify-signup');
+        return;
       }
-      setError('');
-      onVerified(account);
-    } catch (error) {
-      setError(reportError(error));
+
+      const { error: startError } = await signIn.password({
+        emailAddress: emailAddress.trim(),
+        password,
+      });
+      if (startError) throw startError;
+      if (signIn.status === 'complete') {
+        await finishSignIn();
+      } else if (signIn.status === 'needs_client_trust' || signIn.status === 'needs_second_factor') {
+        const emailFactor = signIn.supportedSecondFactors?.some((factor) => factor.strategy === 'email_code');
+        if (!emailFactor) {
+          setError('This account needs another verification method. Contact your organization administrator.');
+          return;
+        }
+        await signIn.mfa.sendEmailCode();
+        setStep('verify-signin');
+      } else {
+        setError('Sign-in needs another step. Please try again or use a different verification method.');
+      }
+    } catch (submitError) {
+      setError(messageFrom(submitError));
     } finally {
-      setSigningIn(false);
+      setWorking(false);
     }
   };
 
-  const registerFamily = () => {
-    if (!familyName.trim() || !childName.trim() || !invite.trim()) {
-      setError('Complete each family field.');
-      return;
-    }
-    createFamily(familyName, childName, invite);
-    setMode('signin');
-    setRole('parent');
+  const verifyCode = async () => {
+    if (working) return;
+    setWorking(true);
     setError('');
+    try {
+      if (step === 'verify-signup') {
+        const { error: verifyError } = await signUp.verifications.verifyEmailCode({ code: code.trim() });
+        if (verifyError) throw verifyError;
+        if (signUp.status !== 'complete') {
+          setError('Email verification is not complete yet. Check the code and try again.');
+          return;
+        }
+        await finishSignUp();
+      } else {
+        const { error: verifyError } = await signIn.mfa.verifyEmailCode({ code: code.trim() });
+        if (verifyError) throw verifyError;
+        if (signIn.status !== 'complete') {
+          setError('Sign-in verification is not complete yet. Check the code and try again.');
+          return;
+        }
+        await finishSignIn();
+      }
+    } catch (verifyError) {
+      setError(messageFrom(verifyError));
+    } finally {
+      setWorking(false);
+    }
   };
 
-  const join = () => {
-    const joined = joinFamily(invite, childName, newUsername, newPassword);
-    if (!joined) {
-      setError('Use invitation code 1234 and complete every field.');
-      return;
-    }
-    setUsername(newUsername);
-    setPassword(newPassword);
-    setRole('child');
-    setMode('signin');
+  const resendCode = async () => {
     setError('');
+    try {
+      if (step === 'verify-signup') await signUp.verifications.sendEmailCode();
+      else await signIn.mfa.sendEmailCode();
+    } catch (resendError) {
+      setError(messageFrom(resendError));
+    }
   };
+
+  const verifying = step !== 'credentials';
 
   return (
     <KeyboardAwareScrollViewCompat
@@ -85,7 +138,7 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
         styles.content,
         {
           paddingTop: insets.top + (Platform.OS === 'web' ? 72 : 24),
-          paddingBottom: insets.bottom + 28,
+          paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 28),
         },
       ]}
       bottomOffset={60}
@@ -111,85 +164,82 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
       </View>
 
       <Text style={[styles.heading, { color: colors.foreground }]}>
-        {mode === 'signin' ? 'A safer way to get there.' : mode === 'family' ? 'Create your family circle.' : 'Join your family circle.'}
+        {verifying ? 'Verify your email.' : mode === 'signin' ? 'A safer way to get there.' : 'Join your community.'}
       </Text>
       <Text style={[styles.lead, { color: colors.mutedForeground }]}>
-        {mode === 'signin'
-          ? 'Coordinate bus journeys, improve your neighborhood, and practice family safety in one calm place.'
-          : mode === 'family'
-            ? 'A parent starts the family and creates an invitation code for their child.'
-            : 'Use a valid invitation code, then create the child’s own demo sign-in.'}
+        {verifying
+          ? 'Enter the verification code sent to your email to continue.'
+          : 'Coordinate journeys and report neighborhood concerns with a verified account.'}
       </Text>
 
       <Card style={styles.formCard}>
-        <View style={styles.modeRow}>
-          <Chip label="Sign in" active={mode === 'signin'} onPress={() => { setMode('signin'); setError(''); }} />
-          <Chip label="Create family" active={mode === 'family'} onPress={() => { setMode('family'); setError(''); }} />
-          <Chip label="Join family" active={mode === 'join'} onPress={() => { setMode('join'); setError(''); }} />
-        </View>
+        {!verifying ? (
+          <View style={styles.modeRow}>
+            <Chip
+              label="Sign in"
+              active={mode === 'signin'}
+              onPress={() => { void Haptics.selectionAsync(); switchMode('signin'); }}
+            />
+            <Chip
+              label="Create account"
+              active={mode === 'signup'}
+              onPress={() => { void Haptics.selectionAsync(); switchMode('signup'); }}
+            />
+          </View>
+        ) : null}
 
-        {mode === 'signin' ? (
+        {verifying ? (
           <>
-            <Text style={[styles.formTitle, { color: colors.foreground }]}>Select Account Type</Text>
-            <View style={styles.roles}>
-              {(Object.keys(ROLE_LABELS) as Role[]).map((item) => (
-                <Pressable
-                  key={item}
-                  testID={`role-${item}`}
-                  onPress={() => {
-                    void Haptics.selectionAsync();
-                    setRole(item);
-                    setError('');
-                  }}
-                  style={[
-                    styles.role,
-                    {
-                      backgroundColor: role === item ? colors.secondary : colors.card,
-                      borderColor: role === item ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  <Feather
-                    name={item === 'parent' ? 'users' : item === 'child' ? 'smile' : item === 'manager' ? 'clipboard' : 'tool'}
-                    size={19}
-                    color={role === item ? colors.primary : colors.mutedForeground}
-                  />
-                  <Text style={[styles.roleText, { color: colors.foreground }]}>{ROLE_LABELS[item]}</Text>
-                  {role === item ? <Feather name="check-circle" size={17} color={colors.primary} /> : null}
-                </Pressable>
-              ))}
-            </View>
-            <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" testID="username" />
-            <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry testID="password" />
-            {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-            <Button label="Continue securely" icon="arrow-right" onPress={() => { void signIn(); }} loading={signingIn} testID="continue-signin" />
-            <View style={[styles.demoNote, { backgroundColor: colors.muted }]}>
-              <Feather name="info" size={15} color={colors.primary} />
-              <Text style={[styles.demoText, { color: colors.mutedForeground }]}>
-                Demo for every role: AI4SG · 1234 · verification 1234
-              </Text>
-            </View>
-          </>
-        ) : mode === 'family' ? (
-          <>
-            <Text style={[styles.formTitle, { color: colors.foreground }]}>Parent registration</Text>
-            <Field label="Family name" value={familyName} onChangeText={setFamilyName} />
-            <Field label="Child’s name" value={childName} onChangeText={setChildName} />
-            <Field label="Child invitation code" value={invite} onChangeText={setInvite} keyboardType="number-pad" />
-            {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-            <Button label="Create family account" icon="users" onPress={registerFamily} />
+            <Text style={[styles.formTitle, { color: colors.foreground }]}>
+              {step === 'verify-signup' ? 'Email verification' : 'Sign-in verification'}
+            </Text>
+            <Field
+              label="Verification code"
+              value={code}
+              onChangeText={setCode}
+              keyboardType="number-pad"
+              autoCapitalize="none"
+              testID="verification-code"
+            />
           </>
         ) : (
           <>
-            <Text style={[styles.formTitle, { color: colors.foreground }]}>Child invitation</Text>
-            <Field label="Invitation code" value={invite} onChangeText={setInvite} keyboardType="number-pad" />
-            <Field label="Your name" value={childName} onChangeText={setChildName} />
-            <Field label="Create username" value={newUsername} onChangeText={setNewUsername} autoCapitalize="none" />
-            <Field label="Create password" value={newPassword} onChangeText={setNewPassword} secureTextEntry />
-            {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-            <Button label="Join family" icon="user-check" onPress={join} />
+            <Text style={[styles.formTitle, { color: colors.foreground }]}>
+              {mode === 'signin' ? 'Sign in to Orivis' : 'Create a verified account'}
+            </Text>
+            <Field
+              label="Email"
+              value={emailAddress}
+              onChangeText={setEmailAddress}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              testID="email"
+            />
+            <Field
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              testID="password"
+            />
+            {mode === 'signup' ? <View nativeID="clerk-captcha" /> : null}
           </>
         )}
+
+        {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
+        <Button
+          label={verifying ? 'Verify and continue' : mode === 'signin' ? 'Continue securely' : 'Send verification code'}
+          icon={verifying ? 'check-circle' : 'arrow-right'}
+          onPress={() => { void (verifying ? verifyCode() : submitCredentials()); }}
+          loading={working}
+          testID={verifying ? 'verify-email' : 'continue-signin'}
+        />
+        {verifying ? (
+          <Button label="Send a new code" icon="refresh-cw" onPress={() => { void resendCode(); }} />
+        ) : null}
+        <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+          Staff access is assigned by an administrator. New accounts can only submit and view their own reports.
+        </Text>
       </Card>
 
       <View style={styles.disclaimer}>
@@ -216,12 +266,8 @@ const styles = StyleSheet.create({
   formCard: { gap: 15 },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   formTitle: { fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 2 },
-  roles: { gap: 8 },
-  role: { minHeight: 51, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  roleText: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
-  error: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  demoNote: { borderRadius: 14, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
-  demoText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
+  error: { fontFamily: 'Inter_600SemiBold', fontSize: 12, lineHeight: 17 },
+  helper: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },
   disclaimer: { flexDirection: 'row', gap: 8, marginTop: 20, paddingHorizontal: 8 },
   disclaimerText: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17 },
 });

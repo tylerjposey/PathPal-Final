@@ -568,7 +568,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
                 : changes.category
                   ? 'Environmental Services'
                   : report.recommendedDepartment,
-          priority: nextSeverity >= 8 ? 'High' : nextSeverity >= 5 ? 'Medium' : 'Low',
+          priority: (nextSeverity >= 8 ? 'High' : nextSeverity >= 5 ? 'Medium' : 'Low') as SafetyReport['priority'],
           awardedPoints: report.awardedPoints || becameResolved,
           category: nextCategory,
         };

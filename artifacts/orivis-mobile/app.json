@@ -1,16 +1,26 @@
 {
   "expo": {
-    "name": "Orivis Mobile",
+    "name": "Orivis",
     "slug": "orivis-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "orivis-mobile",
+    "scheme": "orivis",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#F5F8F7"
+      }
+    },
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F5F8F7"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },

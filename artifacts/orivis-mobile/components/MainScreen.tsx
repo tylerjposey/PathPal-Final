@@ -19,6 +19,7 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteMap } from '@/components/RouteMap';
+import { JourneyScreen } from '@/components/JourneyScreen';
 import {
   BrandMark,
   Button,
@@ -145,7 +146,7 @@ export function MainScreen({
 
       <View style={styles.body}>
         {tab === 'home' ? <Home role={role} onNavigate={setTab} onReport={() => setModal('report')} onSOS={() => setModal('sos')} onCase={openCase} /> : null}
-        {tab === 'map' ? <MapScreen role={role} onCase={openCase} /> : null}
+        {tab === 'map' ? role === 'parent' || role === 'child' ? <JourneyScreen /> : <MapScreen role={role} onCase={openCase} /> : null}
         {tab === 'reports' ? <ReportsScreen role={role} onCreate={() => setModal('report')} onCase={openCase} /> : null}
         {tab === 'tasks' ? <WorkerTasks onCase={openCase} /> : null}
         {tab === 'rewards' ? <RewardsScreen /> : null}
@@ -222,6 +223,11 @@ function Home({
 
   const currentIndex = tripSteps.findIndex((step) => step.value === state.tripStep);
   const nextStep = tripSteps[Math.min(currentIndex + 1, tripSteps.length - 1)];
+  const journey = state.selectedJourney;
+  const routeName = journey?.name ?? 'VTA Route 22';
+  const startStop = journey?.startStop ?? 'Willow St & Bird Ave';
+  const destinationStop = journey?.destinationStop ?? 'Bird Ave & Minnesota';
+  const delay = Math.max(journey?.delayMinutes ?? 0, state.busDelayed ? 8 : 0);
   return (
     <ScreenScroll>
       <ScreenHeader
@@ -234,27 +240,28 @@ function Home({
         <View style={styles.heroTop}>
           <View style={styles.routeBadge}>
             <Feather name="navigation" size={14} color={colors.primaryForeground} />
-            <Text style={[styles.heroEyebrow, { color: colors.primaryForeground }]}>VTA ROUTE 22 · SCHOOL TRIP</Text>
+             <Text style={[styles.heroEyebrow, { color: colors.primaryForeground }]}>{routeName.toUpperCase()} · {journey?.source === 'live' ? 'LIVE ROUTE' : 'DEMO ROUTE'}</Text>
           </View>
-          {state.busDelayed ? (
+           {delay > 0 ? (
             <View style={styles.delayBadge}>
-              <Text style={[styles.delayText, { color: colors.destructiveForeground }]}>8 min delay</Text>
+               <Text style={[styles.delayText, { color: colors.destructiveForeground }]}>{delay} min delay</Text>
             </View>
           ) : null}
         </View>
-        <Text style={[styles.heroTitle, { color: colors.primaryForeground }]}>Willow & Bird</Text>
+         <Text style={[styles.heroTitle, { color: colors.primaryForeground }]} numberOfLines={2}>{startStop}</Text>
         <View style={styles.routeLine}>
           <View style={[styles.routePoint, { borderColor: colors.primaryForeground }]} />
           <View style={[styles.routeTrack, { backgroundColor: colors.primaryForeground }]} />
           <Feather name="flag" size={17} color={colors.primaryForeground} />
         </View>
-        <Text style={[styles.heroDestination, { color: colors.primaryForeground }]}>River Glen Elementary · 8:02 AM</Text>
+         <Text style={[styles.heroDestination, { color: colors.primaryForeground }]}>{destinationStop}{journey ? ` · ${journey.durationMinutes} min` : ' · River Glen Elementary'}</Text>
         <View style={styles.heroFooter}>
           <View>
             <Text style={[styles.heroMeta, { color: colors.primaryForeground }]}>
               {state.tripStep === 'waiting' ? 'Awaiting first check-in' : `${tripSteps[currentIndex].title} confirmed`}
             </Text>
             <Text style={[styles.heroSub, { color: colors.primaryForeground }]}>Planned route only · no live tracking</Text>
+             {state.tripUpdatedAt ? <Text style={[styles.heroSub, { color: colors.primaryForeground }]}>Updated {formatTime(state.tripUpdatedAt)}</Text> : null}
           </View>
           <Pressable onPress={() => onNavigate('map')} style={[styles.mapIcon, { backgroundColor: colors.primaryForeground }]}>
             <Feather name="map" size={18} color={colors.primary} />
@@ -272,14 +279,17 @@ function Home({
               </View>
               <View style={styles.flex}>
                 <Text style={[styles.cardTitle, { color: colors.foreground }]}>{nextStep.title}</Text>
-                <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{nextStep.subtitle}</Text>
+                 <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{state.tripStep === 'boarded' ? destinationStop : state.tripStep === 'off' ? journey?.destination ?? state.child.school : startStop}</Text>
               </View>
             </View>
             <Button
-              label={state.tripStep === 'arrived' ? 'Journey complete' : `I ${nextStep.title.toLowerCase()}`}
+               label={state.tripStep === 'arrived' ? 'Journey complete' : state.tripStep === 'waiting' ? 'I boarded the bus' : state.tripStep === 'boarded' ? 'I got off the bus' : 'I reached my destination'}
               icon="check"
               disabled={state.tripStep === 'arrived'}
-              onPress={() => updateTripStep(nextStep.value)}
+               onPress={() => {
+                 updateTripStep(nextStep.value);
+                 Alert.alert('Check-in confirmed', `Your ${nextStep.title.toLowerCase()} update is on the parent dashboard. An in-app and simulated text alert were created.`);
+               }}
             />
           </Card>
           <View style={styles.twoColumns}>
@@ -290,11 +300,11 @@ function Home({
               <Text style={[styles.quickTitle, { color: colors.foreground }]}>Report an issue</Text>
               <Text style={[styles.quickSub, { color: colors.mutedForeground }]}>Photo, note & pin</Text>
             </Pressable>
-            <Pressable onPress={reportBusDelay} style={[styles.quickCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+             <Pressable onPress={() => { reportBusDelay(); Alert.alert('Delay reported', 'An in-app and simulated text notification were added for your family.'); }} style={[styles.quickCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={[styles.quickIcon, { backgroundColor: colors.secondary }]}>
                 <Feather name="clock" size={22} color={colors.warning} />
               </View>
-              <Text style={[styles.quickTitle, { color: colors.foreground }]}>Bus delay</Text>
+               <Text style={[styles.quickTitle, { color: colors.foreground }]}>Report Bus Delay</Text>
               <Text style={[styles.quickSub, { color: colors.mutedForeground }]}>Notify your family</Text>
             </Pressable>
           </View>
@@ -325,12 +335,13 @@ function Home({
                   </View>
                   <View style={[styles.timelineCopy, index < tripSteps.length - 1 ? { paddingBottom: 17 } : null]}>
                     <Text style={[styles.timelineTitle, { color: colors.foreground }]}>{step.title}</Text>
-                    <Text style={[styles.timelineSub, { color: colors.mutedForeground }]}>{step.subtitle}</Text>
+                     <Text style={[styles.timelineSub, { color: colors.mutedForeground }]}>{index === 0 || index === 1 ? startStop : index === 2 ? destinationStop : journey?.destination ?? state.child.school}</Text>
                   </View>
                 </View>
               );
             })}
           </Card>
+           {state.tripUpdatedAt ? <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Latest child update: {formatTime(state.tripUpdatedAt)} · {tripSteps[currentIndex]?.title}</Text> : null}
           <SectionTitle title="Family snapshot" />
           <Card>
             <View style={styles.metrics}>
@@ -654,7 +665,7 @@ function ProfileScreen() {
       <Card tone="soft">
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>Prototype limitations</Text>
         <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
-          Authentication, AI analysis, transit, maps, notifications, partner rewards, police contact, and SOS behavior are simulated. API placeholders: 511_API_KEY and GOOGLE_MAPS_API_KEY.
+          Authentication, AI analysis, notifications, partner rewards, police contact, and SOS behavior are simulated. Journey routes use Google Maps and 511 SF Bay when configured and available; otherwise the Journey page labels its demo fallback. City issue maps remain illustrative.
         </Text>
       </Card>
       <Button label="Sign out" icon="log-out" variant="ghost" onPress={signOut} />

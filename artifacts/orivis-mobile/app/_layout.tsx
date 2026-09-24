@@ -14,11 +14,13 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { DemoProvider } from '@/context/DemoContext';
+import { setBaseUrl } from '@workspace/api-client-react';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
 
 function RootLayoutNav() {
   return (

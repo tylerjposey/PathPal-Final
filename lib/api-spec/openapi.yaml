@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: journey
+    description: Live transit journey operations
 paths:
   /healthz:
     get:
@@ -24,7 +26,143 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /journey/options:
+    get:
+      operationId: getJourneyOptions
+      tags: [journey]
+      summary: Get ranked transit journey options
+      parameters:
+        - $ref: "#/components/parameters/Latitude"
+        - $ref: "#/components/parameters/Longitude"
+        - $ref: "#/components/parameters/Destination"
+      responses:
+        "200":
+          description: Ranked live journey options or clearly marked demo fallback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyOptionsResponse"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /journey/map:
+    get:
+      operationId: getJourneyMap
+      tags: [journey]
+      summary: Get journey options and a protected static map image URL
+      parameters:
+        - $ref: "#/components/parameters/Latitude"
+        - $ref: "#/components/parameters/Longitude"
+        - $ref: "#/components/parameters/Destination"
+        - name: routePolyline
+          in: query
+          required: false
+          description: Optional encoded route polyline to display on the static map
+          schema:
+            type: string
+            maxLength: 10000
+      responses:
+        "200":
+          description: Journey options with a backend-proxied map image URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyMapResponse"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /journey/map-image:
+    get:
+      operationId: getJourneyMapImage
+      tags: [journey]
+      summary: Proxy a Google static map image without exposing its API key
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+        - name: routePolyline
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 10000
+      responses:
+        "200":
+          description: Static map image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "503":
+          description: Static map is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /journey/catalog:
+    get:
+      operationId: getJourneyCatalog
+      tags: [journey]
+      summary: Search the VTA route and stop catalog
+      parameters:
+        - name: query
+          in: query
+          required: false
+          description: Optional case-insensitive search across route and stop names
+          schema:
+            type: string
+            maxLength: 150
+      responses:
+        "200":
+          description: Searchable VTA catalog or clearly marked demo fallback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyCatalogResponse"
 components:
+  parameters:
+    Latitude:
+      name: lat
+      in: query
+      required: true
+      schema:
+        type: number
+        minimum: -90
+        maximum: 90
+    Longitude:
+      name: lng
+      in: query
+      required: true
+      schema:
+        type: number
+        minimum: -180
+        maximum: 180
+    Destination:
+      name: destination
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 150
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +171,123 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    JourneyOptionsResponse:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [live, demo]
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/JourneyRoute"
+        stops:
+          type: array
+          items:
+            $ref: "#/components/schemas/JourneyStop"
+        alerts:
+          type: array
+          items:
+            type: string
+        nearestStop:
+          anyOf:
+            - $ref: "#/components/schemas/JourneyStop"
+            - type: "null"
+        message:
+          type: ["string", "null"]
+      required: [source, routes, stops, alerts]
+    JourneyMapResponse:
+      allOf:
+        - $ref: "#/components/schemas/JourneyOptionsResponse"
+        - type: object
+          properties:
+            mapImageUrl:
+              type: ["string", "null"]
+          required: [mapImageUrl]
+    JourneyRoute:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        startStop:
+          type: string
+        destinationStop:
+          type: string
+        durationMinutes:
+          type: integer
+          minimum: 0
+        walkingMeters:
+          type: integer
+          minimum: 0
+        transfers:
+          type: integer
+          minimum: 0
+        delayMinutes:
+          type: integer
+          minimum: 0
+        alerts:
+          type: array
+          items:
+            type: string
+        available:
+          type: boolean
+        recommended:
+          type: boolean
+        source:
+          type: string
+          enum: [live, demo]
+        polyline:
+          type: ["string", "null"]
+      required:
+        - id
+        - name
+        - startStop
+        - destinationStop
+        - durationMinutes
+        - walkingMeters
+        - transfers
+        - delayMinutes
+        - alerts
+        - available
+        - recommended
+        - source
+    JourneyStop:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        distanceMeters:
+          type: ["integer", "null"]
+      required: [id, name, lat, lng]
+    JourneyCatalogResponse:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [live, demo]
+        routes:
+          type: array
+          items:
+            type: string
+        stops:
+          type: array
+          items:
+            $ref: "#/components/schemas/JourneyStop"
+        message:
+          type: ["string", "null"]
+      required: [source, routes, stops]
 

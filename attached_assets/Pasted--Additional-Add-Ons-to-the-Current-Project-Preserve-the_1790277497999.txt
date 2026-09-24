@@ -1,0 +1,88 @@
+## Additional Add-Ons to the Current Project
+
+Preserve the current Orivis application and its existing features. These are additional updates only.
+
+Replace the simulated transit/map experience with live bus-route functionality using the 511 SF Bay Transit API and Google Maps. Keep simulated fallback data only if the APIs fail or are unavailable.
+
+## Journey Page
+
+Create or update the Journey page with limited location access.
+
+- Request location permission only on the Journey page or when the user selects “Find Nearby Stops.”
+- Do not request location access on the login, Home, reporting, rewards, or SOS pages.
+- Use location only to identify the nearest bus stop and recommend bus routes.
+- Do not continuously track the child during normal, non-emergency use.
+- Explain clearly to users why location permission is needed.
+
+Include:
+
+- “Use My Location” button
+- Search field for the child’s destination
+- Searchable bus routes and bus stops
+- Nearest available bus stop
+- Destination bus stop options
+- Route duration
+- Walking distance
+- Number of transfers
+- Delay information
+- Service alerts
+- Recommended route
+- Option to choose another route
+
+## Efficient Route Recommendation
+
+Create an algorithm that recommends the most efficient route based on:
+
+- Starting location
+- Distance to the nearest bus stop
+- Destination
+- Total travel time
+- Walking distance
+- Number of transfers
+- Current delays
+- Service alerts
+- Route availability
+
+Prioritize routes with shorter travel time, fewer transfers, shorter walking distances, and fewer delays.
+
+Clearly label the highest-ranked option:
+
+“Recommended Route”
+
+## Home Page Journey Updates
+
+Reflect the selected journey on the Child Home page.
+
+Display:
+
+- Selected route
+- Starting bus stop
+- Destination bus stop
+- Current journey status
+- “I boarded the bus” button
+- “I got off the bus” button
+- “I reached my destination” confirmation button
+- “Report Bus Delay” button
+
+When the child selects a journey-status button:
+
+1. Update the child’s journey status.
+2. Display a confirmation message.
+3. Notify the parent in the prototype.
+4. Update the Parent Dashboard.
+5. Display the time of the latest update.
+
+Simulate both an in-app parent notification and a simulated text-message notification.
+
+## Live 511 SF Bay Transit API
+
+Use the Replit Secret:
+
+`511_API_KEY`
+
+Never hardcode, display, or log the API key.
+
+First call:
+
+```text
+https://api.511.org/transit/operators?api_key=${511_API_KEY}&format=json

@@ -21,6 +21,20 @@ export type ReportCategory =
 export type CaseStatus = 'Submitted' | 'Under Review' | 'Assigned' | 'Resolved';
 export type TripStep = 'waiting' | 'boarded' | 'off' | 'arrived';
 
+export interface SelectedJourney {
+  id: string;
+  name: string;
+  startStop: string;
+  destinationStop: string;
+  destination: string;
+  durationMinutes: number;
+  walkingMeters: number;
+  transfers: number;
+  delayMinutes: number;
+  alerts: string[];
+  source: 'live' | 'demo';
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   parent: 'Parent',
   child: 'Child',
@@ -110,6 +124,8 @@ export interface DemoState {
   invitationCode: string;
   childLogin: { username: string; password: string } | null;
   tripStep: TripStep;
+  tripUpdatedAt: string | null;
+  selectedJourney: SelectedJourney | null;
   busDelayed: boolean;
   rewardPoints: number;
   rewardHistory: string[];
@@ -166,6 +182,8 @@ export function createInitialDemoState(): DemoState {
     invitationCode: '1234',
     childLogin: null,
     tripStep: 'waiting',
+    tripUpdatedAt: null,
+    selectedJourney: null,
     busDelayed: true,
     rewardPoints: 320,
     rewardHistory: ['+50 points · Willow Glen sidewalk report resolved'],
@@ -351,6 +369,7 @@ interface DemoContextValue {
   signOut: () => void;
   resetDemo: () => void;
   updateTripStep: (step: TripStep) => void;
+  selectJourney: (journey: SelectedJourney) => void;
   simulateMissedCheckin: () => void;
   reportBusDelay: () => void;
   createReport: (input: {
@@ -471,6 +490,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const updateTripStep = useCallback((step: TripStep) => {
     update((current) => {
       if (current.account?.role !== 'child') return current;
+      const sequence: TripStep[] = ['waiting', 'boarded', 'off', 'arrived'];
+      if (sequence.indexOf(step) !== sequence.indexOf(current.tripStep) + 1) return current;
       const detail: Record<TripStep, string> = {
         waiting: 'is ready at the starting stop.',
         boarded: 'confirmed boarding Route 22.',
@@ -480,9 +501,28 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       return {
         ...current,
         tripStep: step,
-        notifications: [notification(`${current.child.name} checked in`, `${current.child.name} ${detail[step]} (simulated family alert).`, 'Transit'), ...current.notifications],
+        tripUpdatedAt: new Date().toISOString(),
+        notifications: [
+          notification(`${current.child.name} checked in · simulated text`, `${current.child.name} ${detail[step]} No text was actually sent.`, 'Transit', 'Simulated text'),
+          notification(`${current.child.name} checked in`, `${current.child.name} ${detail[step]} (simulated family alert).`, 'Transit'),
+          ...current.notifications,
+        ],
       };
     });
+  }, [update]);
+
+  const selectJourney = useCallback((journey: SelectedJourney) => {
+    update((current) => ({
+      ...current,
+      selectedJourney: journey,
+      tripStep: 'waiting',
+      busDelayed: false,
+      tripUpdatedAt: new Date().toISOString(),
+      notifications: [
+        notification('Journey selected', `${current.child.name} selected ${journey.name} from ${journey.startStop} to ${journey.destinationStop}.`, 'Transit'),
+        ...current.notifications,
+      ],
+    }));
   }, [update]);
 
   const simulateMissedCheckin = useCallback(() => {
@@ -501,8 +541,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       ...current,
       busDelayed: true,
       notifications: [
-        notification('Bus delay reported', 'A simulated delay was sent to the family and transit feed.', 'Transit', 'Simulated text'),
-        notification('Bus delay reported', 'The family has been notified of a reported Route 22 delay.', 'Transit'),
+        notification('Bus delay reported · simulated text', `A delay was reported for ${current.selectedJourney?.name ?? 'Route 22'}. No text was actually sent.`, 'Transit', 'Simulated text'),
+        notification('Bus delay reported', `The family has been notified of a reported delay on ${current.selectedJourney?.name ?? 'Route 22'}.`, 'Transit'),
         ...current.notifications,
       ],
     }));
@@ -726,6 +766,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     signOut,
     resetDemo,
     updateTripStep,
+    selectJourney,
     simulateMissedCheckin,
     reportBusDelay,
     createReport,
@@ -749,6 +790,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     signOut,
     resetDemo,
     updateTripStep,
+    selectJourney,
     simulateMissedCheckin,
     reportBusDelay,
     createReport,

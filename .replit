@@ -18,3 +18,9 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+"511_API_KEY " = "5b38e508-69b9-4fb9-8f6f-7870ab8de5d5"
+GOOGLE_MAPS_API_KEY = "AIzaSyDqJpTSnO9tCRcLpqiNjiIk81Gyj_mIabU"

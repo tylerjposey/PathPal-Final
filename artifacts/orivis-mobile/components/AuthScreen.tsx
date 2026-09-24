@@ -7,6 +7,8 @@ import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollV
 import { BrandMark, Button, Card, Chip, Field } from '@/components/OrivisUI';
 import { ROLE_LABELS, type DemoUser, type Role, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
+import { createReportSession } from '@workspace/api-client-react';
+import { reportError, saveReportSession } from '@/lib/reportApi';
 
 type AuthMode = 'signin' | 'family' | 'join';
 
@@ -24,8 +26,10 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
   const [newUsername, setNewUsername] = useState('maya');
   const [newPassword, setNewPassword] = useState('1234');
   const [error, setError] = useState('');
+  const [signingIn, setSigningIn] = useState(false);
 
-  const signIn = () => {
+  const signIn = async () => {
+    if (signingIn) return;
     if (!role) {
       setError('Select an account type first.');
       return;
@@ -35,8 +39,19 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
       setError('Use AI4SG and 1234 for this prototype.');
       return;
     }
-    setError('');
-    onVerified(account);
+    setSigningIn(true);
+    try {
+      if (role === 'manager' || role === 'worker') {
+        const session = await createReportSession({ username, password, role });
+        await saveReportSession(session);
+      }
+      setError('');
+      onVerified(account);
+    } catch (error) {
+      setError(reportError(error));
+    } finally {
+      setSigningIn(false);
+    }
   };
 
   const registerFamily = () => {
@@ -147,7 +162,7 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
             <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" testID="username" />
             <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry testID="password" />
             {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-            <Button label="Continue securely" icon="arrow-right" onPress={signIn} testID="continue-signin" />
+            <Button label="Continue securely" icon="arrow-right" onPress={() => { void signIn(); }} loading={signingIn} testID="continue-signin" />
             <View style={[styles.demoNote, { backgroundColor: colors.muted }]}>
               <Feather name="info" size={15} color={colors.primary} />
               <Text style={[styles.demoText, { color: colors.mutedForeground }]}>

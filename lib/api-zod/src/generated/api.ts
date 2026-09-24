@@ -199,3 +199,163 @@ export const GetJourneyCatalogResponse = zod.object({
 })
 
 
+/**
+ * @summary List community reports
+ */
+export const listReportsResponseSeverityMax = 10;
+
+
+
+export const ListReportsResponseItem = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
+  "summary": zod.string(),
+  "description": zod.string(),
+  "severity": zod.number().int().min(1).max(listReportsResponseSeverityMax),
+  "status": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']),
+  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']),
+  "x": zod.number(),
+  "y": zod.number(),
+  "photoUri": zod.string().nullable(),
+  "submittedAt": zod.coerce.date(),
+  "recommendedDepartment": zod.string(),
+  "priority": zod.enum(['Low', 'Medium', 'High']),
+  "assignedTeam": zod.string().nullable(),
+  "awardedPoints": zod.boolean()
+})
+export const ListReportsResponse = zod.array(ListReportsResponseItem)
+
+
+/**
+ * @summary Submit an anonymous community report
+ */
+export const createReportBodyDescriptionMin = 12;
+export const createReportBodyDescriptionMax = 4000;
+
+export const createReportBodyPhotoBase64Max = 2796204;
+
+
+
+export const CreateReportBody = zod.object({
+  "description": zod.string().min(createReportBodyDescriptionMin).max(createReportBodyDescriptionMax),
+  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']),
+  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']).optional(),
+  "photoBase64": zod.string().max(createReportBodyPhotoBase64Max).optional(),
+  "contentType": zod.enum(['image/jpeg', 'image/png', 'image/webp']).optional()
+})
+
+export const createReportResponseSeverityMax = 10;
+
+
+
+export const CreateReportResponse = zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
+  "summary": zod.string(),
+  "description": zod.string(),
+  "severity": zod.number().int().min(1).max(createReportResponseSeverityMax),
+  "status": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']),
+  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']),
+  "x": zod.number(),
+  "y": zod.number(),
+  "photoUri": zod.string().nullable(),
+  "submittedAt": zod.coerce.date(),
+  "recommendedDepartment": zod.string(),
+  "priority": zod.enum(['Low', 'Medium', 'High']),
+  "assignedTeam": zod.string().nullable(),
+  "awardedPoints": zod.boolean()
+})
+
+
+/**
+ * @summary Create a manager or worker demo session
+ */
+export const createReportSessionBodyUsernameMax = 100;
+
+export const createReportSessionBodyPasswordMax = 200;
+
+
+
+export const CreateReportSessionBody = zod.object({
+  "username": zod.string().min(1).max(createReportSessionBodyUsernameMax),
+  "password": zod.string().min(1).max(createReportSessionBodyPasswordMax),
+  "role": zod.enum(['manager', 'worker'])
+})
+
+export const CreateReportSessionResponse = zod.object({
+  "accessToken": zod.string(),
+  "tokenType": zod.enum(['Bearer']),
+  "expiresAt": zod.coerce.date(),
+  "role": zod.enum(['manager', 'worker'])
+})
+
+
+/**
+ * @summary Update a report as manager or assigned worker
+ */
+export const updateReportPathIdMax = 80;
+
+
+
+export const UpdateReportParams = zod.object({
+  "id": zod.coerce.string().min(1).max(updateReportPathIdMax)
+})
+
+export const updateReportBodyDescriptionMin = 12;
+export const updateReportBodyDescriptionMax = 4000;
+
+export const updateReportBodySeverityMax = 10;
+
+export const updateReportBodyAssignedTeamMax = 120;
+
+
+
+export const UpdateReportBody = zod.object({
+  "description": zod.string().min(updateReportBodyDescriptionMin).max(updateReportBodyDescriptionMax).optional(),
+  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']).optional(),
+  "severity": zod.number().int().min(1).max(updateReportBodySeverityMax).optional(),
+  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']).optional(),
+  "status": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']).optional(),
+  "assignedTeam": zod.string().max(updateReportBodyAssignedTeamMax).nullish()
+})
+
+export const updateReportResponseReportSeverityMax = 10;
+
+
+
+export const UpdateReportResponse = zod.object({
+  "report": zod.object({
+  "id": zod.string(),
+  "category": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
+  "summary": zod.string(),
+  "description": zod.string(),
+  "severity": zod.number().int().min(1).max(updateReportResponseReportSeverityMax),
+  "status": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']),
+  "location": zod.enum(['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara']),
+  "x": zod.number(),
+  "y": zod.number(),
+  "photoUri": zod.string().nullable(),
+  "submittedAt": zod.coerce.date(),
+  "recommendedDepartment": zod.string(),
+  "priority": zod.enum(['Low', 'Medium', 'High']),
+  "assignedTeam": zod.string().nullable(),
+  "awardedPoints": zod.boolean()
+}),
+  "awardedPoints": zod.boolean().describe('True only when this update newly resolves the report for the first time.')
+})
+
+
+/**
+ * @summary Stream a report photo from private object storage
+ */
+export const getReportPhotoPathIdMax = 80;
+
+
+
+export const GetReportPhotoParams = zod.object({
+  "id": zod.coerce.string().min(1).max(getReportPhotoPathIdMax)
+})
+
+export const GetReportPhotoResponse = zod.unknown()
+
+

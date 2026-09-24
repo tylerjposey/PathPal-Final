@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -24,3 +24,6 @@ timeoutMs = 20000
 [userenv.shared]
 "511_API_KEY " = "5b38e508-69b9-4fb9-8f6f-7870ab8de5d5"
 GOOGLE_MAPS_API_KEY = "AIzaSyDqJpTSnO9tCRcLpqiNjiIk81Gyj_mIabU"
+
+[nix]
+channel = "stable-25_05"

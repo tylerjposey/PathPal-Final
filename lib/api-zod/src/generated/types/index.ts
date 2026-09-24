@@ -6,6 +6,20 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './communityReport';
+export * from './communityReportCategory';
+export * from './communityReportInput';
+export * from './communityReportInputCategory';
+export * from './communityReportInputContentType';
+export * from './communityReportInputLocation';
+export * from './communityReportLocation';
+export * from './communityReportPriority';
+export * from './communityReportStatus';
+export * from './communityReportUpdate';
+export * from './communityReportUpdateCategory';
+export * from './communityReportUpdateLocation';
+export * from './communityReportUpdateResult';
+export * from './communityReportUpdateStatus';
 export * from './destinationParameter';
 export * from './errorResponse';
 export * from './getJourneyCatalogParams';
@@ -23,3 +37,8 @@ export * from './journeyRouteSource';
 export * from './journeyStop';
 export * from './latitudeParameter';
 export * from './longitudeParameter';
+export * from './reportSession';
+export * from './reportSessionInput';
+export * from './reportSessionInputRole';
+export * from './reportSessionRole';
+export * from './reportSessionTokenType';

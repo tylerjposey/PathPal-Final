@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: journey
     description: Live transit journey operations
+  - name: reports
+    description: Community safety report operations
 paths:
   /healthz:
     get:
@@ -137,7 +139,201 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JourneyCatalogResponse"
+  /reports:
+    get:
+      operationId: listReports
+      tags: [reports]
+      summary: List community reports
+      responses:
+        "200":
+          description: Community reports ordered newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunityReport"
+        "500":
+          description: Reports could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createReport
+      tags: [reports]
+      summary: Submit an anonymous community report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityReportInput"
+      responses:
+        "201":
+          description: Report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityReport"
+        "400":
+          description: Invalid report input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Photo exceeds the 2 MB decoded limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Anonymous report rate limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Photo storage is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /reports/session:
+    post:
+      operationId: createReportSession
+      tags: [reports]
+      summary: Create a manager or worker demo session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportSessionInput"
+      responses:
+        "200":
+          description: Signed bearer session, valid for 24 hours
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSession"
+        "400":
+          description: Invalid session input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid demo credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Session signing is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /reports/{id}:
+    patch:
+      operationId: updateReport
+      tags: [reports]
+      summary: Update a report as manager or assigned worker
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityReportUpdate"
+      responses:
+        "200":
+          description: Updated report and one-time award indicator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityReportUpdateResult"
+        "400":
+          description: Invalid update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Role is not authorized for this update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /reports/{id}/photo:
+    get:
+      operationId: getReportPhoto
+      tags: [reports]
+      summary: Stream a report photo from private object storage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+      responses:
+        "200":
+          description: Report image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Report or photo not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Private object storage is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   parameters:
     Latitude:
       name: lat
@@ -290,4 +486,85 @@ components:
         message:
           type: ["string", "null"]
       required: [source, routes, stops]
+    CommunityReport:
+      type: object
+      properties:
+        id: { type: string }
+        category:
+          type: string
+          enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns]
+        summary: { type: string }
+        description: { type: string }
+        severity: { type: integer, minimum: 1, maximum: 10 }
+        status:
+          type: string
+          enum: [Submitted, Under Review, Assigned, Resolved]
+        location:
+          type: string
+          enum: [Downtown San Jose, Japantown, Willow Glen, East San Jose, Alum Rock, Santa Clara]
+        x: { type: number }
+        y: { type: number }
+        photoUri: { type: ["string", "null"] }
+        submittedAt: { type: string, format: date-time }
+        recommendedDepartment: { type: string }
+        priority:
+          type: string
+          enum: [Low, Medium, High]
+        assignedTeam: { type: ["string", "null"] }
+        awardedPoints: { type: boolean }
+      required: [id, category, summary, description, severity, status, location, x, y, photoUri, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints]
+    CommunityReportInput:
+      type: object
+      properties:
+        description: { type: string, minLength: 12, maxLength: 4000 }
+        location:
+          type: string
+          enum: [Downtown San Jose, Japantown, Willow Glen, East San Jose, Alum Rock, Santa Clara]
+        category:
+          type: string
+          enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns]
+        photoBase64: { type: string, maxLength: 2796204 }
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+      required: [description, location]
+    ReportSessionInput:
+      type: object
+      properties:
+        username: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 1, maxLength: 200 }
+        role: { type: string, enum: [manager, worker] }
+      required: [username, password, role]
+    ReportSession:
+      type: object
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { type: string, format: date-time }
+        role: { type: string, enum: [manager, worker] }
+      required: [accessToken, tokenType, expiresAt, role]
+    CommunityReportUpdate:
+      type: object
+      properties:
+        description: { type: string, minLength: 12, maxLength: 4000 }
+        category:
+          type: string
+          enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns]
+        severity: { type: integer, minimum: 1, maximum: 10 }
+        location:
+          type: string
+          enum: [Downtown San Jose, Japantown, Willow Glen, East San Jose, Alum Rock, Santa Clara]
+        status:
+          type: string
+          enum: [Submitted, Under Review, Assigned, Resolved]
+        assignedTeam: { type: ["string", "null"], maxLength: 120 }
+    CommunityReportUpdateResult:
+      type: object
+      properties:
+        report:
+          $ref: "#/components/schemas/CommunityReport"
+        awardedPoints:
+          type: boolean
+          description: True only when this update newly resolves the report for the first time.
+      required: [report, awardedPoints]
 

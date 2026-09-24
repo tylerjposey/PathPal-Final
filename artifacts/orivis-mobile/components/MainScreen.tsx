@@ -45,6 +45,7 @@ import {
   useDemo,
 } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
+import { reportError } from '@/lib/reportApi';
 
 type TabKey = 'home' | 'map' | 'reports' | 'alerts' | 'rewards' | 'tasks' | 'profile';
 type ModalName = 'report' | 'sos' | 'case' | 'verify' | null;
@@ -367,6 +368,8 @@ function Home({
 function ManagerHome({ onCase }: { onCase: (report: SafetyReport) => void }) {
   const colors = useColors();
   const { state, assignReports } = useDemo();
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState('');
   const active = state.reports.filter((report) => report.status !== 'Resolved');
   const high = active.filter((report) => report.severity >= 8);
   const unassigned = active.filter((report) => !report.assignedTeam);
@@ -396,9 +399,18 @@ function ManagerHome({ onCase }: { onCase: (report: SafetyReport) => void }) {
         <Button
           label="Delegate to West Clean Team"
           icon="send"
-          onPress={() => assignReports(unassigned.slice(0, 3).map((report) => report.id), 'San Jose – West Clean Team')}
+          onPress={() => {
+            if (assigning) return;
+            setAssigning(true);
+            setAssignError('');
+            void assignReports(unassigned.slice(0, 3).map((report) => report.id), 'San Jose – West Clean Team')
+              .catch((error) => setAssignError(reportError(error)))
+              .finally(() => setAssigning(false));
+          }}
+          loading={assigning}
         />
       </Card>
+      {assignError ? <Text style={[styles.cardBody, { color: colors.destructive }]}>{assignError}</Text> : null}
       <SectionTitle title="Priority cases" />
       {active.slice(0, 3).map((report) => <CaseRow key={report.id} report={report} onPress={() => onCase(report)} />)}
     </ScreenScroll>
@@ -489,7 +501,7 @@ function MapScreen({ role, onCase }: { role: Role; onCase: (report: SafetyReport
 
 function ReportsScreen({ role, onCreate, onCase }: { role: Role; onCreate: () => void; onCase: (report: SafetyReport) => void }) {
   const colors = useColors();
-  const { state } = useDemo();
+  const { state, reportsError, reportsLoading } = useDemo();
   const [filter, setFilter] = useState<'All' | CaseStatus>('All');
   const reports = filter === 'All' ? state.reports : state.reports.filter((report) => report.status === filter);
   return (
@@ -500,6 +512,15 @@ function ReportsScreen({ role, onCreate, onCase }: { role: Role; onCreate: () =>
         subtitle={role === 'manager' ? 'Open a case to edit its analysis, severity, category, status, or assignment.' : 'Sample AI organizes reports before a city case manager reviews them.'}
         right={role !== 'manager' ? <IconButton icon="plus-circle" onPress={onCreate} color={colors.primary} /> : undefined}
       />
+      {reportsError ? (
+        <Card tone="danger">
+          <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>
+            Shared reports are unavailable. Showing reports saved on this device; new submissions and edits need the connection.
+          </Text>
+        </Card>
+      ) : reportsLoading ? (
+        <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Syncing shared cases…</Text>
+      ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
         {(['All', 'Submitted', 'Under Review', 'Assigned', 'Resolved'] as const).map((item) => (
           <Chip key={item} label={item} active={filter === item} onPress={() => setFilter(item)} />
@@ -715,20 +736,49 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
   const [location, setLocation] = useState('Downtown San Jose');
   const [category, setCategory] = useState<ReportCategory | undefined>();
   const [photoUri, setPhotoUri] = useState<string | undefined>();
+  const [photoBase64, setPhotoBase64] = useState<string | undefined>();
+  const [contentType, setContentType] = useState<'image/jpeg' | 'image/png' | 'image/webp' | undefined>();
   const [error, setError] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const selectPhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (!result.canceled) setPhotoUri(result.assets[0]?.uri);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7, base64: true });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.base64) throw new Error('This photo could not be read. Please choose another image.');
+      const mime = asset.mimeType || 'image/jpeg';
+      if (mime !== 'image/jpeg' && mime !== 'image/png' && mime !== 'image/webp') {
+        throw new Error('Choose a JPEG, PNG, or WebP photo.');
+      }
+      if (asset.base64.length > 2_796_204) throw new Error('Choose a photo smaller than 2 MB.');
+      setPhotoUri(asset.uri);
+      setPhotoBase64(asset.base64);
+      setContentType(mime);
+      setSubmitError('');
+    } catch (error) {
+      setSubmitError(reportError(error));
+    }
   };
-  const submit = () => {
+  const submit = async () => {
+    if (submitting) return;
     if (description.trim().length < 12) {
       setError('Add a short description with at least 12 characters.');
       return;
     }
-    createReport({ description, location, category, photoUri });
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Report submitted', 'Sample AI categorized and prioritized the report for city review.', [{ text: 'Done', onPress: onClose }]);
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await createReport({ description, location, category, photoBase64, contentType });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onClose();
+      if (Platform.OS !== 'web') Alert.alert('Report submitted', 'Your report was saved for city review.');
+    } catch (error) {
+      setSubmitError(reportError(error));
+    } finally {
+      setSubmitting(false);
+    }
   };
   return (
     <KeyboardAvoidingView style={[styles.modalPage, { backgroundColor: colors.background }]} behavior="padding">
@@ -743,7 +793,7 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
             <Feather name="cpu" size={21} color={colors.primary} />
             <View style={styles.flex}>
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>Simulated AI review</Text>
-              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Orivis will create a sample category, severity score, department, and priority from your description.</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Orivis will create a sample category, severity score, department, and priority from your description. Your submitted report is saved to the shared case queue.</Text>
             </View>
           </View>
         </Card>
@@ -774,7 +824,8 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
           ))}
         </ScrollView>
         <RouteMap height={210} />
-        <Button label="Submit for review" icon="send" onPress={submit} />
+        {submitError ? <Text style={[styles.cardBody, { color: colors.destructive }]}>{submitError}</Text> : null}
+        <Button label="Submit for review" icon="send" onPress={() => { void submit(); }} loading={submitting} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -788,12 +839,34 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
   const [severity, setSeverity] = useState(`${current.severity}`);
   const [description, setDescription] = useState(current.description);
   const [category, setCategory] = useState(current.category);
+  const [location, setLocation] = useState(current.location);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
   const canEdit = role === 'manager';
   const statuses: CaseStatus[] = ['Submitted', 'Under Review', 'Assigned', 'Resolved'];
+  const runUpdate = async (action: () => Promise<void>, message: string) => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError('');
+    setSaveMessage('');
+    try {
+      await action();
+      setSaveMessage(message);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      setSaveError(reportError(error));
+    } finally {
+      setSaving(false);
+    }
+  };
   const save = () => {
-    updateManagerReport(current.id, { description, category, severity: Math.min(10, Math.max(1, Number(severity) || current.severity)) });
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Case updated', 'Manager changes were saved to the demonstration data.');
+    const score = Number(severity);
+    if (description.trim().length < 12 || description.trim().length > 4000 || !Number.isInteger(score) || score < 1 || score > 10) {
+      setSaveError('Enter a description of 12–4000 characters and a whole-number severity from 1–10.');
+      return;
+    }
+    void runUpdate(() => updateManagerReport(current.id, { description: description.trim(), category, location, severity: score }), 'Case edits saved to the shared queue.');
   };
   return (
     <View style={[styles.modalPage, { backgroundColor: colors.background }]}>
@@ -832,7 +905,13 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
             <View style={styles.wrap}>
               {REPORT_CATEGORIES.map((item) => <Chip key={item} label={item} active={category === item} onPress={() => setCategory(item)} />)}
             </View>
-            <Button label="Save case edits" icon="save" onPress={save} />
+            <Text style={[styles.fieldCaption, { color: colors.foreground }]}>Location</Text>
+            <View style={styles.wrap}>
+              {['Downtown San Jose', 'Japantown', 'Willow Glen', 'East San Jose', 'Alum Rock', 'Santa Clara'].map((item) => (
+                <Chip key={item} label={item} active={location === item} onPress={() => setLocation(item)} />
+              ))}
+            </View>
+            <Button label="Save case edits" icon="save" onPress={save} loading={saving} />
           </>
         ) : (
           <Card>
@@ -859,7 +938,10 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
                   key={status}
                   label={status}
                   active={current.status === status}
-                  onPress={() => role === 'manager' ? updateManagerReport(current.id, { status }) : updateWorkerStatus(current.id, status)}
+                   onPress={() => { void runUpdate(
+                     () => role === 'manager' ? updateManagerReport(current.id, { status }) : updateWorkerStatus(current.id, status),
+                     `Case status saved as ${status}.`,
+                   ); }}
                   tone={status === 'Resolved' ? 'success' : undefined}
                 />
               ))}
@@ -867,8 +949,12 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
           </>
         ) : null}
         {role === 'manager' && !current.assignedTeam ? (
-          <Button label="Delegate to West Clean Team" icon="send" onPress={() => assignReports([current.id], 'San Jose – West Clean Team')} />
+          <Button label="Delegate to West Clean Team" icon="send" onPress={() => {
+            void runUpdate(() => assignReports([current.id], 'San Jose – West Clean Team'), 'Case assigned to the West Clean Team.');
+          }} loading={saving} />
         ) : null}
+        {saveError ? <Text style={[styles.cardBody, { color: colors.destructive }]}>{saveError}</Text> : null}
+        {saveMessage ? <Text style={[styles.cardBody, { color: colors.success }]}>{saveMessage}</Text> : null}
         {role === 'worker' ? (
           <Card tone="soft">
             <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Worker access is limited to status updates. Report details, severity, category, and routes are read-only.</Text>

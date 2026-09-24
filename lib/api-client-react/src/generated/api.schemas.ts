@@ -90,6 +90,227 @@ export interface JourneyCatalogResponse {
   message?: string | null;
 }
 
+export type CommunityReportCategory = typeof CommunityReportCategory[keyof typeof CommunityReportCategory];
+
+
+export const CommunityReportCategory = {
+  Blight: 'Blight',
+  Illegal_dumping: 'Illegal dumping',
+  Unsafe_bus_stops: 'Unsafe bus stops',
+  Damaged_sidewalks: 'Damaged sidewalks',
+  Poor_lighting: 'Poor lighting',
+  Suspicious_activity: 'Suspicious activity',
+  Other_concerns: 'Other concerns',
+} as const;
+
+export type CommunityReportStatus = typeof CommunityReportStatus[keyof typeof CommunityReportStatus];
+
+
+export const CommunityReportStatus = {
+  Submitted: 'Submitted',
+  Under_Review: 'Under Review',
+  Assigned: 'Assigned',
+  Resolved: 'Resolved',
+} as const;
+
+export type CommunityReportLocation = typeof CommunityReportLocation[keyof typeof CommunityReportLocation];
+
+
+export const CommunityReportLocation = {
+  Downtown_San_Jose: 'Downtown San Jose',
+  Japantown: 'Japantown',
+  Willow_Glen: 'Willow Glen',
+  East_San_Jose: 'East San Jose',
+  Alum_Rock: 'Alum Rock',
+  Santa_Clara: 'Santa Clara',
+} as const;
+
+export type CommunityReportPriority = typeof CommunityReportPriority[keyof typeof CommunityReportPriority];
+
+
+export const CommunityReportPriority = {
+  Low: 'Low',
+  Medium: 'Medium',
+  High: 'High',
+} as const;
+
+export interface CommunityReport {
+  id: string;
+  category: CommunityReportCategory;
+  summary: string;
+  description: string;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  severity: number;
+  status: CommunityReportStatus;
+  location: CommunityReportLocation;
+  x: number;
+  y: number;
+  /** @nullable */
+  photoUri: string | null;
+  submittedAt: string;
+  recommendedDepartment: string;
+  priority: CommunityReportPriority;
+  /** @nullable */
+  assignedTeam: string | null;
+  awardedPoints: boolean;
+}
+
+export type CommunityReportInputLocation = typeof CommunityReportInputLocation[keyof typeof CommunityReportInputLocation];
+
+
+export const CommunityReportInputLocation = {
+  Downtown_San_Jose: 'Downtown San Jose',
+  Japantown: 'Japantown',
+  Willow_Glen: 'Willow Glen',
+  East_San_Jose: 'East San Jose',
+  Alum_Rock: 'Alum Rock',
+  Santa_Clara: 'Santa Clara',
+} as const;
+
+export type CommunityReportInputCategory = typeof CommunityReportInputCategory[keyof typeof CommunityReportInputCategory];
+
+
+export const CommunityReportInputCategory = {
+  Blight: 'Blight',
+  Illegal_dumping: 'Illegal dumping',
+  Unsafe_bus_stops: 'Unsafe bus stops',
+  Damaged_sidewalks: 'Damaged sidewalks',
+  Poor_lighting: 'Poor lighting',
+  Suspicious_activity: 'Suspicious activity',
+  Other_concerns: 'Other concerns',
+} as const;
+
+export type CommunityReportInputContentType = typeof CommunityReportInputContentType[keyof typeof CommunityReportInputContentType];
+
+
+export const CommunityReportInputContentType = {
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+} as const;
+
+export interface CommunityReportInput {
+  /**
+     * @minLength 12
+     * @maxLength 4000
+     */
+  description: string;
+  location: CommunityReportInputLocation;
+  category?: CommunityReportInputCategory;
+  /** @maxLength 2796204 */
+  photoBase64?: string;
+  contentType?: CommunityReportInputContentType;
+}
+
+export type ReportSessionInputRole = typeof ReportSessionInputRole[keyof typeof ReportSessionInputRole];
+
+
+export const ReportSessionInputRole = {
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
+export interface ReportSessionInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  username: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  password: string;
+  role: ReportSessionInputRole;
+}
+
+export type ReportSessionTokenType = typeof ReportSessionTokenType[keyof typeof ReportSessionTokenType];
+
+
+export const ReportSessionTokenType = {
+  Bearer: 'Bearer',
+} as const;
+
+export type ReportSessionRole = typeof ReportSessionRole[keyof typeof ReportSessionRole];
+
+
+export const ReportSessionRole = {
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
+export interface ReportSession {
+  accessToken: string;
+  tokenType: ReportSessionTokenType;
+  expiresAt: string;
+  role: ReportSessionRole;
+}
+
+export type CommunityReportUpdateCategory = typeof CommunityReportUpdateCategory[keyof typeof CommunityReportUpdateCategory];
+
+
+export const CommunityReportUpdateCategory = {
+  Blight: 'Blight',
+  Illegal_dumping: 'Illegal dumping',
+  Unsafe_bus_stops: 'Unsafe bus stops',
+  Damaged_sidewalks: 'Damaged sidewalks',
+  Poor_lighting: 'Poor lighting',
+  Suspicious_activity: 'Suspicious activity',
+  Other_concerns: 'Other concerns',
+} as const;
+
+export type CommunityReportUpdateLocation = typeof CommunityReportUpdateLocation[keyof typeof CommunityReportUpdateLocation];
+
+
+export const CommunityReportUpdateLocation = {
+  Downtown_San_Jose: 'Downtown San Jose',
+  Japantown: 'Japantown',
+  Willow_Glen: 'Willow Glen',
+  East_San_Jose: 'East San Jose',
+  Alum_Rock: 'Alum Rock',
+  Santa_Clara: 'Santa Clara',
+} as const;
+
+export type CommunityReportUpdateStatus = typeof CommunityReportUpdateStatus[keyof typeof CommunityReportUpdateStatus];
+
+
+export const CommunityReportUpdateStatus = {
+  Submitted: 'Submitted',
+  Under_Review: 'Under Review',
+  Assigned: 'Assigned',
+  Resolved: 'Resolved',
+} as const;
+
+export interface CommunityReportUpdate {
+  /**
+     * @minLength 12
+     * @maxLength 4000
+     */
+  description?: string;
+  category?: CommunityReportUpdateCategory;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  severity?: number;
+  location?: CommunityReportUpdateLocation;
+  status?: CommunityReportUpdateStatus;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  assignedTeam?: string | null;
+}
+
+export interface CommunityReportUpdateResult {
+  report: CommunityReport;
+  /** True only when this update newly resolves the report for the first time. */
+  awardedPoints: boolean;
+}
+
 export type LatitudeParameter = number;
 
 export type LongitudeParameter = number;

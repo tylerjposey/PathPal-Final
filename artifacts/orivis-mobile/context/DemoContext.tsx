@@ -1,4 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  createReport as submitCommunityReport,
+  getListReportsQueryKey,
+  updateReport as saveCommunityReport,
+  useListReports,
+  type CommunityReportInput,
+  type CommunityReportUpdate,
+} from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { clearReportSession, hasReportSession, toSafetyReport } from '@/lib/reportApi';
 import React, {
   createContext,
   useCallback,
@@ -361,6 +371,8 @@ function analyzeDescription(description: string, selected?: ReportCategory) {
 interface DemoContextValue {
   state: DemoState;
   hydrated: boolean;
+  reportsError: boolean;
+  reportsLoading: boolean;
   authenticate: (username: string, password: string, role: Role) => DemoUser | null;
   verifyFamilyInvite: (code: string) => boolean;
   createFamily: (familyName: string, childName: string, inviteCode: string) => void;
@@ -375,12 +387,13 @@ interface DemoContextValue {
   createReport: (input: {
     description: string;
     location: string;
-    photoUri?: string;
+    photoBase64?: string;
+    contentType?: 'image/jpeg' | 'image/png' | 'image/webp';
     category?: ReportCategory;
-  }) => void;
-  updateManagerReport: (id: string, changes: Partial<Pick<SafetyReport, 'category' | 'description' | 'severity' | 'status'>>) => void;
-  assignReports: (ids: string[], team: string) => void;
-  updateWorkerStatus: (id: string, status: CaseStatus) => void;
+  }) => Promise<void>;
+  updateManagerReport: (id: string, changes: Partial<Pick<SafetyReport, 'category' | 'description' | 'severity' | 'status' | 'location'>>) => Promise<void>;
+  assignReports: (ids: string[], team: string) => Promise<void>;
+  updateWorkerStatus: (id: string, status: CaseStatus) => Promise<void>;
   redeemReward: (rewardName: string, cost: number) => boolean;
   markNotificationsRead: () => void;
   activateSOS: () => void;
@@ -394,15 +407,42 @@ const DemoContext = createContext<DemoContextValue | null>(null);
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(createInitialDemoState);
   const [hydrated, setHydrated] = useState(false);
+  const queryClient = useQueryClient();
+  const reportsQuery = useListReports({
+    query: { queryKey: getListReportsQueryKey(), enabled: hydrated && Boolean(state.account), refetchInterval: 30_000, staleTime: 5_000 },
+  });
+
+  useEffect(() => {
+    if (!reportsQuery.data || !hydrated || !state.account) return;
+    const serverReports = reportsQuery.data.map(toSafetyReport);
+    const serverIds = new Set(serverReports.map((report) => report.id));
+    const initialIds = new Set(createInitialDemoState().reports.map((report) => report.id));
+    setState((current) => {
+      // Preserve older device-only submissions until they can be resubmitted.
+      const legacy = current.reports.filter((report) => !serverIds.has(report.id) && !initialIds.has(report.id));
+      const reports = [...serverReports, ...legacy].sort(
+        (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+      );
+      if (JSON.stringify(current.reports) === JSON.stringify(reports)) return current;
+      const next = { ...current, reports };
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [reportsQuery.data, hydrated, state.account]);
 
   useEffect(() => {
     let mounted = true;
     AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => {
+      .then(async (raw) => {
         if (!mounted) return;
         if (raw) {
           try {
-            setState({ ...createInitialDemoState(), ...JSON.parse(raw) as Partial<DemoState> });
+            const saved = { ...createInitialDemoState(), ...JSON.parse(raw) as Partial<DemoState> };
+            if (saved.account?.role === 'manager' || saved.account?.role === 'worker') {
+              const valid = await hasReportSession(saved.account.role);
+              if (!valid) saved.account = null;
+            }
+            if (mounted) setState(saved);
           } catch {
             setState(createInitialDemoState());
           }
@@ -478,10 +518,12 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }, [update]);
 
   const signOut = useCallback(() => {
+    void clearReportSession();
     update((current) => ({ ...current, account: null }));
   }, [update]);
 
   const resetDemo = useCallback(() => {
+    void clearReportSession();
     const initial = createInitialDemoState();
     setState(initial);
     void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(initial)).catch(() => undefined);
@@ -548,114 +590,74 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     }));
   }, [update]);
 
-  const createReport = useCallback((input: {
-    description: string;
-    location: string;
-    photoUri?: string;
-    category?: ReportCategory;
+  const createReport = useCallback(async (input: {
+    description: string; location: string; photoBase64?: string;
+    contentType?: 'image/jpeg' | 'image/png' | 'image/webp'; category?: ReportCategory;
   }) => {
-    const analysis = analyzeDescription(input.description, input.category);
-    const pin = MAP_LOCATIONS.find((item) => item.name === input.location) ?? MAP_LOCATIONS[0];
-    const id = `OR-${Math.floor(1000 + Math.random() * 8999)}`;
-    const report: SafetyReport = {
-      id,
-      category: analysis.category,
-      summary: input.description.trim().slice(0, 105),
+    const created = await submitCommunityReport({
       description: input.description.trim(),
-      severity: analysis.severity,
-      status: 'Submitted',
-      location: pin.name,
-      x: pin.x,
-      y: pin.y,
-      photoUri: input.photoUri,
-      submittedAt: new Date().toISOString(),
-      recommendedDepartment: analysis.recommendedDepartment,
-      priority: analysis.priority,
-      awardedPoints: false,
-    };
+      location: input.location as CommunityReportInput['location'],
+      category: input.category,
+      photoBase64: input.photoBase64,
+      contentType: input.contentType,
+    });
+    const report = toSafetyReport(created);
     update((current) => ({
       ...current,
       reports: [report, ...current.reports],
       notifications: [
-        notification('Community report received', `${id} is in review. The sample AI assigned ${analysis.category} with ${analysis.priority.toLowerCase()} priority.`, 'Case'),
+        notification('Community report received', `${report.id} is in review. The sample AI assigned ${report.category} with ${report.priority.toLowerCase()} priority.`, 'Case'),
         ...current.notifications,
       ],
     }));
-  }, [update]);
+    void queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
+  }, [update, queryClient]);
 
-  const updateManagerReport = useCallback((
+  const applySavedReport = useCallback((result: Awaited<ReturnType<typeof saveCommunityReport>>) => {
+    const report = toSafetyReport(result.report);
+    update((current) => ({
+      ...current,
+      reports: current.reports.map((item) => item.id === report.id ? report : item),
+      rewardPoints: current.rewardPoints + (result.awardedPoints ? 50 : 0),
+      rewardHistory: result.awardedPoints
+        ? [`+50 points · ${report.id} resolved`, ...current.rewardHistory]
+        : current.rewardHistory,
+      notifications: result.awardedPoints
+        ? [notification('Report resolved · +50 family points', `${report.id} was verified.`, 'Reward'), ...current.notifications]
+        : current.notifications,
+    }));
+    void queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
+  }, [update, queryClient]);
+
+  const updateManagerReport = useCallback(async (
     id: string,
-    changes: Partial<Pick<SafetyReport, 'category' | 'description' | 'severity' | 'status'>>,
+    changes: Partial<Pick<SafetyReport, 'category' | 'description' | 'severity' | 'status' | 'location'>>,
   ) => {
-    update((current) => {
-      if (current.account?.role !== 'manager') return current;
-      let awarded = 0;
-      const reports = current.reports.map((report) => {
-        if (report.id !== id) return report;
-        const becameResolved = changes.status === 'Resolved' && report.status !== 'Resolved' && !report.awardedPoints;
-        if (becameResolved) awarded += 50;
-        const nextCategory = changes.category ?? report.category;
-        const nextSeverity = changes.severity ?? report.severity;
-        return {
-          ...report,
-          ...changes,
-          summary: changes.description ? changes.description.slice(0, 105) : report.summary,
-          recommendedDepartment:
-            changes.category === 'Poor lighting' || changes.category === 'Unsafe bus stops'
-              ? 'Transportation & Public Works'
-              : changes.category === 'Damaged sidewalks'
-                ? 'Public Works'
-                : changes.category
-                  ? 'Environmental Services'
-                  : report.recommendedDepartment,
-          priority: (nextSeverity >= 8 ? 'High' : nextSeverity >= 5 ? 'Medium' : 'Low') as SafetyReport['priority'],
-          awardedPoints: report.awardedPoints || becameResolved,
-          category: nextCategory,
-        };
-      });
-      return {
-        ...current,
-        reports,
-        rewardPoints: current.rewardPoints + awarded,
-        rewardHistory: awarded ? [`+${awarded} points · ${id} resolved`, ...current.rewardHistory] : current.rewardHistory,
-        notifications: awarded
-          ? [notification('Report resolved · +50 family points', `${id} was verified.`, 'Reward'), ...current.notifications]
-          : current.notifications,
-      };
-    });
-  }, [update]);
+    if (state.account?.role !== 'manager') throw new Error('Only case managers can edit reports.');
+    applySavedReport(await saveCommunityReport(id, changes as CommunityReportUpdate));
+  }, [state.account?.role, applySavedReport]);
 
-  const assignReports = useCallback((ids: string[], team: string) => {
-    update((current) => {
-      if (current.account?.role !== 'manager') return current;
-      const selected = new Set(ids);
-      const reports = current.reports.map((report) =>
-        selected.has(report.id) && report.status !== 'Resolved'
-          ? { ...report, status: 'Assigned' as const, assignedTeam: team }
-          : report,
-      );
-      return {
-        ...current,
-        reports,
-        notifications: [notification('Cleanup route delegated', `Route/task delegated to ${team}.`, 'Case'), ...current.notifications],
-      };
-    });
-  }, [update]);
+  const assignReports = useCallback(async (ids: string[], team: string) => {
+    if (state.account?.role !== 'manager') throw new Error('Only case managers can delegate reports.');
+    for (const id of ids) {
+      const report = state.reports.find((item) => item.id === id);
+      if (report?.status === 'Resolved') continue;
+      applySavedReport(await saveCommunityReport(id, { status: 'Assigned', assignedTeam: team }));
+    }
+    update((current) => ({
+      ...current,
+      notifications: [notification('Cleanup route delegated', `Route/task delegated to ${team}.`, 'Case'), ...current.notifications],
+    }));
+  }, [state.account?.role, state.reports, applySavedReport, update]);
 
-  const updateWorkerStatus = useCallback((id: string, status: CaseStatus) => {
-    update((current) => {
-      if (current.account?.role !== 'worker') return current;
-      const assigned = current.reports.some(
-        (report) => report.id === id && report.assignedTeam === 'San Jose – West Clean Team',
-      );
-      if (!assigned) return current;
-      return {
-        ...current,
-        reports: current.reports.map((report) => (report.id === id ? { ...report, status } : report)),
-        notifications: [notification('Task status updated', `${id} is now marked ${status.toLowerCase()}.`, 'Case'), ...current.notifications],
-      };
-    });
-  }, [update]);
+  const updateWorkerStatus = useCallback(async (id: string, status: CaseStatus) => {
+    if (state.account?.role !== 'worker') throw new Error('Only assigned workers can update task status.');
+    applySavedReport(await saveCommunityReport(id, { status }));
+    update((current) => ({
+      ...current,
+      notifications: [notification('Task status updated', `${id} is now marked ${status.toLowerCase()}.`, 'Case'), ...current.notifications],
+    }));
+  }, [state.account?.role, applySavedReport, update]);
 
   const redeemReward = useCallback((rewardName: string, cost: number) => {
     let redeemed = false;
@@ -758,6 +760,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DemoContextValue>(() => ({
     state,
     hydrated,
+    reportsError: reportsQuery.isError,
+    reportsLoading: reportsQuery.isPending || reportsQuery.isFetching,
     authenticate,
     verifyFamilyInvite,
     createFamily,
@@ -782,6 +786,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }), [
     state,
     hydrated,
+    reportsQuery.isError,
+    reportsQuery.isPending,
+    reportsQuery.isFetching,
     authenticate,
     verifyFamilyInvite,
     createFamily,

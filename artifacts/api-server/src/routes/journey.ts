@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { logger } from "../lib/logger";
 import {
   GetJourneyCatalogQueryParams,
   GetJourneyCatalogResponse,
@@ -76,6 +77,12 @@ type TransitCatalog = {
 type TransitLine = { id: string; name: string; refs: string[] };
 type TransitAlert = { text: string; lineRefs: string[] };
 type StopPrediction = { lineRef: string; delayMinutes: number };
+const lineLabel = (line: TransitLine): string => {
+  const code = line.refs.find((ref) => /^\d{1,4}[A-Z]?$/.test(ref));
+  return code && !line.name.toLowerCase().includes(code.toLowerCase())
+    ? `${code} · ${line.name}`
+    : line.name;
+};
 type CacheEntry<T> = { expiresAt: number; value: T };
 let catalogCache: CacheEntry<TransitCatalog> | undefined;
 let catalogInFlight: Promise<TransitCatalog | undefined> | undefined;
@@ -136,16 +143,19 @@ function safeText(value: unknown): string | undefined {
   return undefined;
 }
 
-async function fetchJson(url: URL): Promise<unknown> {
+async function fetchJson(url: URL, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
   const response = await fetch(url, {
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     headers: { Accept: "application/json" },
   });
-  if (!response.ok) throw new Error("Upstream request failed");
+  if (!response.ok) {
+    logger.warn({ provider: url.hostname === "api.511.org" ? "511" : "Google Maps", status: response.status }, "Journey upstream HTTP failure");
+    throw new Error("Upstream request failed");
+  }
   return (await response.json()) as unknown;
 }
 
-async function fetch511Json(url: URL): Promise<unknown> {
+async function fetch511Json(url: URL, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
   const now = Date.now();
   while (api511RequestTimes.length && api511RequestTimes[0] <= now - 60 * 60_000) {
     api511RequestTimes.shift();
@@ -154,7 +164,7 @@ async function fetch511Json(url: URL): Promise<unknown> {
     throw new Error("511 request budget reached");
   }
   api511RequestTimes.push(now);
-  return fetchJson(url);
+  return fetchJson(url, timeoutMs);
 }
 
 function make511Url(endpoint: string, apiKey: string): URL {
@@ -165,7 +175,7 @@ function make511Url(endpoint: string, apiKey: string): URL {
 }
 
 function parse511Operators(payload: unknown) {
-  const content = objectList(asRecord(payload)?.content);
+  const content = objectList(Array.isArray(payload) ? payload : asRecord(payload)?.content);
   const vta = content.find((operator) => {
     const shortName = safeText(operator.ShortName) ?? "";
     const name = safeText(operator.Name) ?? "";
@@ -179,7 +189,7 @@ function parse511Operators(payload: unknown) {
 }
 
 function parse511Lines(payload: unknown): TransitLine[] {
-  const content = objectList(asRecord(payload)?.content);
+  const content = objectList(Array.isArray(payload) ? payload : asRecord(payload)?.content);
   return content
     .map((line) => {
       const id = safeText(line.Id);
@@ -246,6 +256,37 @@ function lineRefsIn(value: unknown): string[] {
 }
 
 function parse511Alerts(payload: unknown): { valid: boolean; alerts: TransitAlert[] } {
+  const gtfs = asRecord(payload);
+  if (gtfs && Array.isArray(gtfs.Entities)) {
+    const translatedText = (value: unknown): string | undefined => {
+      const translations = objectList(getPath(value, "Translations"));
+      return translations.map((entry) => safeText(getPath(entry, "Text"))).find((text) => !!text);
+    };
+    const alerts = objectList(gtfs.Entities)
+      .map((entity) => {
+        const alert = asRecord(getPath(entity, "Alert"));
+        if (!alert) return undefined;
+        const periods = objectList(getPath(alert, "ActivePeriods"));
+        const now = Date.now() / 1000;
+        if (periods.length && !periods.some((period) => {
+          const start = numberField(period, ["start"]);
+          const end = numberField(period, ["end"]);
+          return (start === undefined || start <= now) && (end === undefined || end >= now);
+        })) return undefined;
+        const text = translatedText(getPath(alert, "HeaderText")) ??
+          translatedText(getPath(alert, "DescriptionText"));
+        if (!text) return undefined;
+        const lineRefs = objectList(getPath(alert, "InformedEntities"))
+          .flatMap((informed) => [
+            safeText(getPath(informed, "RouteId")),
+            safeText(getPath(informed, "Trip", "RouteId")),
+          ].filter((ref): ref is string => !!ref));
+        return { text, lineRefs: [...new Set(lineRefs)] };
+      })
+      .filter((alert): alert is TransitAlert => !!alert)
+      .slice(0, 30);
+    return { valid: true, alerts };
+  }
   const situationExchange = getPath(
     payload,
     "Siri",
@@ -283,7 +324,18 @@ async function get511Catalog(): Promise<TransitCatalog | undefined> {
       // This is intentionally the first 511 API call: operator discovery is lazy.
       const operatorsPayload = await fetch511Json(make511Url("operators", apiKey));
       const operator = parse511Operators(operatorsPayload);
-      if (!operator) throw new Error("VTA operator unavailable");
+      if (!operator) {
+        const shape = asRecord(operatorsPayload);
+        logger.warn({
+          provider: "511",
+          payloadType: Array.isArray(operatorsPayload) ? "array" : typeof operatorsPayload,
+          topLevelFields: Object.keys(shape ?? {}).slice(0, 8),
+          operatorCount: objectList(Array.isArray(operatorsPayload) ? operatorsPayload : shape?.content).length,
+          firstOperatorFields: Object.keys(objectList(Array.isArray(operatorsPayload) ? operatorsPayload : shape?.content)[0] ?? {}).slice(0, 8),
+          providerCode: typeof shape?.code === "number" ? shape.code : undefined,
+        }, "VTA operator unavailable in 511 response");
+        throw new Error("VTA operator unavailable");
+      }
 
       const fetchFeed = async (
         endpoint: string,
@@ -291,7 +343,7 @@ async function get511Catalog(): Promise<TransitCatalog | undefined> {
         const url = make511Url(endpoint, apiKey);
         url.searchParams.set("operator_id", operator.id);
         try {
-          return { payload: await fetch511Json(url), ok: true };
+          return { payload: await fetch511Json(url, endpoint === "stops" ? 20_000 : UPSTREAM_TIMEOUT_MS), ok: true };
         } catch {
           return { ok: false };
         }
@@ -321,10 +373,29 @@ async function get511Catalog(): Promise<TransitCatalog | undefined> {
         parsedAlerts.valid &&
         lines.length > 0 &&
         stops.length > 0;
+      if (!complete) {
+        const alertShape = asRecord(alertsResult.payload);
+        const siri = asRecord(alertShape?.Siri);
+        const delivery = asRecord(siri?.ServiceDelivery);
+        logger.warn({
+          provider: "511",
+          linesFeedOk: linesResult.ok,
+          stopsFeedOk: stopsResult.ok,
+          alertsFeedOk: alertsResult.ok,
+          alertsParsed: parsedAlerts.valid,
+          lineCount: lines.length,
+          stopCount: stops.length,
+          alertPayloadType: Array.isArray(alertsResult.payload) ? "array" : typeof alertsResult.payload,
+          alertFields: Object.keys(alertShape ?? {}).slice(0, 8),
+          siriFields: Object.keys(siri ?? {}).slice(0, 8),
+          deliveryFields: Object.keys(delivery ?? {}).slice(0, 8),
+          alertArrayLength: Array.isArray(alertsResult.payload) ? alertsResult.payload.length : undefined,
+        }, "VTA catalog incomplete");
+      }
       const catalog: TransitCatalog = {
         operatorId: operator.id,
-        agency: operator.agency,
-        routes: [...new Set(lines.map((line) => line.name))],
+        agency: operator.id,
+        routes: [...new Set(lines.map(lineLabel))],
         lines,
         stops,
         alerts: parsedAlerts.alerts,
@@ -561,7 +632,10 @@ async function fetchGoogleDirections(
   url.searchParams.set("key", apiKey);
   try {
     const payload = asRecord(await fetchJson(url));
-    if (payload?.status !== "OK" || !Array.isArray(payload.routes)) return undefined;
+    if (payload?.status !== "OK" || !Array.isArray(payload.routes)) {
+      logger.warn({ provider: "Google Maps", status: typeof payload?.status === "string" ? payload.status.slice(0, 32) : "invalid response" }, "Journey directions unavailable");
+      return undefined;
+    }
     const routes = payload.routes
       .map((item, index) => {
         const record = asRecord(item);
@@ -922,6 +996,7 @@ router.get("/journey/map-image", async (req, res): Promise<void> => {
       !response.ok ||
       !["image/png", "image/jpeg"].includes(contentType.split(";")[0].trim())
     ) {
+      req.log.warn({ provider: "Google Maps", status: response.status, image: contentType.startsWith("image/") }, "Journey map image unavailable");
       res.status(503).json({ error: "Static map is temporarily unavailable." });
       return;
     }
@@ -958,10 +1033,16 @@ router.get("/journey/catalog", async (req, res): Promise<void> => {
     return;
   }
   const search = query.data.query?.trim().toLowerCase();
+  const matchingLines = search
+    ? catalog.lines.filter((line) => [line.name, ...line.refs].some((ref) => ref.toLowerCase().includes(search)))
+    : catalog.lines;
+  const exactNumberMatches = search && /^\d+$/.test(search)
+    ? matchingLines.filter((line) => line.refs.some((ref) => ref.toLowerCase() === search))
+    : [];
   const response = {
     source: "live" as const,
     routes: search
-      ? catalog.routes.filter((route) => route.toLowerCase().includes(search))
+      ? [...new Set((exactNumberMatches.length ? exactNumberMatches : matchingLines).map(lineLabel))]
       : catalog.routes,
     stops: search
       ? catalog.stops.filter((stop) => stop.name.toLowerCase().includes(search))

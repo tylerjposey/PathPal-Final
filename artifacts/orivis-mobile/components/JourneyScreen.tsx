@@ -32,7 +32,7 @@ export function JourneyScreen() {
 
   const catalogParams = { query: catalogSearch };
   const journeyParams = { ...origin, destination: searchedDestination };
-  const catalog = useGetJourneyCatalog(catalogParams, { query: { queryKey: getGetJourneyCatalogQueryKey(catalogParams), staleTime: 15 * 60_000 } });
+  const catalog = useGetJourneyCatalog(catalogParams, { query: { queryKey: getGetJourneyCatalogQueryKey(catalogParams), enabled: catalogSearch.length > 0, staleTime: 15 * 60_000 } });
   const journey = useGetJourneyMap(
     journeyParams,
     { query: { queryKey: getGetJourneyMapQueryKey(journeyParams), enabled: searchedDestination.length > 0, staleTime: 60_000, retry: 1 } },
@@ -132,7 +132,7 @@ export function JourneyScreen() {
         <Text style={[styles.small, { color: colors.mutedForeground }]}>Destination stop options: {[...new Set(routes.map((route) => route.destinationStop))].join(' · ') || 'Search for routes first'}</Text>
       </Card>
 
-      <SectionTitle title="Route options" action="Refresh" onAction={() => { void journey.refetch(); void catalog.refetch(); }} />
+      <SectionTitle title="Route options" action="Refresh" onAction={() => { void journey.refetch(); if (catalogSearch) void catalog.refetch(); }} />
       {routes.map((route) => (
         <Pressable key={route.id} testID={`route-${route.id}`} onPress={() => setSelectedRouteId(route.id)} style={[styles.option, { backgroundColor: colors.card, borderColor: selectedRoute?.id === route.id ? colors.primary : colors.border }]}>
           <View style={styles.optionHeading}>

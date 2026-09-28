@@ -29,6 +29,59 @@ export const JourneyRouteSource = {
   demo: 'demo',
 } as const;
 
+export type JourneyRouteMode = typeof JourneyRouteMode[keyof typeof JourneyRouteMode];
+
+
+export const JourneyRouteMode = {
+  walking: 'walking',
+  transit: 'transit',
+} as const;
+
+export type JourneyLegType = typeof JourneyLegType[keyof typeof JourneyLegType];
+
+
+export const JourneyLegType = {
+  walk: 'walk',
+  bus: 'bus',
+} as const;
+
+export interface JourneyStop {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  /** @nullable */
+  distanceMeters?: number | null;
+}
+
+/**
+ * One ordered segment of a journey - either a walk or a single VTA bus ride.
+ */
+export interface JourneyLeg {
+  type: JourneyLegType;
+  /**
+     * Public VTA route code (e.g. "22"), null for walking legs.
+     * @nullable
+     */
+  routeNumber: string | null;
+  /** @nullable */
+  routeName: string | null;
+  boardingStop: JourneyStop;
+  alightingStop: JourneyStop;
+  /** @minimum 0 */
+  distanceMeters: number;
+  /** @minimum 0 */
+  durationMinutes: number;
+  /** @nullable */
+  delayMinutes: number | null;
+  /** @nullable */
+  predictedArrival: string | null;
+  /** @nullable */
+  transferGuidance: string | null;
+  /** @nullable */
+  polyline: string | null;
+}
+
 export interface JourneyRoute {
   id: string;
   name: string;
@@ -48,15 +101,8 @@ export interface JourneyRoute {
   source: JourneyRouteSource;
   /** @nullable */
   polyline?: string | null;
-}
-
-export interface JourneyStop {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  /** @nullable */
-  distanceMeters?: number | null;
+  mode: JourneyRouteMode;
+  legs: JourneyLeg[];
 }
 
 export interface JourneyOptionsResponse {
@@ -424,6 +470,15 @@ export type LongitudeParameter = number;
 
 export type DestinationParameter = string;
 
+export type TravelModeParameter = typeof TravelModeParameter[keyof typeof TravelModeParameter];
+
+
+export const TravelModeParameter = {
+  any: 'any',
+  walking: 'walking',
+  transit: 'transit',
+} as const;
+
 export type GetJourneyOptionsParams = {
 /**
  * @minimum -90
@@ -440,6 +495,10 @@ lng: LongitudeParameter;
  * @maxLength 150
  */
 destination: DestinationParameter;
+/**
+ * Restrict journey options to a travel mode. Defaults to considering both.
+ */
+mode?: TravelModeParameter;
 };
 
 export type GetJourneyMapParams = {
@@ -459,27 +518,23 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
- * Optional encoded route polyline to display on the static map
- * @maxLength 10000
+ * Restrict journey options to a travel mode. Defaults to considering both.
  */
-routePolyline?: string;
+mode?: TravelModeParameter;
+/**
+ * Optional route id (from journey/options) to render on the map. Defaults to the recommended route.
+ * @maxLength 200
+ */
+routeId?: string;
 };
 
 export type GetJourneyMapImageParams = {
 /**
- * @minimum -90
- * @maximum 90
+ * Opaque, short-lived token issued by /journey/map identifying the map spec to render.
+ * @minLength 1
+ * @maxLength 200
  */
-lat: number;
-/**
- * @minimum -180
- * @maximum 180
- */
-lng: number;
-/**
- * @maxLength 10000
- */
-routePolyline?: string;
+token: string;
 };
 
 export type GetJourneyCatalogParams = {

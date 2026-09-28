@@ -28,12 +28,13 @@ export const getJourneyOptionsQueryLngMax = 180;
 
 export const getJourneyOptionsQueryDestinationMax = 150;
 
-
+export const getJourneyOptionsQueryModeDefault = `any`;
 
 export const GetJourneyOptionsQueryParams = zod.object({
   "lat": zod.coerce.number().min(getJourneyOptionsQueryLatMin).max(getJourneyOptionsQueryLatMax),
   "lng": zod.coerce.number().min(getJourneyOptionsQueryLngMin).max(getJourneyOptionsQueryLngMax),
-  "destination": zod.coerce.string().min(1).max(getJourneyOptionsQueryDestinationMax)
+  "destination": zod.coerce.string().min(1).max(getJourneyOptionsQueryDestinationMax),
+  "mode": zod.enum(['any', 'walking', 'transit']).default(getJourneyOptionsQueryModeDefault).describe('Restrict journey options to a travel mode. Defaults to considering both.')
 })
 
 export const getJourneyOptionsResponseRoutesItemDurationMinutesMin = 0;
@@ -43,6 +44,10 @@ export const getJourneyOptionsResponseRoutesItemWalkingMetersMin = 0;
 export const getJourneyOptionsResponseRoutesItemTransfersMin = 0;
 
 export const getJourneyOptionsResponseRoutesItemDelayMinutesMin = 0;
+
+export const getJourneyOptionsResponseRoutesItemLegsItemDistanceMetersMin = 0;
+
+export const getJourneyOptionsResponseRoutesItemLegsItemDurationMinutesMin = 0;
 
 
 
@@ -61,7 +66,33 @@ export const GetJourneyOptionsResponse = zod.object({
   "available": zod.boolean(),
   "recommended": zod.boolean(),
   "source": zod.enum(['live', 'demo']),
-  "polyline": zod.string().nullish()
+  "polyline": zod.string().nullish(),
+  "mode": zod.enum(['walking', 'transit']),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().nullable().describe('Public VTA route code (e.g. "22"), null for walking legs.'),
+  "routeName": zod.string().nullable(),
+  "boardingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "alightingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "distanceMeters": zod.number().int().min(getJourneyOptionsResponseRoutesItemLegsItemDistanceMetersMin),
+  "durationMinutes": zod.number().int().min(getJourneyOptionsResponseRoutesItemLegsItemDurationMinutesMin),
+  "delayMinutes": zod.number().int().nullable(),
+  "predictedArrival": zod.coerce.date().nullable(),
+  "transferGuidance": zod.string().nullable(),
+  "polyline": zod.string().nullable()
+}).describe('One ordered segment of a journey - either a walk or a single VTA bus ride.'))
 })),
   "stops": zod.array(zod.object({
   "id": zod.string(),
@@ -93,7 +124,8 @@ export const getJourneyMapQueryLngMax = 180;
 
 export const getJourneyMapQueryDestinationMax = 150;
 
-export const getJourneyMapQueryRoutePolylineMax = 10000;
+export const getJourneyMapQueryModeDefault = `any`;
+export const getJourneyMapQueryRouteIdMax = 200;
 
 
 
@@ -101,7 +133,8 @@ export const GetJourneyMapQueryParams = zod.object({
   "lat": zod.coerce.number().min(getJourneyMapQueryLatMin).max(getJourneyMapQueryLatMax),
   "lng": zod.coerce.number().min(getJourneyMapQueryLngMin).max(getJourneyMapQueryLngMax),
   "destination": zod.coerce.string().min(1).max(getJourneyMapQueryDestinationMax),
-  "routePolyline": zod.coerce.string().max(getJourneyMapQueryRoutePolylineMax).optional().describe('Optional encoded route polyline to display on the static map')
+  "mode": zod.enum(['any', 'walking', 'transit']).default(getJourneyMapQueryModeDefault).describe('Restrict journey options to a travel mode. Defaults to considering both.'),
+  "routeId": zod.coerce.string().max(getJourneyMapQueryRouteIdMax).optional().describe('Optional route id (from journey/options) to render on the map. Defaults to the recommended route.')
 })
 
 export const getJourneyMapResponseOneRoutesItemDurationMinutesMin = 0;
@@ -111,6 +144,10 @@ export const getJourneyMapResponseOneRoutesItemWalkingMetersMin = 0;
 export const getJourneyMapResponseOneRoutesItemTransfersMin = 0;
 
 export const getJourneyMapResponseOneRoutesItemDelayMinutesMin = 0;
+
+export const getJourneyMapResponseOneRoutesItemLegsItemDistanceMetersMin = 0;
+
+export const getJourneyMapResponseOneRoutesItemLegsItemDurationMinutesMin = 0;
 
 
 
@@ -129,7 +166,33 @@ export const GetJourneyMapResponse = zod.object({
   "available": zod.boolean(),
   "recommended": zod.boolean(),
   "source": zod.enum(['live', 'demo']),
-  "polyline": zod.string().nullish()
+  "polyline": zod.string().nullish(),
+  "mode": zod.enum(['walking', 'transit']),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().nullable().describe('Public VTA route code (e.g. "22"), null for walking legs.'),
+  "routeName": zod.string().nullable(),
+  "boardingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "alightingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "distanceMeters": zod.number().int().min(getJourneyMapResponseOneRoutesItemLegsItemDistanceMetersMin),
+  "durationMinutes": zod.number().int().min(getJourneyMapResponseOneRoutesItemLegsItemDurationMinutesMin),
+  "delayMinutes": zod.number().int().nullable(),
+  "predictedArrival": zod.coerce.date().nullable(),
+  "transferGuidance": zod.string().nullable(),
+  "polyline": zod.string().nullable()
+}).describe('One ordered segment of a journey - either a walk or a single VTA bus ride.'))
 })),
   "stops": zod.array(zod.object({
   "id": zod.string(),
@@ -155,20 +218,12 @@ export const GetJourneyMapResponse = zod.object({
 /**
  * @summary Proxy a Google static map image without exposing its API key
  */
-export const getJourneyMapImageQueryLatMin = -90;
-export const getJourneyMapImageQueryLatMax = 90;
-
-export const getJourneyMapImageQueryLngMin = -180;
-export const getJourneyMapImageQueryLngMax = 180;
-
-export const getJourneyMapImageQueryRoutePolylineMax = 10000;
+export const getJourneyMapImageQueryTokenMax = 200;
 
 
 
 export const GetJourneyMapImageQueryParams = zod.object({
-  "lat": zod.coerce.number().min(getJourneyMapImageQueryLatMin).max(getJourneyMapImageQueryLatMax),
-  "lng": zod.coerce.number().min(getJourneyMapImageQueryLngMin).max(getJourneyMapImageQueryLngMax),
-  "routePolyline": zod.coerce.string().max(getJourneyMapImageQueryRoutePolylineMax).optional()
+  "token": zod.coerce.string().min(1).max(getJourneyMapImageQueryTokenMax).describe('Opaque, short-lived token issued by /journey/map identifying the map spec to render.')
 })
 
 export const GetJourneyMapImageResponse = zod.unknown()

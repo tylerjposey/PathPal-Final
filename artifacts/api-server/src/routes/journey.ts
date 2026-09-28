@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger";
+import { findVtaJourneys, getVtaGtfs, scheduledTimestamp, type Feed, type GtfsJourney, type GtfsStop } from "./vta-gtfs";
 import {
   GetJourneyCatalogQueryParams,
   GetJourneyCatalogResponse,
@@ -12,8 +14,8 @@ import {
 
 const router: IRouter = Router();
 const API_511_BASE = "https://api.511.org/transit";
-const GOOGLE_DIRECTIONS_URL =
-  "https://maps.googleapis.com/maps/api/directions/json";
+const GOOGLE_COMPUTE_ROUTES_URL =
+  "https://routes.googleapis.com/directions/v2:computeRoutes";
 const GOOGLE_STATIC_MAP_URL =
   "https://maps.googleapis.com/maps/api/staticmap";
 const UPSTREAM_TIMEOUT_MS = 8_000;
@@ -21,10 +23,19 @@ const CATALOG_TTL_MS = 15 * 60_000;
 const STOP_MONITORING_TTL_MS = 60_000;
 const STOP_MONITORING_FAILURE_TTL_MS = 30_000;
 const MAP_IMAGE_TTL_MS = 5 * 60_000;
+const MAP_SPEC_TTL_MS = 10 * 60_000;
+const MAX_MAP_SPEC_CACHE_ENTRIES = 256;
 const MAP_IMAGE_RATE_WINDOW_MS = 60_000;
 const MAP_IMAGE_RATE_LIMIT = 8;
 const MAX_MAP_IMAGE_CACHE_ENTRIES = 128;
 const MAX_511_REQUESTS_PER_HOUR = 55;
+const GOOGLE_ROUTES_TTL_MS = 3 * 60_000;
+const VTA_AGENCY_PATTERN =
+  /\bVTA\b|Santa Clara Valley Transportation Authority|Valley Transportation Authority/i;
+const LEG_COLORS = {
+  walk: "0x64748BFF",
+  bus: ["0x1565C0FF", "0x2E7D32FF", "0xEF6C00FF", "0x8E24AAFF", "0xC62828FF"],
+} as const;
 
 type JourneyStop = {
   id: string;
@@ -32,6 +43,20 @@ type JourneyStop = {
   lat: number;
   lng: number;
   distanceMeters?: number;
+};
+
+type JourneyLeg = {
+  type: "walk" | "bus";
+  routeNumber: string | null;
+  routeName: string | null;
+  boardingStop: JourneyStop;
+  alightingStop: JourneyStop;
+  distanceMeters: number;
+  durationMinutes: number;
+  delayMinutes: number | null;
+  predictedArrival: string | null;
+  transferGuidance: string | null;
+  polyline: string | null;
 };
 
 type JourneyRoute = {
@@ -48,6 +73,8 @@ type JourneyRoute = {
   recommended: boolean;
   source: "live" | "demo";
   polyline?: string | null;
+  mode: "walking" | "transit";
+  legs: JourneyLeg[];
 };
 
 type BoardingStop = {
@@ -57,10 +84,34 @@ type BoardingStop = {
   lng?: number;
 };
 
+type LegStop = {
+  type: "walk" | "bus";
+  boarding: BoardingStop;
+  alighting: BoardingStop;
+  distanceMeters: number;
+  durationMinutes: number;
+  polyline: string | null;
+  routeNumber: string | null;
+  routeName: string | null;
+  scheduledDeparture: number | undefined;
+  vehicleType?: string | null;
+  agencyNames?: string[];
+};
+
 type ParsedGoogleRoute = {
   route: JourneyRoute;
   lineRefs: string[];
   boardingStop?: BoardingStop;
+  legStops: LegStop[];
+};
+
+type TravelMode = "any" | "walking" | "transit";
+
+type MapSpec = {
+  lat: number;
+  lng: number;
+  paths: { encoded: string; color: string }[];
+  markers: { lat: number; lng: number; color: string; label?: string }[];
 };
 
 type TransitCatalog = {
@@ -95,6 +146,37 @@ const mapImageCache = new Map<
   CacheEntry<{ buffer: Buffer; contentType: string }>
 >();
 const mapImageRequestsByIp = new Map<string, number[]>();
+const mapSpecCache = new Map<string, CacheEntry<MapSpec>>();
+type GoogleRoutesResult = {
+  walkingRoute: ParsedGoogleRoute | undefined;
+};
+const googleRoutesCache = new Map<string, CacheEntry<GoogleRoutesResult>>();
+const googleRoutesInFlight = new Map<string, Promise<GoogleRoutesResult>>();
+
+function storeMapSpec(spec: MapSpec): string {
+  const now = Date.now();
+  for (const [key, entry] of mapSpecCache) {
+    if (entry.expiresAt <= now) mapSpecCache.delete(key);
+  }
+  while (mapSpecCache.size >= MAX_MAP_SPEC_CACHE_ENTRIES) {
+    const oldestKey = mapSpecCache.keys().next().value;
+    if (!oldestKey) break;
+    mapSpecCache.delete(oldestKey);
+  }
+  const token = randomUUID();
+  mapSpecCache.set(token, { value: spec, expiresAt: now + MAP_SPEC_TTL_MS });
+  return token;
+}
+
+function getMapSpec(token: string): MapSpec | undefined {
+  const cached = mapSpecCache.get(token);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    mapSpecCache.delete(token);
+    return undefined;
+  }
+  return cached.value;
+}
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -124,10 +206,10 @@ function numberField(
   record: Record<string, unknown>,
   names: string[],
 ): number | undefined {
+  const normalizedNames = names.map((name) => name.toLowerCase().replace(/[^a-z]/g, ""));
   for (const [key, value] of Object.entries(record)) {
-    if (
-      names.some((name) => key.toLowerCase().replace(/[^a-z]/g, "") === name)
-    ) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z]/g, "");
+    if (normalizedNames.includes(normalizedKey)) {
       const parsed = typeof value === "number" ? value : Number(value);
       if (Number.isFinite(parsed)) return parsed;
     }
@@ -141,6 +223,12 @@ function safeText(value: unknown): string | undefined {
     return text ? text.slice(0, 500) : undefined;
   }
   return undefined;
+}
+
+function safePolyline(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 && value.length <= 50_000
+    ? value
+    : null;
 }
 
 async function fetchJson(url: URL, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
@@ -526,6 +614,22 @@ export function rankJourneyRoutes<T extends JourneyRoute>(routes: T[]): T[] {
     .map((route, index) => ({ ...route, recommended: index === 0 && route.available }));
 }
 
+function stopFromRoutesApiLocation(
+  raw: Record<string, unknown> | undefined,
+  fallbackName: string,
+  fallbackLat: number,
+  fallbackLng: number,
+): BoardingStop {
+  const location = asRecord(getPath(raw ?? {}, "location", "latLng"));
+  const lat = location ? numberField(location, ["latitude"]) : undefined;
+  const lng = location ? numberField(location, ["longitude"]) : undefined;
+  return {
+    name: safeText(raw?.name) ?? fallbackName,
+    lat: lat ?? fallbackLat,
+    lng: lng ?? fallbackLng,
+  };
+}
+
 function parseGoogleRoute(
   route: Record<string, unknown>,
   index: number,
@@ -533,73 +637,115 @@ function parseGoogleRoute(
   const legs = Array.isArray(route.legs) ? route.legs : [];
   if (!legs.length) return undefined;
   let walkingMeters = 0;
-  let durationSeconds = 0;
+  const durationText = safeText(route.duration) ?? "";
+  const durationSeconds = Number(durationText.replace(/s$/, "")) || 0;
   let transitBoardings = 0;
   const lineNames: string[] = [];
   const lineRefs: string[] = [];
   let startStop: string | undefined;
   let destinationStop: string | undefined;
   let boardingStop: BoardingStop | undefined;
+  const legStops: LegStop[] = [];
   for (const legValue of legs) {
     const leg = asRecord(legValue);
     if (!leg) continue;
-    const legDuration = asRecord(leg.duration);
-    durationSeconds += numberField(legDuration ?? {}, ["value"]) ?? 0;
     const steps = Array.isArray(leg.steps) ? leg.steps : [];
     for (const stepValue of steps) {
       const step = asRecord(stepValue);
       if (!step) continue;
-      const mode = safeText(step.travel_mode);
-      if (mode === "WALKING") {
-        walkingMeters += numberField(asRecord(step.distance) ?? {}, ["value"]) ?? 0;
+      const mode = safeText(step.travelMode);
+      const stepStart = asRecord(getPath(step, "startLocation", "latLng"));
+      const stepEnd = asRecord(getPath(step, "endLocation", "latLng"));
+      const stepStartLat = stepStart ? numberField(stepStart, ["latitude"]) : undefined;
+      const stepStartLng = stepStart ? numberField(stepStart, ["longitude"]) : undefined;
+      const stepEndLat = stepEnd ? numberField(stepEnd, ["latitude"]) : undefined;
+      const stepEndLng = stepEnd ? numberField(stepEnd, ["longitude"]) : undefined;
+      const stepPolyline = safePolyline(asRecord(step.polyline)?.encodedPolyline);
+      const stepDistanceMeters = Math.round(numberField(step, ["distanceMeters"]) ?? 0);
+      const stepStaticDuration = safeText(step.staticDuration) ?? "";
+      const stepDurationMinutes = Math.max(
+        0,
+        Math.ceil((Number(stepStaticDuration.replace(/s$/, "")) || 0) / 60),
+      );
+      if (mode === "WALK") {
+        walkingMeters += stepDistanceMeters;
+        if (
+          stepStartLat !== undefined &&
+          stepStartLng !== undefined &&
+          stepEndLat !== undefined &&
+          stepEndLng !== undefined
+        ) {
+          legStops.push({
+            type: "walk",
+            boarding: { name: "Walking start", lat: stepStartLat, lng: stepStartLng },
+            alighting: { name: "Walking end", lat: stepEndLat, lng: stepEndLng },
+            distanceMeters: stepDistanceMeters,
+            durationMinutes: stepDurationMinutes,
+            polyline: stepPolyline,
+            routeNumber: null,
+            routeName: null,
+            scheduledDeparture: undefined,
+          });
+        }
       }
       if (mode !== "TRANSIT") continue;
-      const details = asRecord(step.transit_details);
+      const details = asRecord(step.transitDetails);
       if (!details) continue;
+      const stopDetails = asRecord(details.stopDetails);
+      const departure = asRecord(stopDetails?.departureStop);
+      const arrival = asRecord(stopDetails?.arrivalStop);
       transitBoardings += 1;
-      const departure = asRecord(details.departure_stop);
-      const arrival = asRecord(details.arrival_stop);
       startStop ??= safeText(departure?.name);
       destinationStop = safeText(arrival?.name) ?? destinationStop;
-      if (!boardingStop && departure) {
-        const location = asRecord(departure.location);
-        const lat = location ? numberField(location, ["lat", "latitude"]) : undefined;
-        const lng = location ? numberField(location, ["lng", "lon", "longitude"]) : undefined;
-        boardingStop = {
-          ...(safeText(departure.id) ?? safeText(departure.place_id)
-            ? { id: safeText(departure.id) ?? safeText(departure.place_id) }
-            : {}),
-          name: safeText(departure.name) ?? "Boarding stop",
-          ...(lat !== undefined ? { lat } : {}),
-          ...(lng !== undefined ? { lng } : {}),
-        };
-      }
-      const line = asRecord(details.line);
-      const shortName = safeText(line?.short_name);
+      const departureBoarding = stopFromRoutesApiLocation(
+        departure,
+        "Boarding stop",
+        stepStartLat ?? 0,
+        stepStartLng ?? 0,
+      );
+      const arrivalAlighting = stopFromRoutesApiLocation(
+        arrival,
+        "Alighting stop",
+        stepEndLat ?? 0,
+        stepEndLng ?? 0,
+      );
+      if (!boardingStop) boardingStop = departureBoarding;
+      const line = asRecord(details.transitLine);
+      const shortName = safeText(line?.nameShort);
       const fullName = safeText(line?.name);
       for (const lineName of [shortName, fullName]) {
         if (lineName && !lineNames.includes(lineName)) lineNames.push(lineName);
         if (lineName && !lineRefs.includes(lineName)) lineRefs.push(lineName);
       }
+      const vehicleType = safeText(getPath(line ?? {}, "vehicle", "type")) ?? null;
+      const agencyNames = objectList(line?.agencies)
+        .map((agency) => safeText(agency.name))
+        .filter((name): name is string => !!name);
+      const departureTimeText = safeText(stopDetails?.departureTime);
+      const departureTimeMs = departureTimeText ? Date.parse(departureTimeText) : NaN;
+      legStops.push({
+        type: "bus",
+        boarding: departureBoarding,
+        alighting: arrivalAlighting,
+        distanceMeters: stepDistanceMeters,
+        durationMinutes: stepDurationMinutes,
+        polyline: stepPolyline,
+        routeNumber: shortName ?? null,
+        routeName: fullName ?? shortName ?? null,
+        scheduledDeparture: Number.isFinite(departureTimeMs) ? departureTimeMs / 1000 : undefined,
+        vehicleType,
+        agencyNames,
+      });
     }
   }
-  const overview = asRecord(route.overview_polyline);
-  const encodedPolyline = safeText(overview?.points);
-  const firstLeg = asRecord(legs[0]);
-  const lastLeg = asRecord(legs[legs.length - 1]);
+  const encodedPolyline = safePolyline(asRecord(route.polyline)?.encodedPolyline);
   const durationMinutes = Math.max(1, Math.ceil(durationSeconds / 60));
   const routeName = lineNames.length ? lineNames.join(" → ") : `Transit option ${index + 1}`;
   const journeyRoute: JourneyRoute = {
     id: `google-route-${index + 1}`,
-    name: lineNames.length ? lineNames.join(" → ") : routeName,
-    startStop:
-      startStop ??
-      safeText(firstLeg?.start_address) ??
-      "Starting location",
-    destinationStop:
-      destinationStop ??
-      safeText(lastLeg?.end_address) ??
-      "Destination",
+    name: routeName,
+    startStop: startStop ?? "Starting location",
+    destinationStop: destinationStop ?? "Destination",
     durationMinutes,
     walkingMeters: Math.round(walkingMeters),
     transfers: Math.max(0, transitBoardings - 1),
@@ -608,12 +754,15 @@ function parseGoogleRoute(
     available: true,
     recommended: false,
     source: "live",
+    mode: "transit",
+    legs: [],
     ...(encodedPolyline ? { polyline: encodedPolyline } : {}),
   };
   return {
     route: journeyRoute,
     lineRefs,
     ...(boardingStop ? { boardingStop } : {}),
+    legStops,
   };
 }
 
@@ -624,19 +773,31 @@ async function fetchGoogleDirections(
 ): Promise<{ routes: ParsedGoogleRoute[]; stops: JourneyStop[] } | undefined> {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) return undefined;
-  const url = new URL(GOOGLE_DIRECTIONS_URL);
-  url.searchParams.set("origin", `${lat},${lng}`);
-  url.searchParams.set("destination", destination);
-  url.searchParams.set("mode", "transit");
-  url.searchParams.set("alternatives", "true");
-  url.searchParams.set("key", apiKey);
   try {
-    const payload = asRecord(await fetchJson(url));
-    if (payload?.status !== "OK" || !Array.isArray(payload.routes)) {
-      logger.warn({ provider: "Google Maps", status: typeof payload?.status === "string" ? payload.status.slice(0, 32) : "invalid response" }, "Journey directions unavailable");
+    const response = await fetch(GOOGLE_COMPUTE_ROUTES_URL, {
+      method: "POST",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask":
+          "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.travelMode,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration,routes.legs.steps.polyline.encodedPolyline,routes.legs.steps.startLocation,routes.legs.steps.endLocation,routes.legs.steps.transitDetails.stopDetails,routes.legs.steps.transitDetails.transitLine.nameShort,routes.legs.steps.transitDetails.transitLine.name,routes.legs.steps.transitDetails.transitLine.vehicle.type,routes.legs.steps.transitDetails.transitLine.agencies",
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: lat, longitude: lng } } },
+        destination: { address: destination },
+        travelMode: "TRANSIT",
+        computeAlternativeRoutes: true,
+      }),
+    });
+    if (!response.ok) {
+      logger.warn({ provider: "Google Maps", status: response.status }, "Journey directions unavailable");
       return undefined;
     }
-    const routes = payload.routes
+    const payload = asRecord(await response.json());
+    const rawRoutes = Array.isArray(payload?.routes) ? payload.routes : [];
+    if (!rawRoutes.length) return undefined;
+    const routes = rawRoutes
       .map((item, index) => {
         const record = asRecord(item);
         return record ? parseGoogleRoute(record, index) : undefined;
@@ -645,41 +806,20 @@ async function fetchGoogleDirections(
     if (!routes.length) return undefined;
 
     const stopMap = new Map<string, JourneyStop>();
-    for (const routeValue of payload.routes) {
-      const route = asRecord(routeValue);
-      const legs = Array.isArray(route?.legs) ? route.legs : [];
-      for (const legValue of legs) {
-        const leg = asRecord(legValue);
-        const steps = Array.isArray(leg?.steps) ? leg.steps : [];
-        for (const stepValue of steps) {
-          const details = asRecord(asRecord(stepValue)?.transit_details);
-          if (!details) continue;
-          for (const stopKey of ["departure_stop", "arrival_stop"]) {
-            const stop = asRecord(details[stopKey]);
-            const location = asRecord(stop?.location);
-            if (!stop || !location) continue;
-            const stopLat = numberField(location, ["lat", "latitude"]);
-            const stopLng = numberField(location, ["lng", "lon", "longitude"]);
-            const name = safeText(stop.name);
-            if (
-              stopLat === undefined ||
-              stopLng === undefined ||
-              !name ||
-              Math.abs(stopLat) > 90 ||
-              Math.abs(stopLng) > 180
-            ) {
-              continue;
-            }
-            const id =
-              safeText(stop.id) ??
-              `${name.toLowerCase()}-${stopLat.toFixed(5)}-${stopLng.toFixed(5)}`;
-            stopMap.set(id, {
-              id,
-              name,
-              lat: stopLat,
-              lng: stopLng,
-            });
+    for (const parsedRoute of routes) {
+      for (const legStop of parsedRoute.legStops) {
+        if (legStop.type !== "bus") continue;
+        for (const stop of [legStop.boarding, legStop.alighting]) {
+          if (
+            stop.lat === undefined ||
+            stop.lng === undefined ||
+            Math.abs(stop.lat) > 90 ||
+            Math.abs(stop.lng) > 180
+          ) {
+            continue;
           }
+          const id = `${stop.name.toLowerCase()}-${stop.lat.toFixed(5)}-${stop.lng.toFixed(5)}`;
+          stopMap.set(id, { id, name: stop.name, lat: stop.lat, lng: stop.lng });
         }
       }
     }
@@ -692,7 +832,101 @@ async function fetchGoogleDirections(
   }
 }
 
-function demoJourney(lat: number, lng: number, destination: string, message: string) {
+function isVtaBusLeg(legStop: LegStop, catalog: TransitCatalog | undefined): boolean {
+  if (legStop.type !== "bus") return true;
+  if (legStop.agencyNames && legStop.agencyNames.length > 0) {
+    return legStop.agencyNames.some((name) => VTA_AGENCY_PATTERN.test(name));
+  }
+  // Agency name wasn't returned by Google; fall back to matching the line
+  // against the live VTA route/line catalog from 511.
+  if (catalog?.lines.length) {
+    const refs = [legStop.routeNumber, legStop.routeName]
+      .filter((ref): ref is string => !!ref)
+      .map(normalizedRef);
+    return catalog.lines.some((line) =>
+      [line.name, ...line.refs].map(normalizedRef).some((ref) => refs.includes(ref)),
+    );
+  }
+  // Neither Google's agency field nor a live catalog is available to confirm
+  // the operator; do not present an unverified route as a VTA bus journey.
+  return false;
+}
+
+function filterVtaBusRoutes(
+  routes: ParsedGoogleRoute[],
+  catalog: TransitCatalog | undefined,
+): ParsedGoogleRoute[] {
+  return routes.filter((route) => {
+    const hasBusLeg = route.legStops.some((legStop) => legStop.type === "bus");
+    if (!hasBusLeg) return false;
+    const hasNonBusVehicle = route.legStops.some(
+      (legStop) =>
+        legStop.type === "bus" &&
+        legStop.vehicleType &&
+        legStop.vehicleType.toUpperCase() !== "BUS",
+    );
+    if (hasNonBusVehicle) return false;
+    return route.legStops.every((legStop) => isVtaBusLeg(legStop, catalog));
+  });
+}
+
+async function fetchCachedGoogleRoutes(
+  lat: number,
+  lng: number,
+  destination: string,
+): Promise<GoogleRoutesResult> {
+  const cacheKey = `${lat.toFixed(5)}:${lng.toFixed(5)}:${destination.trim().toLowerCase()}`;
+  const now = Date.now();
+  const cached = googleRoutesCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+  const inFlight = googleRoutesInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const request = (async (): Promise<GoogleRoutesResult> => {
+    try {
+      const walkingRoute = await fetchGoogleWalkingRoute(lat, lng, destination);
+      const result: GoogleRoutesResult = { walkingRoute };
+      googleRoutesCache.set(cacheKey, { value: result, expiresAt: Date.now() + GOOGLE_ROUTES_TTL_MS });
+      for (const [key, entry] of googleRoutesCache) {
+        if (entry.expiresAt <= Date.now()) googleRoutesCache.delete(key);
+      }
+      while (googleRoutesCache.size > 256) {
+        const oldestKey = googleRoutesCache.keys().next().value;
+        if (!oldestKey) break;
+        googleRoutesCache.delete(oldestKey);
+      }
+      return result;
+    } finally {
+      googleRoutesInFlight.delete(cacheKey);
+    }
+  })();
+  googleRoutesInFlight.set(cacheKey, request);
+  return request;
+}
+
+function demoLeg(type: "walk" | "bus", boarding: JourneyStop, alighting: JourneyStop): JourneyLeg {
+  return {
+    type,
+    routeNumber: type === "bus" ? "22" : null,
+    routeName: type === "bus" ? "Demo Route 22" : null,
+    boardingStop: boarding,
+    alightingStop: alighting,
+    distanceMeters: type === "walk" ? 350 : 0,
+    durationMinutes: type === "walk" ? 6 : 24,
+    delayMinutes: null,
+    predictedArrival: null,
+    transferGuidance: null,
+    polyline: null,
+  };
+}
+
+function demoJourney(
+  lat: number,
+  lng: number,
+  destination: string,
+  message: string,
+  mode: TravelMode,
+) {
   const stop: JourneyStop = {
     id: "demo-origin-stop",
     name: "Demo nearby stop",
@@ -700,23 +934,55 @@ function demoJourney(lat: number, lng: number, destination: string, message: str
     lng,
     distanceMeters: 0,
   };
-  const route: JourneyRoute = {
-    id: "demo-transit-option",
-    name: "Demo transit option",
-    startStop: stop.name,
-    destinationStop: destination,
-    durationMinutes: 30,
-    walkingMeters: 350,
-    transfers: 0,
-    delayMinutes: 0,
-    alerts: [],
-    available: true,
-    recommended: true,
-    source: "demo",
+  const destinationStop: JourneyStop = {
+    id: "demo-destination-stop",
+    name: destination,
+    lat,
+    lng,
   };
+  const routes: JourneyRoute[] = [];
+  if (mode !== "transit") {
+    const legs = [demoLeg("walk", stop, destinationStop)];
+    routes.push({
+      id: "demo-walking-option",
+      name: "Walk the whole way",
+      startStop: stop.name,
+      destinationStop: destination,
+      durationMinutes: 18,
+      walkingMeters: 1400,
+      transfers: 0,
+      delayMinutes: 0,
+      alerts: [],
+      available: true,
+      recommended: false,
+      source: "demo",
+      mode: "walking",
+      legs,
+    });
+  }
+  if (mode !== "walking") {
+    const legs = [demoLeg("walk", stop, stop), demoLeg("bus", stop, destinationStop)];
+    routes.push({
+      id: "demo-transit-option",
+      name: "Demo transit option",
+      startStop: stop.name,
+      destinationStop: destination,
+      durationMinutes: 30,
+      walkingMeters: 350,
+      transfers: 0,
+      delayMinutes: 0,
+      alerts: [],
+      available: true,
+      recommended: false,
+      source: "demo",
+      mode: "transit",
+      legs,
+    });
+  }
+  const ranked = rankJourneyRoutes(routes);
   return {
     source: "demo" as const,
-    routes: [route],
+    routes: ranked,
     stops: [stop],
     alerts: [],
     nearestStop: stop,
@@ -739,11 +1005,10 @@ function matchingCatalogLines(
   );
 }
 
-function findVtaBoardingStop(
-  route: ParsedGoogleRoute,
+function findVtaStop(
+  boarding: BoardingStop | undefined,
   catalogStops: JourneyStop[],
 ): JourneyStop | undefined {
-  const boarding = route.boardingStop;
   if (!boarding) return undefined;
   const normalizedName = normalizedRef(boarding.name);
   const exact = catalogStops.find(
@@ -810,23 +1075,323 @@ function cacheMapImage(key: string, image: Buffer, contentType: string): void {
   });
 }
 
-async function buildJourney(lat: number, lng: number, destination: string) {
-  const [directions, catalog] = await Promise.all([
-    fetchGoogleDirections(lat, lng, destination),
+async function fetchGoogleWalkingRoute(
+  lat: number,
+  lng: number,
+  destination: string | { lat: number; lng: number },
+): Promise<ParsedGoogleRoute | undefined> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return undefined;
+  try {
+    const response = await fetch(GOOGLE_COMPUTE_ROUTES_URL, {
+      method: "POST",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask":
+          "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.startLocation,routes.legs.endLocation",
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: lat, longitude: lng } } },
+        destination: typeof destination === "string"
+          ? { address: destination }
+          : { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+        travelMode: "WALK",
+        units: "METRIC",
+      }),
+    });
+    if (!response.ok) {
+      logger.warn({ provider: "Google Maps", status: response.status }, "Journey walking route unavailable");
+      return undefined;
+    }
+    const payload = asRecord(await response.json());
+    const routes = Array.isArray(payload?.routes) ? payload.routes : [];
+    const route = asRecord(routes[0]);
+    if (!route) return undefined;
+    const durationText = safeText(route.duration) ?? "";
+    const durationSeconds = Number(durationText.replace(/s$/, "")) || 0;
+    const distanceMetersValue = numberField(route, ["distanceMeters"]) ?? 0;
+    const encodedPolyline = safePolyline(asRecord(route.polyline)?.encodedPolyline);
+    const legs = Array.isArray(route.legs) ? route.legs : [];
+    const firstLeg = asRecord(legs[0]);
+    const lastLeg = asRecord(legs[legs.length - 1]);
+    const startLocation = asRecord(getPath(firstLeg ?? {}, "startLocation", "latLng"));
+    const endLocation = asRecord(getPath(lastLeg ?? {}, "endLocation", "latLng"));
+    const startLat = startLocation ? numberField(startLocation, ["latitude"]) : lat;
+    const startLng = startLocation ? numberField(startLocation, ["longitude"]) : lng;
+    const endLat = endLocation ? numberField(endLocation, ["latitude"]) : lat;
+    const endLng = endLocation ? numberField(endLocation, ["longitude"]) : lng;
+    const boarding: JourneyStop = {
+      id: "walk-start",
+      name: "Starting location",
+      lat: startLat ?? lat,
+      lng: startLng ?? lng,
+    };
+    const alighting: JourneyStop = {
+      id: "walk-end",
+      name: typeof destination === "string" ? destination : "Walking destination",
+      lat: endLat ?? lat,
+      lng: endLng ?? lng,
+    };
+    const durationMinutes = Math.max(1, Math.ceil(durationSeconds / 60));
+    const journeyRoute: JourneyRoute = {
+      id: "walking-route",
+      name: "Walk the whole way",
+      startStop: boarding.name,
+      destinationStop: alighting.name,
+      durationMinutes,
+      walkingMeters: Math.round(distanceMetersValue),
+      transfers: 0,
+      delayMinutes: 0,
+      alerts: [],
+      available: true,
+      recommended: false,
+      source: "live",
+      mode: "walking",
+      legs: [
+        {
+          type: "walk",
+          routeNumber: null,
+          routeName: null,
+          boardingStop: boarding,
+          alightingStop: alighting,
+          distanceMeters: Math.round(distanceMetersValue),
+          durationMinutes,
+          delayMinutes: null,
+          predictedArrival: null,
+          transferGuidance: null,
+          polyline: encodedPolyline,
+        },
+      ],
+      ...(encodedPolyline ? { polyline: encodedPolyline } : {}),
+    };
+    return { route: journeyRoute, lineRefs: [], legStops: [] };
+  } catch {
+    return undefined;
+  }
+}
+
+const walkSegmentCache = new Map<string, CacheEntry<ParsedGoogleRoute | undefined>>();
+const walkSegmentInFlight = new Map<string, Promise<ParsedGoogleRoute | undefined>>();
+async function walkingSegment(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
+  const key = `${from.lat.toFixed(5)},${from.lng.toFixed(5)}:${to.lat.toFixed(5)},${to.lng.toFixed(5)}`;
+  const cached = walkSegmentCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const existing = walkSegmentInFlight.get(key);
+  if (existing) return existing;
+  const pending = fetchGoogleWalkingRoute(from.lat, from.lng, to)
+    .then((route) => {
+      walkSegmentCache.set(key, { value: route, expiresAt: Date.now() + GOOGLE_ROUTES_TTL_MS });
+      for (const [cacheKey, entry] of walkSegmentCache) {
+        if (entry.expiresAt <= Date.now()) walkSegmentCache.delete(cacheKey);
+      }
+      while (walkSegmentCache.size > 128) {
+        const first = walkSegmentCache.keys().next().value;
+        if (!first) break;
+        walkSegmentCache.delete(first);
+      }
+      return route;
+    }).finally(() => walkSegmentInFlight.delete(key));
+  walkSegmentInFlight.set(key, pending);
+  return pending;
+}
+
+function toJourneyStop(stop: GtfsStop): JourneyStop {
+  return { id: stop.id, name: stop.name, lat: stop.lat, lng: stop.lng };
+}
+
+async function buildGtfsRoute(
+  candidate: GtfsJourney,
+  index: number,
+  feed: Feed,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  catalog: TransitCatalog | undefined,
+  monitored: Map<string, StopPrediction[]>,
+): Promise<{ route: JourneyRoute; walkingEstimated: boolean }> {
+  const legs: JourneyLeg[] = [];
+  let walkingEstimated = false;
+  let walkingMeters = 0;
+  let originWalkDuration = 0;
+  let destinationWalkDuration = 0;
+  let missedConnection = false;
+  const makeWalk = async (
+    from: { lat: number; lng: number; name: string; id: string },
+    to: { lat: number; lng: number; name: string; id: string },
+    fallbackMinutes: number,
+  ) => {
+    if (distanceMeters(from.lat, from.lng, to.lat, to.lng) < 25) return 0;
+    const result = await walkingSegment(from, to);
+    const actual = result?.route.legs[0];
+    if (!actual) walkingEstimated = true;
+    const meters = actual?.distanceMeters ?? distanceMeters(from.lat, from.lng, to.lat, to.lng);
+    walkingMeters += meters;
+    const duration = actual?.durationMinutes ?? fallbackMinutes;
+    legs.push({
+      type: "walk", routeNumber: null, routeName: null,
+      boardingStop: toJourneyStop(from), alightingStop: toJourneyStop(to),
+      distanceMeters: meters, durationMinutes: duration,
+      delayMinutes: null, predictedArrival: null, transferGuidance: null,
+      polyline: actual?.polyline ?? null,
+    });
+    return duration;
+  };
+  const firstRide = candidate.rides[0];
+  originWalkDuration = await makeWalk(
+    { ...origin, id: "journey-origin", name: "Starting location" },
+    firstRide.boarding, candidate.originWalkMinutes,
+  );
+  for (const [rideIndex, ride] of candidate.rides.entries()) {
+    const matching = (monitored.get(ride.boarding.id) ?? []).filter((prediction) =>
+      normalizedRef(prediction.lineRef) === normalizedRef(ride.routeNumber) ||
+      normalizedRef(prediction.lineRef) === normalizedRef(ride.routeId));
+    const delay = matching.length
+      ? matching.reduce((max, prediction) => Math.max(max, prediction.delayMinutes), 0)
+      : null;
+    const nextRide = candidate.rides[rideIndex + 1];
+    legs.push({
+      type: "bus", routeNumber: ride.routeNumber, routeName: ride.routeName,
+      boardingStop: toJourneyStop(ride.boarding), alightingStop: toJourneyStop(ride.alighting),
+      distanceMeters: ride.distanceMeters, durationMinutes: Math.max(1, Math.ceil((ride.arrival - ride.departure) / 60)),
+      delayMinutes: delay, predictedArrival: scheduledTimestamp(feed, ride.arrival + (delay ?? 0) * 60),
+      transferGuidance: nextRide
+        ? `Transfer to ${nextRide.routeNumber} at ${ride.alighting.name}.`
+        : null,
+      polyline: ride.polyline,
+    });
+    if (nextRide) {
+      const transferMinutes = await makeWalk(ride.alighting, nextRide.boarding, 1);
+      if (ride.arrival + transferMinutes * 60 + 180 > nextRide.departure) missedConnection = true;
+    }
+  }
+  const lastRide = candidate.rides[candidate.rides.length - 1];
+  destinationWalkDuration = await makeWalk(lastRide.alighting,
+    { ...destination, id: "journey-destination", name: "Destination" },
+    candidate.destinationWalkMinutes);
+  if (feed.secondsNow + originWalkDuration * 60 > firstRide.departure) missedConnection = true;
+  const lineRefs = new Set(candidate.rides.flatMap((ride) =>
+    [ride.routeId, ride.routeNumber].map(normalizedRef)));
+  const alerts = (catalog?.alerts ?? [])
+    .filter((alert) => alert.lineRefs.some((ref) => lineRefs.has(normalizedRef(ref))))
+    .map((alert) => alert.text);
+  const delayMinutes = legs.reduce((sum, leg) => sum + (leg.delayMinutes ?? 0), 0);
+  return {
+    walkingEstimated,
+    route: {
+      id: `vta-schedule-${index + 1}`, name: candidate.rides.map((ride) =>
+        `${ride.routeNumber} · ${ride.routeName}`).join(" → "),
+      startStop: firstRide.boarding.name, destinationStop: lastRide.alighting.name,
+      durationMinutes: Math.ceil((lastRide.arrival - feed.secondsNow) / 60) + destinationWalkDuration + delayMinutes,
+      walkingMeters: walkingMeters || candidate.walkingMeters,
+      transfers: candidate.rides.length - 1, delayMinutes,
+      alerts: [...new Set(alerts)], available: !missedConnection, recommended: false,
+      source: "live", mode: "transit", legs,
+    },
+  };
+}
+
+function buildRouteLegs(
+  route: ParsedGoogleRoute,
+  catalog: TransitCatalog | undefined,
+  monitoredStops: Map<string, StopPrediction[]>,
+): JourneyLeg[] {
+  return route.legStops.map((legStop, index) => {
+    const matchedStop =
+      legStop.type === "bus" ? findVtaStop(legStop.boarding, catalog?.stops ?? []) : undefined;
+    const boardingStop: JourneyStop = matchedStop ?? {
+      id: legStop.boarding.id ?? `${route.route.id}-leg-${index}-board`,
+      name: legStop.boarding.name,
+      lat: legStop.boarding.lat ?? 0,
+      lng: legStop.boarding.lng ?? 0,
+    };
+    const alightingMatch =
+      legStop.type === "bus" ? findVtaStop(legStop.alighting, catalog?.stops ?? []) : undefined;
+    const alightingStop: JourneyStop = alightingMatch ?? {
+      id: legStop.alighting.id ?? `${route.route.id}-leg-${index}-alight`,
+      name: legStop.alighting.name,
+      lat: legStop.alighting.lat ?? 0,
+      lng: legStop.alighting.lng ?? 0,
+    };
+    let delayMinutes: number | null = null;
+    let predictedArrival: string | null = null;
+    if (legStop.type === "bus" && matchedStop) {
+      const canonicalRefs = new Set(
+        [legStop.routeNumber, legStop.routeName].filter((ref): ref is string => !!ref).map(normalizedRef),
+      );
+      const predictions = monitoredStops.get(matchedStop.id) ?? [];
+      const matching = predictions.filter((prediction) => canonicalRefs.has(normalizedRef(prediction.lineRef)));
+      if (matching.length) {
+        delayMinutes = matching.reduce((max, prediction) => Math.max(max, prediction.delayMinutes), 0);
+      }
+      if (matching.length && legStop.scheduledDeparture !== undefined) {
+        const delaySeconds = (delayMinutes ?? 0) * 60;
+        predictedArrival = new Date(legStop.scheduledDeparture * 1000 + delaySeconds * 1000).toISOString();
+      }
+    }
+    const nextLeg = route.legStops[index + 1];
+    const transferGuidance =
+      legStop.type === "bus" && nextLeg && nextLeg.type === "bus"
+        ? `Transfer to ${nextLeg.routeName ?? nextLeg.routeNumber ?? "the next bus"} at ${alightingStop.name}.`
+        : null;
+    return {
+      type: legStop.type,
+      routeNumber: legStop.routeNumber,
+      routeName: legStop.routeName,
+      boardingStop,
+      alightingStop,
+      distanceMeters: legStop.distanceMeters,
+      durationMinutes: legStop.durationMinutes,
+      delayMinutes,
+      predictedArrival,
+      transferGuidance,
+      polyline: legStop.polyline,
+    };
+  });
+}
+
+async function buildJourney(lat: number, lng: number, destination: string, mode: TravelMode) {
+  const [{ walkingRoute }, catalog, feed] = await Promise.all([
+    fetchCachedGoogleRoutes(lat, lng, destination),
     get511Catalog(),
+    mode === "walking" ? Promise.resolve(undefined) : getVtaGtfs(),
   ]);
-  if (!directions) {
-    const missingKeys = !process.env.GOOGLE_MAPS_API_KEY;
+  if ((mode === "transit" && !feed) || (!walkingRoute && !feed)) {
     return demoJourney(
       lat,
       lng,
       destination,
-      missingKeys
-        ? "Google Maps credentials are not configured; showing demo data."
-        : "Live directions are temporarily unavailable; showing demo data.",
+      feed
+        ? "511 VTA schedule and Google walking directions are unavailable; showing demo data."
+        : "511 VTA schedule is unavailable; showing demo bus data.",
+      mode,
     );
   }
-  const stops = (catalog?.stops.length ? catalog.stops : directions.stops)
+  const coordinates = walkingRoute?.route.legs[0]?.alightingStop ??
+    catalog?.stops.find((stop) => normalizedRef(stop.name) === normalizedRef(destination));
+  const candidates = feed && coordinates && mode !== "walking"
+    ? findVtaJourneys(feed, { lat, lng }, coordinates)
+    : [];
+  const monitoredStops = new Map<string, StopPrediction[]>();
+  if (catalog?.agency && candidates.length) {
+    const boardings = [...new Set(candidates.slice(0, 5).flatMap((candidate) =>
+      candidate.rides.map((ride) => ride.boarding.id)))].slice(0, 6);
+    await Promise.all(boardings.map(async (id) => {
+      const predictions = await getStopMonitoringAlerts(
+        process.env.TRANSIT_511_API_KEY, catalog.agency, id,
+      );
+      monitoredStops.set(id, predictions);
+    }));
+  }
+  const built = coordinates && feed
+    ? await Promise.all(candidates.slice(0, 5).map((candidate, index) =>
+      buildGtfsRoute(candidate, index, feed, { lat, lng }, coordinates, catalog, monitoredStops)))
+    : [];
+  const transitJourneyRoutes = built.map(({ route }) => route);
+  const busStops = feed
+    ? [...feed.byStop.keys()].map((id) => feed.stops.get(id)).filter((stop): stop is GtfsStop => !!stop).map(toJourneyStop)
+    : catalog?.stops ?? [];
+  const stops = busStops
     .map((stop) => ({
       ...stop,
       distanceMeters: distanceMeters(lat, lng, stop.lat, stop.lng),
@@ -834,75 +1399,31 @@ async function buildJourney(lat: number, lng: number, destination: string) {
     .sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0))
     .slice(0, 12);
   const alerts = [...new Set((catalog?.alerts ?? []).map((alert) => alert.text))];
-  const routeBoardings = directions.routes.map((route) => ({
-    route,
-    stop: findVtaBoardingStop(route, catalog?.stops ?? []),
-  }));
-  const monitoredStops = new Map<string, StopPrediction[]>();
-  const routesToMonitor = routeBoardings
-    .filter(
-      (item): item is { route: ParsedGoogleRoute; stop: JourneyStop } =>
-        !!item.stop && !!catalog?.agency,
-    )
-    .slice(0, 3);
-  const uniqueStops = [
-    ...new Map(routesToMonitor.map(({ stop }) => [stop.id, stop])).values(),
-  ];
-  await Promise.all(
-    uniqueStops.map(async (stop) => {
-      const predictions = await getStopMonitoringAlerts(
-        process.env.TRANSIT_511_API_KEY,
-        catalog?.agency,
-        stop.id,
-      );
-      monitoredStops.set(stop.id, predictions);
-    }),
-  );
-
-  const rankedRoutes = rankJourneyRoutes(
-    routeBoardings.map(({ route, stop }) => {
-      const matchedLines = matchingCatalogLines(route, catalog);
-      const canonicalRefs = new Set(
-        [
-          ...route.lineRefs,
-          ...matchedLines.flatMap((line) => [line.name, ...line.refs]),
-        ].map(normalizedRef),
-      );
-      const matchedAlerts = (catalog?.alerts ?? [])
-        .filter((alert) =>
-          alert.lineRefs.some((lineRef) => canonicalRefs.has(normalizedRef(lineRef))),
-        )
-        .map((alert) => alert.text);
-      const predictions = stop ? monitoredStops.get(stop.id) ?? [] : [];
-      const matchingPredictions = predictions.filter((prediction) =>
-        canonicalRefs.has(normalizedRef(prediction.lineRef)),
-      );
-      const delayMinutes = matchingPredictions.reduce(
-        (max, prediction) => Math.max(max, prediction.delayMinutes),
-        0,
-      );
-      return {
-        ...route.route,
-        alerts: [...new Set(matchedAlerts)],
-        delayMinutes,
-      };
-    }),
-  );
+  const walkingJourneyRoutes = mode !== "transit" && walkingRoute ? [walkingRoute.route] : [];
+  const demoBusRoutes = mode === "any" && !feed
+    ? demoJourney(lat, lng, destination, "VTA schedule unavailable; bus option is a demo.", "transit").routes
+    : [];
+  const rankedRoutes = rankJourneyRoutes([...transitJourneyRoutes, ...walkingJourneyRoutes, ...demoBusRoutes]);
   const nearestStop = stops[0] ?? null;
+  const notices: string[] = [];
+  if (feed && mode !== "walking") notices.push("VTA bus trips use the 511 published schedule; arrival estimates are not live vehicle positions.");
+  if (!catalog?.complete && mode !== "walking") notices.push(catalog?.message ?? "511 real-time feeds are unavailable; delays and alerts may be missing.");
+  if (!feed && mode !== "walking") notices.push("511 VTA schedule is unavailable; the bus option is an illustrative demo.");
+  if (built.some(({ walkingEstimated }) => walkingEstimated)) notices.push("Some connecting walks use straight-line estimates because walking directions were unavailable.");
+  if (mode !== "walking" && !transitJourneyRoutes.length) notices.push("No scheduled VTA bus option was found for this destination and time.");
+  if (!walkingRoute && mode !== "transit") notices.push("Google walking directions are unavailable.");
   return {
-    source: "live" as const,
+    source: rankedRoutes.length ? "live" as const : "demo" as const,
     routes: rankedRoutes,
     stops,
     alerts,
     nearestStop,
-    ...(!catalog?.complete
-      ? {
-          message:
-            catalog?.message ??
-            "Live directions available; VTA catalog is incomplete or unavailable.",
-        }
-      : {}),
+    ...(notices.length ? { message: notices.join(" ") } : {}),
   };
+}
+
+function parseTravelMode(value: string | undefined): TravelMode {
+  return value === "walking" || value === "transit" ? value : "any";
 }
 
 router.get("/journey/options", async (req, res): Promise<void> => {
@@ -915,6 +1436,7 @@ router.get("/journey/options", async (req, res): Promise<void> => {
     query.data.lat,
     query.data.lng,
     query.data.destination,
+    parseTravelMode(query.data.mode),
   );
   res.json(GetJourneyOptionsResponse.parse(response));
 });
@@ -929,16 +1451,36 @@ router.get("/journey/map", async (req, res): Promise<void> => {
     query.data.lat,
     query.data.lng,
     query.data.destination,
+    parseTravelMode(query.data.mode),
   );
-  const selectedPolyline =
-    query.data.routePolyline ?? journey.routes.find((route) => route.recommended)?.polyline;
-  const mapImageUrl = process.env.GOOGLE_MAPS_API_KEY
-    ? `/api/journey/map-image?lat=${encodeURIComponent(query.data.lat)}&lng=${encodeURIComponent(query.data.lng)}${
-        selectedPolyline
-          ? `&routePolyline=${encodeURIComponent(selectedPolyline)}`
-          : ""
-      }`
-    : null;
+  const selectedRoute =
+    (query.data.routeId ? journey.routes.find((route) => route.id === query.data.routeId) : undefined) ??
+    journey.routes.find((route) => route.recommended) ??
+    journey.routes[0];
+  let mapImageUrl: string | null = null;
+  if (process.env.GOOGLE_MAPS_API_KEY && selectedRoute) {
+    const paths = selectedRoute.legs
+      .filter((leg) => !!leg.polyline)
+      .map((leg, index) => ({
+        encoded: leg.polyline as string,
+        color: leg.type === "walk" ? LEG_COLORS.walk : LEG_COLORS.bus[index % LEG_COLORS.bus.length],
+      }));
+    const markerSeen = new Set<string>();
+    const markers: MapSpec["markers"] = [];
+    for (const leg of selectedRoute.legs) {
+      for (const [stop, color] of [
+        [leg.boardingStop, leg.type === "bus" ? "0x1565C0FF" : "0x64748BFF"],
+        [leg.alightingStop, leg.type === "bus" ? "0x1565C0FF" : "0x64748BFF"],
+      ] as const) {
+        const key = `${stop.lat.toFixed(5)},${stop.lng.toFixed(5)}`;
+        if (markerSeen.has(key)) continue;
+        markerSeen.add(key);
+        markers.push({ lat: stop.lat, lng: stop.lng, color, label: stop.name });
+      }
+    }
+    const token = storeMapSpec({ lat: query.data.lat, lng: query.data.lng, paths, markers: markers.slice(0, 15) });
+    mapImageUrl = `/api/journey/map-image?token=${encodeURIComponent(token)}`;
+  }
   res.json(
     GetJourneyMapResponse.parse({
       ...journey,
@@ -961,14 +1503,18 @@ router.get("/journey/map-image", async (req, res): Promise<void> => {
     res.status(503).json({ error: "Static maps are not configured." });
     return;
   }
+  const spec = getMapSpec(query.data.token);
+  if (!spec) {
+    res.status(503).json({ error: "Static map is temporarily unavailable; request a fresh map." });
+    return;
+  }
   const ip = req.ip || req.socket.remoteAddress || "unknown";
   if (!allowMapImageRequest(ip)) {
     res.setHeader("Retry-After", "60");
     res.status(429).json({ error: "Map image request limit reached; retry shortly." });
     return;
   }
-  const cacheKey = `${query.data.lat},${query.data.lng}:${query.data.routePolyline ?? ""}`;
-  const cachedImage = getCachedMapImage(cacheKey);
+  const cachedImage = getCachedMapImage(query.data.token);
   if (cachedImage) {
     res.setHeader("Content-Type", cachedImage.contentType);
     res.setHeader("Cache-Control", "private, max-age=60");
@@ -976,16 +1522,22 @@ router.get("/journey/map-image", async (req, res): Promise<void> => {
     return;
   }
   const url = new URL(GOOGLE_STATIC_MAP_URL);
-  url.searchParams.set("center", `${query.data.lat},${query.data.lng}`);
+  url.searchParams.set("center", `${spec.lat},${spec.lng}`);
   url.searchParams.set("zoom", "14");
   url.searchParams.set("size", "640x640");
   url.searchParams.set("maptype", "roadmap");
   url.searchParams.set("key", apiKey);
-  if (query.data.routePolyline) {
-    url.searchParams.set(
-      "path",
-      `color:0x1565C0FF|weight:5|enc:${query.data.routePolyline}`,
-    );
+  for (const path of spec.paths.slice(0, 8)) {
+    url.searchParams.append("path", `color:${path.color}|weight:5|enc:${path.encoded}`);
+  }
+  const markersByColor = new Map<string, string[]>();
+  for (const marker of spec.markers.slice(0, 15)) {
+    const list = markersByColor.get(marker.color) ?? [];
+    list.push(`${marker.lat},${marker.lng}`);
+    markersByColor.set(marker.color, list);
+  }
+  for (const [color, points] of markersByColor) {
+    url.searchParams.append("markers", `color:${color}|${points.join("|")}`);
   }
   try {
     const response = await fetch(url, {
@@ -1001,7 +1553,7 @@ router.get("/journey/map-image", async (req, res): Promise<void> => {
       return;
     }
     const image = Buffer.from(await response.arrayBuffer());
-    cacheMapImage(cacheKey, image, contentType.split(";")[0].trim());
+    cacheMapImage(query.data.token, image, contentType.split(";")[0].trim());
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "private, max-age=60");
     res.send(image);

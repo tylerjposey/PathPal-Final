@@ -1,15 +1,21 @@
 import { Feather } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { getGetJourneyCatalogQueryKey, getGetJourneyMapQueryKey, useGetJourneyCatalog, useGetJourneyMap, type JourneyRoute } from '@workspace/api-client-react';
+import { getGetJourneyCatalogQueryKey, getGetJourneyMapQueryKey, useGetJourneyCatalog, useGetJourneyMap, type JourneyRoute, type TravelModeParameter } from '@workspace/api-client-react';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Chip, Field, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
+import { JourneyMap } from '@/components/JourneyMap';
 import { RouteMap } from '@/components/RouteMap';
-import { useDemo } from '@/context/DemoContext';
+import { heatScore, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
 
 const SAMPLE_ORIGIN = { lat: 37.3089, lng: -121.8982 };
+
+const MODE_OPTIONS: { value: TravelModeParameter; label: string }[] = [
+  { value: 'any', label: 'Best option' },
+  { value: 'transit', label: 'Bus only' },
+  { value: 'walking', label: 'Walking only' },
+];
 
 export function JourneyScreen() {
   const colors = useColors();
@@ -23,7 +29,8 @@ export function JourneyScreen() {
   const [search, setSearch] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-  const [mapFailed, setMapFailed] = useState(false);
+  const [travelMode, setTravelMode] = useState<TravelModeParameter>('any');
+  const [showHeat, setShowHeat] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setCatalogSearch(search.trim()), 350);
@@ -31,7 +38,7 @@ export function JourneyScreen() {
   }, [search]);
 
   const catalogParams = { query: catalogSearch };
-  const journeyParams = { ...origin, destination: searchedDestination };
+  const journeyParams = { ...origin, destination: searchedDestination, mode: travelMode };
   const catalog = useGetJourneyCatalog(catalogParams, { query: { queryKey: getGetJourneyCatalogQueryKey(catalogParams), enabled: catalogSearch.length > 0, staleTime: 15 * 60_000 } });
   const journey = useGetJourneyMap(
     journeyParams,
@@ -41,17 +48,18 @@ export function JourneyScreen() {
     id: 'offline-route', name: 'Demo transit option', startStop: 'Sample stop · Willow Glen',
     destinationStop: searchedDestination, durationMinutes: 30, walkingMeters: 350,
     transfers: 0, delayMinutes: 0, alerts: [], available: true, recommended: true, source: 'demo',
+    mode: 'transit', legs: [],
   };
   const routes = journey.data?.routes ?? (journey.isError ? [offlineRoute] : []);
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? routes.find((route) => route.recommended) ?? routes[0];
-  const mapUrl = journey.data?.mapImageUrl;
-  useEffect(() => setMapFailed(false), [mapUrl, selectedRouteId, searchedDestination, origin.lat, origin.lng]);
-  const mapPath = mapUrl && selectedRoute?.polyline
-    ? `${mapUrl.split('&routePolyline=')[0]}&routePolyline=${encodeURIComponent(selectedRoute.polyline)}`
-    : mapUrl;
-  const imageUrl = mapPath
-    ? `${Platform.OS === 'web' && !process.env.EXPO_PUBLIC_DOMAIN ? '' : `https://${process.env.EXPO_PUBLIC_DOMAIN}`}${mapPath}`
-    : null;
+  const hasRouteGeometry = selectedRoute?.source === 'live' && selectedRoute.legs.some((leg) => !!leg.polyline);
+  const geocodedReports = state.reports.filter((report) =>
+    report.latitude != null && report.longitude != null &&
+    Number.isFinite(report.latitude) && Number.isFinite(report.longitude));
+  const heatPoints = showHeat ? geocodedReports.map((report) => ({
+    lat: report.latitude!, lng: report.longitude!,
+    intensity: Math.min(1, Math.max(0.2, heatScore(report, geocodedReports) / 12)),
+  })) : [];
 
   const locate = async () => {
     setLocationError('');
@@ -107,6 +115,16 @@ export function JourneyScreen() {
       <SectionTitle title="Where are you going?" />
       <Field label="Child’s destination" value={destination} onChangeText={setDestination} placeholder="Search for a school or address" returnKeyType="search" onSubmitEditing={() => { if (destination.trim()) { setSearchedDestination(destination.trim()); setSelectedRouteId(null); } }} testID="journey-destination" />
       <Button label="Find routes" icon="search" onPress={() => { if (destination.trim()) { setSearchedDestination(destination.trim()); setSelectedRouteId(null); } }} testID="find-routes" />
+      <View style={styles.matches}>
+        {MODE_OPTIONS.map((option) => (
+          <Chip
+            key={option.value}
+            label={option.label}
+            active={travelMode === option.value}
+            onPress={() => { setTravelMode(option.value); setSelectedRouteId(null); }}
+          />
+        ))}
+      </View>
       <Field label="Search bus routes and stops" value={search} onChangeText={setSearch} placeholder="Route number or stop name" testID="search-stops" />
       {catalog.isFetching && !catalog.data ? <ActivityIndicator color={colors.primary} /> : null}
       {catalog.data?.source === 'demo' ? <Text style={[styles.small, { color: colors.mutedForeground }]}>{catalog.data.message ?? 'Stop catalog unavailable; sample data shown.'}</Text> : null}
@@ -119,10 +137,12 @@ export function JourneyScreen() {
       ) : null}
 
       <SectionTitle title="Map & nearby stops" />
-      {imageUrl && journey.data?.source === 'live' && !mapFailed ? (
-        <Image source={{ uri: imageUrl }} style={styles.map} contentFit="cover" accessibilityLabel="Google map of the selected transit route" onError={() => setMapFailed(true)} />
-      ) : <RouteMap height={255} />}
-      <Text style={[styles.caption, { color: colors.mutedForeground }]}>{journey.data?.source === 'live' && imageUrl && !mapFailed ? 'Map imagery: Google Maps · route information: Google Maps and 511 SF Bay' : 'Illustrative demo map · not live position tracking'}</Text>
+      <Chip label={showHeat ? 'Hide safety heat map' : 'Show safety heat map'} active={showHeat} onPress={() => setShowHeat(!showHeat)} />
+      {hasRouteGeometry ? (
+        <JourneyMap legs={selectedRoute.legs} heatPoints={heatPoints} fallbackLat={origin.lat} fallbackLng={origin.lng} />
+      ) : <RouteMap height={255} heat={showHeat} reports={geocodedReports} />}
+      <Text style={[styles.caption, { color: colors.mutedForeground }]}>{hasRouteGeometry ? 'Interactive OpenStreetMap · VTA bus geometry and schedules: 511 SF Bay · walking geometry: Google Routes · not live position tracking' : 'Illustrative demo map · not live position tracking'}</Text>
+      {showHeat && !geocodedReports.length ? <Text style={[styles.caption, { color: colors.mutedForeground }]}>No reports with map locations are available to display.</Text> : null}
       {journey.isFetching && !journey.data ? <ActivityIndicator color={colors.primary} /> : null}
       {journey.isError ? <Text style={[styles.small, { color: colors.destructive }]}>Live routes are unavailable. Showing an illustrative demo option; tap Refresh to retry.</Text> : null}
       {journey.data?.message ? <Text style={[styles.small, { color: colors.mutedForeground }]}>{journey.data.message}</Text> : null}
@@ -144,7 +164,17 @@ export function JourneyScreen() {
           </View>
           <Text style={[styles.small, { color: colors.mutedForeground }]}>{route.startStop} → {route.destinationStop}</Text>
           <Text style={[styles.metrics, { color: colors.foreground }]}>{route.durationMinutes} min · {route.walkingMeters} m walk · {route.transfers} transfer{route.transfers === 1 ? '' : 's'}</Text>
-          <Text style={[styles.small, { color: route.delayMinutes ? colors.warning : colors.mutedForeground }]}>{route.delayMinutes ? `${route.delayMinutes} min delay` : 'No reported delay'} · {route.available ? 'Available' : 'Unavailable'} · {route.source === 'live' ? 'Live option' : 'Demo fallback'}</Text>
+           <Text style={[styles.small, { color: route.delayMinutes ? colors.warning : colors.mutedForeground }]}>{route.delayMinutes ? `${route.delayMinutes} min delay` : route.mode === 'transit' && route.source === 'live' && route.legs.filter((leg) => leg.type === 'bus').every((leg) => leg.delayMinutes === null) ? 'Live delay unknown' : 'No reported delay'} · {route.available ? 'Available' : 'Cannot catch this connection'} · {route.source === 'live' ? route.mode === 'walking' ? 'Google walking estimate' : '511 VTA scheduled bus' : 'Demo fallback'}</Text>
+          {route.legs.map((leg, index) => (
+            <Text key={`${route.id}-leg-${index}`} style={[styles.small, { color: colors.mutedForeground }]}>
+              {leg.type === 'walk'
+                ? `Walk ${leg.durationMinutes} min to ${leg.alightingStop.name}`
+                : `Ride ${leg.routeNumber ?? leg.routeName ?? 'bus'} from ${leg.boardingStop.name} to ${leg.alightingStop.name} · ${leg.durationMinutes} min`}
+               {leg.transferGuidance ? ` · ${leg.transferGuidance}` : ''}
+               {leg.predictedArrival ? ` · ${leg.delayMinutes === null ? 'Scheduled' : 'Estimated'} arrival ${new Date(leg.predictedArrival).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+               {leg.delayMinutes ? ` · ${leg.delayMinutes} min delay` : ''}
+            </Text>
+          ))}
           {route.alerts.map((alert, index) => <Text key={`${index}-${alert}`} style={[styles.small, { color: colors.warning }]}>Service alert: {alert}</Text>)}
         </Pressable>
       ))}
@@ -167,7 +197,6 @@ const styles = StyleSheet.create({
   title: { fontFamily: 'Inter_700Bold', fontSize: 15, lineHeight: 22 },
   small: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 4 },
   caption: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
-  map: { width: '100%', height: 255, borderRadius: 22 },
   matches: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   option: { padding: 16, borderRadius: 20, borderWidth: 1, gap: 7 },
   optionHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },

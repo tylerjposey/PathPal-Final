@@ -8,17 +8,9 @@
 
 export type GetJourneyMapImageParams = {
 /**
- * @minimum -90
- * @maximum 90
+ * Opaque, short-lived token issued by /journey/map identifying the map spec to render.
+ * @minLength 1
+ * @maxLength 200
  */
-lat: number;
-/**
- * @minimum -180
- * @maximum 180
- */
-lng: number;
-/**
- * @maxLength 10000
- */
-routePolyline?: string;
+token: string;
 };

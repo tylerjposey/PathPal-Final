@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { JourneyLeg } from './journeyLeg';
+import type { JourneyRouteMode } from './journeyRouteMode';
 import type { JourneyRouteSource } from './journeyRouteSource';
 
 export interface JourneyRoute {
@@ -26,4 +28,6 @@ export interface JourneyRoute {
   source: JourneyRouteSource;
   /** @nullable */
   polyline?: string | null;
+  mode: JourneyRouteMode;
+  legs: JourneyLeg[];
 }

@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "postgresql-16"]
+modules = ["nodejs-24", "postgresql-16", "python-base-3.13"]
 
 [deployment]
 router = "application"
@@ -27,3 +27,6 @@ GOOGLE_MAPS_API_KEY = "AIzaSyDqJpTSnO9tCRcLpqiNjiIk81Gyj_mIabU"
 
 [nix]
 channel = "stable-25_05"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-00b83fdf-2f2b-4edf-8da4-b041ec9b901d"

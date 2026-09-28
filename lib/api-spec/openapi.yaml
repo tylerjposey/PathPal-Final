@@ -37,6 +37,7 @@ paths:
         - $ref: "#/components/parameters/Latitude"
         - $ref: "#/components/parameters/Longitude"
         - $ref: "#/components/parameters/Destination"
+        - $ref: "#/components/parameters/TravelMode"
       responses:
         "200":
           description: Ranked live journey options or clearly marked demo fallback
@@ -59,13 +60,14 @@ paths:
         - $ref: "#/components/parameters/Latitude"
         - $ref: "#/components/parameters/Longitude"
         - $ref: "#/components/parameters/Destination"
-        - name: routePolyline
+        - $ref: "#/components/parameters/TravelMode"
+        - name: routeId
           in: query
           required: false
-          description: Optional encoded route polyline to display on the static map
+          description: Optional route id (from journey/options) to render on the map. Defaults to the recommended route.
           schema:
             type: string
-            maxLength: 10000
+            maxLength: 200
       responses:
         "200":
           description: Journey options with a backend-proxied map image URL
@@ -85,26 +87,14 @@ paths:
       tags: [journey]
       summary: Proxy a Google static map image without exposing its API key
       parameters:
-        - name: lat
+        - name: token
           in: query
           required: true
-          schema:
-            type: number
-            minimum: -90
-            maximum: 90
-        - name: lng
-          in: query
-          required: true
-          schema:
-            type: number
-            minimum: -180
-            maximum: 180
-        - name: routePolyline
-          in: query
-          required: false
+          description: Opaque, short-lived token issued by /journey/map identifying the map spec to render.
           schema:
             type: string
-            maxLength: 10000
+            minLength: 1
+            maxLength: 200
       responses:
         "200":
           description: Static map image
@@ -420,6 +410,15 @@ components:
         type: string
         minLength: 1
         maxLength: 150
+    TravelMode:
+      name: mode
+      in: query
+      required: false
+      description: Restrict journey options to a travel mode. Defaults to considering both.
+      schema:
+        type: string
+        enum: [any, walking, transit]
+        default: any
     ReportId:
       name: id
       in: path
@@ -511,6 +510,13 @@ components:
           enum: [live, demo]
         polyline:
           type: ["string", "null"]
+        mode:
+          type: string
+          enum: [walking, transit]
+        legs:
+          type: array
+          items:
+            $ref: "#/components/schemas/JourneyLeg"
       required:
         - id
         - name
@@ -524,6 +530,51 @@ components:
         - available
         - recommended
         - source
+        - mode
+        - legs
+    JourneyLeg:
+      type: object
+      description: One ordered segment of a journey - either a walk or a single VTA bus ride.
+      properties:
+        type:
+          type: string
+          enum: [walk, bus]
+        routeNumber:
+          type: ["string", "null"]
+          description: Public VTA route code (e.g. "22"), null for walking legs.
+        routeName:
+          type: ["string", "null"]
+        boardingStop:
+          $ref: "#/components/schemas/JourneyStop"
+        alightingStop:
+          $ref: "#/components/schemas/JourneyStop"
+        distanceMeters:
+          type: integer
+          minimum: 0
+        durationMinutes:
+          type: integer
+          minimum: 0
+        delayMinutes:
+          type: ["integer", "null"]
+        predictedArrival:
+          type: ["string", "null"]
+          format: date-time
+        transferGuidance:
+          type: ["string", "null"]
+        polyline:
+          type: ["string", "null"]
+      required:
+        - type
+        - routeNumber
+        - routeName
+        - boardingStop
+        - alightingStop
+        - distanceMeters
+        - durationMinutes
+        - delayMinutes
+        - predictedArrival
+        - transferGuidance
+        - polyline
     JourneyStop:
       type: object
       properties:

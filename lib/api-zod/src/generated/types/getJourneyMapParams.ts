@@ -8,6 +8,7 @@
 import type { DestinationParameter } from './destinationParameter';
 import type { LatitudeParameter } from './latitudeParameter';
 import type { LongitudeParameter } from './longitudeParameter';
+import type { TravelModeParameter } from './travelModeParameter';
 
 export type GetJourneyMapParams = {
 /**
@@ -26,8 +27,12 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
- * Optional encoded route polyline to display on the static map
- * @maxLength 10000
+ * Restrict journey options to a travel mode. Defaults to considering both.
  */
-routePolyline?: string;
+mode?: TravelModeParameter;
+/**
+ * Optional route id (from journey/options) to render on the map. Defaults to the recommended route.
+ * @maxLength 200
+ */
+routeId?: string;
 };

@@ -1,0 +1,189 @@
+## Additional Updates to the Existing Orivis Project
+
+Preserve the existing Orivis application and add the following functionality.
+
+### Live Journey Mapping
+
+Replace the simulated bus map with a live Google Maps integration using the existing `GOOGLE_MAPS_API_KEY` stored in Replit Secrets.
+
+Use Google Maps for:
+
+- Live 3D map rendering
+- Location markers
+- Walking paths
+- Route polylines
+- Bus-stop markers
+- Destination markers
+- Heat-map visualization
+- User interactions and map clicks
+
+Use the 511 SF Bay Transit API using the existing `511_API_KEY`, but limit transit planning to VTA/Santa Clara County routes for this version.
+
+Use 511 to retrieve:
+
+- VTA bus stops
+- VTA bus routes
+- Route patterns and ordered stops
+- Bus transfers
+- Arrival times
+- Delays
+- Service alerts
+
+Use the Google Maps Compute Routes API only when needed for walking segments or walking-only journeys. Cache route results and avoid unnecessary repeated API calls to conserve credits.
+
+If an API fails, use the existing simulated transit and map fallback.
+
+### Journey Planning
+
+On the Journey page, allow a child or parent to:
+
+- Use their current location
+- Enter or search for a destination
+- Select either Walking or Bus
+- View the nearest VTA bus stop
+- Compare available routes
+- View estimated travel time
+- View walking distance
+- View transfer count
+- View delays and service alerts
+- Select and save a recommended journey
+
+Create a route-efficiency algorithm that prioritizes:
+
+- Shorter total travel time
+- Fewer transfers
+- Shorter walking distance
+- Fewer delays
+- Fewer service interruptions
+- Route availability
+
+Clearly label the highest-ranked option as:
+
+“Recommended Route”
+
+### Multi-Bus Routes
+
+If a journey requires multiple buses, display each bus segment with a different color.
+
+For example:
+
+- Bus 1: blue
+- Walking transfer: gray
+- Bus 2: orange
+- Walking transfer: gray
+- Bus 3: purple
+
+Display:
+
+- Each bus route number
+- Boarding stop
+- Transfer stop
+- Destination stop
+- Estimated arrival time
+- Transfer instructions
+- Delay information
+
+The child must be able to confirm each step:
+
+- Got off Bus 1
+- Boarded Bus 2
+- Got off Bus 2
+- Boarded Bus 3
+- Got off the final bus
+- Reached the destination
+
+### Walking Journeys
+
+For walking-only journeys:
+
+- Display a Google Maps walking route
+- Use “Started Walking” as the first confirmation
+- Use “Reached Destination” as the final confirmation
+- Do not display bus boarding or transfer buttons
+
+### Parent Notifications
+
+When a child or parent saves a journey, immediately notify the parent under the family account.
+
+Notify the parent again when the child:
+
+- Boards the first bus
+- Gets off a bus
+- Transfers to another bus
+- Boards the next bus
+- Gets off the final bus
+- Starts walking
+- Reaches the destination
+- Reports a delay
+
+Simulate both:
+
+- An in-app notification
+- A text-message notification
+
+Reflect all journey updates on the Parent Dashboard.
+
+Do not continuously track the child during normal journeys. Use location access only for route planning and explicitly confirmed journey milestones.
+
+### Sign-In Design
+
+Replace the five always-visible sign-in buttons with one dropdown labeled:
+
+“Select Account Type”
+
+Dropdown options:
+
+- Parent
+- Child
+- Citizen
+- City Case Manager
+- City Worker
+
+After selecting an account type, display the relevant login fields and route the user to the correct dashboard.
+
+### Report Privacy by Role
+
+Personalize the reporting and history pages by role.
+
+Parents, children, and citizens should:
+
+- View only reports they personally submitted
+- Update their own submitted reports
+- View the heat map showing all community reports
+- See only the heat-map visualization of other reports
+- Be unable to open or inspect other users’ report details
+
+City Case Managers and City Workers should:
+
+- View all reports in their authorized Reports and History sections
+- View complete report details
+- View uploaded photos, descriptions, locations, AI analysis, severity, and statuses
+- Follow their existing role-based editing permissions
+
+### City Case Manager Team Delegation
+
+Allow City Case Managers to select a suggested city team before approving delegation.
+
+Team options:
+
+- San Jose West Crew Team
+- San Jose East Crew Team
+- San Jose North Crew Team
+- San Jose South Crew Team
+
+The Case Manager should be able to:
+
+- Review the report
+- Edit the severity score
+- Select the appropriate crew team
+- View the suggested route
+- Approve the team delegation
+- Update the case status
+
+City Workers should see the cases and routes delegated to their assigned team.
+
+### Navigation Fix
+
+Add a visible Back button to the notification screen so users cannot become stuck.
+
+The Back button must preserve the current app state and work for every account type.

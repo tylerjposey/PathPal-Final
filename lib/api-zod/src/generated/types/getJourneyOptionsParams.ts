@@ -8,6 +8,7 @@
 import type { DestinationParameter } from './destinationParameter';
 import type { LatitudeParameter } from './latitudeParameter';
 import type { LongitudeParameter } from './longitudeParameter';
+import type { TravelModeParameter } from './travelModeParameter';
 
 export type GetJourneyOptionsParams = {
 /**
@@ -25,4 +26,8 @@ lng: LongitudeParameter;
  * @maxLength 150
  */
 destination: DestinationParameter;
+/**
+ * Restrict journey options to a travel mode. Defaults to considering both.
+ */
+mode?: TravelModeParameter;
 };

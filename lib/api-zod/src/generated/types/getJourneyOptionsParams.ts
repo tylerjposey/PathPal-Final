@@ -29,17 +29,17 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
- * Optional latitude from a selected place prediction.
+ * Latitude from the selected destination place.
  * @minimum -90
  * @maximum 90
  */
-destinationLat?: DestinationLatitudeParameter;
+destinationLat: DestinationLatitudeParameter;
 /**
- * Optional longitude from a selected place prediction.
+ * Longitude from the selected destination place.
  * @minimum -180
  * @maximum 180
  */
-destinationLng?: DestinationLongitudeParameter;
+destinationLng: DestinationLongitudeParameter;
 /**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */

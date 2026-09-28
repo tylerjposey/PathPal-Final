@@ -40,8 +40,8 @@ export const GetJourneyOptionsQueryParams = zod.object({
   "lat": zod.coerce.number().min(getJourneyOptionsQueryLatMin).max(getJourneyOptionsQueryLatMax),
   "lng": zod.coerce.number().min(getJourneyOptionsQueryLngMin).max(getJourneyOptionsQueryLngMax),
   "destination": zod.coerce.string().min(1).max(getJourneyOptionsQueryDestinationMax),
-  "destinationLat": zod.coerce.number().min(getJourneyOptionsQueryDestinationLatMin).max(getJourneyOptionsQueryDestinationLatMax).optional().describe('Optional latitude from a selected place prediction.'),
-  "destinationLng": zod.coerce.number().min(getJourneyOptionsQueryDestinationLngMin).max(getJourneyOptionsQueryDestinationLngMax).optional().describe('Optional longitude from a selected place prediction.'),
+  "destinationLat": zod.coerce.number().min(getJourneyOptionsQueryDestinationLatMin).max(getJourneyOptionsQueryDestinationLatMax).describe('Latitude from the selected destination place.'),
+  "destinationLng": zod.coerce.number().min(getJourneyOptionsQueryDestinationLngMin).max(getJourneyOptionsQueryDestinationLngMax).describe('Longitude from the selected destination place.'),
   "mode": zod.enum(['any', 'walking', 'transit']).default(getJourneyOptionsQueryModeDefault).describe('Restrict journey options to a travel mode. Defaults to considering both.')
 })
 
@@ -147,8 +147,8 @@ export const GetJourneyMapQueryParams = zod.object({
   "lat": zod.coerce.number().min(getJourneyMapQueryLatMin).max(getJourneyMapQueryLatMax),
   "lng": zod.coerce.number().min(getJourneyMapQueryLngMin).max(getJourneyMapQueryLngMax),
   "destination": zod.coerce.string().min(1).max(getJourneyMapQueryDestinationMax),
-  "destinationLat": zod.coerce.number().min(getJourneyMapQueryDestinationLatMin).max(getJourneyMapQueryDestinationLatMax).optional().describe('Optional latitude from a selected place prediction.'),
-  "destinationLng": zod.coerce.number().min(getJourneyMapQueryDestinationLngMin).max(getJourneyMapQueryDestinationLngMax).optional().describe('Optional longitude from a selected place prediction.'),
+  "destinationLat": zod.coerce.number().min(getJourneyMapQueryDestinationLatMin).max(getJourneyMapQueryDestinationLatMax).describe('Latitude from the selected destination place.'),
+  "destinationLng": zod.coerce.number().min(getJourneyMapQueryDestinationLngMin).max(getJourneyMapQueryDestinationLngMax).describe('Longitude from the selected destination place.'),
   "mode": zod.enum(['any', 'walking', 'transit']).default(getJourneyMapQueryModeDefault).describe('Restrict journey options to a travel mode. Defaults to considering both.'),
   "routeId": zod.coerce.string().max(getJourneyMapQueryRouteIdMax).optional().describe('Optional route id (from journey/options) to render on the map. Defaults to the recommended route.')
 })
@@ -262,8 +262,8 @@ export const GetJourneyMap3dQueryParams = zod.object({
   "lat": zod.coerce.number().min(getJourneyMap3dQueryLatMin).max(getJourneyMap3dQueryLatMax),
   "lng": zod.coerce.number().min(getJourneyMap3dQueryLngMin).max(getJourneyMap3dQueryLngMax),
   "destination": zod.coerce.string().min(1).max(getJourneyMap3dQueryDestinationMax),
-  "destinationLat": zod.coerce.number().min(getJourneyMap3dQueryDestinationLatMin).max(getJourneyMap3dQueryDestinationLatMax).optional().describe('Optional latitude from a selected place prediction.'),
-  "destinationLng": zod.coerce.number().min(getJourneyMap3dQueryDestinationLngMin).max(getJourneyMap3dQueryDestinationLngMax).optional().describe('Optional longitude from a selected place prediction.'),
+  "destinationLat": zod.coerce.number().min(getJourneyMap3dQueryDestinationLatMin).max(getJourneyMap3dQueryDestinationLatMax).describe('Latitude from the selected destination place.'),
+  "destinationLng": zod.coerce.number().min(getJourneyMap3dQueryDestinationLngMin).max(getJourneyMap3dQueryDestinationLngMax).describe('Longitude from the selected destination place.'),
   "mode": zod.enum(['any', 'walking', 'transit']).default(getJourneyMap3dQueryModeDefault).describe('Restrict journey options to a travel mode. Defaults to considering both.'),
   "routeId": zod.coerce.string().max(getJourneyMap3dQueryRouteIdMax),
   "heat": zod.coerce.string().max(getJourneyMap3dQueryHeatMax).optional().describe('Up to 80 semicolon-separated latitude,longitude,intensity points.'),
@@ -333,26 +333,17 @@ export const getJourneyPlaceAutocompleteResponseSuggestionsItemNameMax = 200;
 
 export const getJourneyPlaceAutocompleteResponseSuggestionsItemDescriptionMax = 300;
 
-export const getJourneyPlaceAutocompleteResponseSuggestionsItemLatMin = -90;
-export const getJourneyPlaceAutocompleteResponseSuggestionsItemLatMax = 90;
-
-export const getJourneyPlaceAutocompleteResponseSuggestionsItemLngMin = -180;
-export const getJourneyPlaceAutocompleteResponseSuggestionsItemLngMax = 180;
-
 export const getJourneyPlaceAutocompleteResponseSuggestionsMax = 8;
 
 
 
 export const GetJourneyPlaceAutocompleteResponse = zod.object({
-  "source": zod.enum(['google', 'demo']),
+  "source": zod.enum(['google']),
   "suggestions": zod.array(zod.object({
   "placeId": zod.string().max(getJourneyPlaceAutocompleteResponseSuggestionsItemPlaceIdMax),
   "name": zod.string().max(getJourneyPlaceAutocompleteResponseSuggestionsItemNameMax),
-  "description": zod.string().max(getJourneyPlaceAutocompleteResponseSuggestionsItemDescriptionMax).nullish(),
-  "lat": zod.number().min(getJourneyPlaceAutocompleteResponseSuggestionsItemLatMin).max(getJourneyPlaceAutocompleteResponseSuggestionsItemLatMax).optional(),
-  "lng": zod.number().min(getJourneyPlaceAutocompleteResponseSuggestionsItemLngMin).max(getJourneyPlaceAutocompleteResponseSuggestionsItemLngMax).optional()
-})).max(getJourneyPlaceAutocompleteResponseSuggestionsMax),
-  "message": zod.string().nullish()
+  "description": zod.string().max(getJourneyPlaceAutocompleteResponseSuggestionsItemDescriptionMax).nullish()
+})).max(getJourneyPlaceAutocompleteResponseSuggestionsMax)
 })
 
 

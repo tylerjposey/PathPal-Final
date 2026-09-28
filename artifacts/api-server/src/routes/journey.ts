@@ -124,18 +124,7 @@ type PlaceSuggestion = {
   placeId: string;
   name: string;
   description?: string;
-  lat?: number;
-  lng?: number;
 };
-
-const SAMPLE_PLACES: PlaceSuggestion[] = [
-  { placeId: "local:willow-glen", name: "Willow Glen, San Jose, CA", description: "Sample area", lat: 37.3089, lng: -121.8982 },
-  { placeId: "local:downtown-san-jose", name: "Downtown San Jose, CA", description: "Sample area", lat: 37.3352, lng: -121.8811 },
-  { placeId: "local:japantown", name: "Japantown, San Jose, CA", description: "Sample area", lat: 37.3478, lng: -121.895 },
-  { placeId: "local:east-san-jose", name: "East San Jose, CA", description: "Sample area", lat: 37.354, lng: -121.818 },
-  { placeId: "local:alum-rock", name: "Alum Rock, San Jose, CA", description: "Sample area", lat: 37.366, lng: -121.827 },
-  { placeId: "local:santa-clara", name: "Santa Clara, CA", description: "Sample area", lat: 37.3541, lng: -121.9552 },
-];
 
 const placesRequestsByIp = new Map<string, number[]>();
 const PLACES_RATE_WINDOW_MS = 60_000;
@@ -553,86 +542,6 @@ function allowPlacesRequest(ip: string): boolean {
   timestamps.push(now);
   placesRequestsByIp.set(ip, timestamps);
   return true;
-}
-
-function normalizedLocationText(value: string): string {
-  return value.normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function editDistance(left: string, right: string): number {
-  const row = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let i = 1; i <= left.length; i += 1) {
-    let diagonal = row[0];
-    row[0] = i;
-    for (let j = 1; j <= right.length; j += 1) {
-      const previous = row[j];
-      row[j] = Math.min(
-        row[j] + 1,
-        row[j - 1] + 1,
-        diagonal + (left[i - 1] === right[j - 1] ? 0 : 1),
-      );
-      diagonal = previous;
-    }
-  }
-  return row[right.length];
-}
-
-function localLocationScore(query: string, name: string): number | undefined {
-  const normalizedQuery = normalizedLocationText(query);
-  const normalizedName = normalizedLocationText(name);
-  if (!normalizedQuery || !normalizedName) return undefined;
-  if (normalizedName.includes(normalizedQuery)) return 0;
-  const queryWords = normalizedQuery.split(" ");
-  const nameWords = normalizedName.split(" ");
-  if (queryWords.every((word) => nameWords.some((candidate) => candidate.startsWith(word)))) {
-    return 1;
-  }
-  const firstWord = queryWords[0];
-  const maxDistance = firstWord.length < 5 ? 1 : 2;
-  const closestDistance = Math.min(...nameWords.map((word) => editDistance(firstWord, word)));
-  return closestDistance <= maxDistance ? 2 + closestDistance : undefined;
-}
-
-async function searchLocalPlaces(input: string): Promise<PlaceSuggestion[]> {
-  const [catalog, feed] = await Promise.all([get511Catalog(), getVtaGtfs()]);
-  const stops = new Map<string, JourneyStop>();
-  for (const stop of catalog?.stops ?? []) stops.set(stop.id, stop);
-  if (feed) {
-    for (const id of feed.byStop.keys()) {
-      const stop = feed.stops.get(id);
-      if (stop) {
-        const journeyStop = toJourneyStop(stop);
-        stops.set(journeyStop.id, journeyStop);
-      }
-    }
-  }
-  const candidates: PlaceSuggestion[] = [
-    ...SAMPLE_PLACES,
-    ...[...stops.values()].map((stop) => ({
-      placeId: `local:stop:${stop.id}`,
-      name: stop.name,
-      description: "VTA bus stop",
-      lat: stop.lat,
-      lng: stop.lng,
-    })),
-  ];
-  return candidates
-    .map((suggestion) => ({
-      suggestion,
-      score: localLocationScore(input, suggestion.name),
-    }))
-    .filter((result): result is { suggestion: PlaceSuggestion; score: number } =>
-      result.score !== undefined,
-    )
-    .sort((left, right) =>
-      left.score - right.score || left.suggestion.name.localeCompare(right.suggestion.name),
-    )
-    .slice(0, 8)
-    .map(({ suggestion }) => suggestion);
 }
 
 async function autocompleteGooglePlaces(
@@ -1601,10 +1510,11 @@ async function buildJourney(
   mode: TravelMode,
   destinationCoordinates?: Coordinate,
 ) {
+  const needsTransitData = mode !== "walking";
   const [{ walkingRoute }, catalog, feed] = await Promise.all([
     fetchCachedGoogleRoutes(lat, lng, destination, destinationCoordinates),
-    get511Catalog(),
-    mode === "walking" ? Promise.resolve(undefined) : getVtaGtfs(),
+    needsTransitData ? get511Catalog() : Promise.resolve(undefined),
+    needsTransitData ? getVtaGtfs() : Promise.resolve(undefined),
   ]);
   if (mode === "walking" && !walkingRoute) {
     return demoJourney(
@@ -1697,7 +1607,7 @@ function hasValidDestinationCoordinates(
   destinationLat: number | undefined,
   destinationLng: number | undefined,
 ): boolean {
-  return (destinationLat === undefined) === (destinationLng === undefined);
+  return destinationLat !== undefined && destinationLng !== undefined;
 }
 
 function getDestinationCoordinates(
@@ -1973,21 +1883,13 @@ router.get("/journey/places/autocomplete", async (req, res): Promise<void> => {
     query.data.input.trim(),
     query.data.sessionToken,
   );
-  if (googleSuggestions?.length) {
-    res.json(GetJourneyPlaceAutocompleteResponse.parse({
-      source: "google",
-      suggestions: googleSuggestions,
-    }));
+  if (googleSuggestions === undefined) {
+    res.status(503).json({ error: "Google Places search is temporarily unavailable." });
     return;
   }
-
-  const localSuggestions = await searchLocalPlaces(query.data.input.trim());
   res.json(GetJourneyPlaceAutocompleteResponse.parse({
-    source: "demo",
-    suggestions: localSuggestions,
-    message: process.env.GOOGLE_MAPS_API_KEY
-      ? "Google Places is unavailable right now. Showing matching sample areas and bus stops."
-      : "Google Places is not configured. Showing matching sample areas and bus stops.",
+    source: "google",
+    suggestions: googleSuggestions,
   }));
 });
 

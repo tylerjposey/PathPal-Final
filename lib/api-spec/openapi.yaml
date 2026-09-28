@@ -177,13 +177,19 @@ paths:
         - $ref: "#/components/parameters/PlacesSessionToken"
       responses:
         "200":
-          description: Google Places predictions or a local fuzzy-search fallback
+          description: Google Places predictions for general locations
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/JourneyPlaceAutocompleteResponse"
         "400":
           description: Invalid autocomplete query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Google Places is unavailable
           content:
             application/json:
               schema:
@@ -499,8 +505,8 @@ components:
     DestinationLatitude:
       name: destinationLat
       in: query
-      required: false
-      description: Optional latitude from a selected place prediction.
+      required: true
+      description: Latitude from the selected destination place.
       schema:
         type: number
         minimum: -90
@@ -508,8 +514,8 @@ components:
     DestinationLongitude:
       name: destinationLng
       in: query
-      required: false
-      description: Optional longitude from a selected place prediction.
+      required: true
+      description: Longitude from the selected destination place.
       schema:
         type: number
         minimum: -180
@@ -749,21 +755,18 @@ components:
         placeId: { type: string, maxLength: 300 }
         name: { type: string, maxLength: 200 }
         description: { type: ["string", "null"], maxLength: 300 }
-        lat: { type: number, minimum: -90, maximum: 90 }
-        lng: { type: number, minimum: -180, maximum: 180 }
       required: [placeId, name]
     JourneyPlaceAutocompleteResponse:
       type: object
       properties:
         source:
           type: string
-          enum: [google, demo]
+          enum: [google]
         suggestions:
           type: array
           maxItems: 8
           items:
             $ref: "#/components/schemas/JourneyPlaceSuggestion"
-        message: { type: ["string", "null"] }
       required: [source, suggestions]
     JourneyPlaceDetailsResponse:
       type: object

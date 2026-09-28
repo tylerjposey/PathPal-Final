@@ -7,6 +7,6 @@
  */
 
 /**
- * Optional latitude from a selected place prediction.
+ * Latitude from the selected destination place.
  */
 export type DestinationLatitudeParameter = number;

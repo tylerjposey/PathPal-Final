@@ -148,16 +148,6 @@ export interface JourneyPlaceSuggestion {
      * @nullable
      */
   description?: string | null;
-  /**
-     * @minimum -90
-     * @maximum 90
-     */
-  lat?: number;
-  /**
-     * @minimum -180
-     * @maximum 180
-     */
-  lng?: number;
 }
 
 export type JourneyPlaceAutocompleteResponseSource = typeof JourneyPlaceAutocompleteResponseSource[keyof typeof JourneyPlaceAutocompleteResponseSource];
@@ -165,15 +155,12 @@ export type JourneyPlaceAutocompleteResponseSource = typeof JourneyPlaceAutocomp
 
 export const JourneyPlaceAutocompleteResponseSource = {
   google: 'google',
-  demo: 'demo',
 } as const;
 
 export interface JourneyPlaceAutocompleteResponse {
   source: JourneyPlaceAutocompleteResponseSource;
   /** @maxItems 8 */
   suggestions: JourneyPlaceSuggestion[];
-  /** @nullable */
-  message?: string | null;
 }
 
 export interface JourneyPlaceDetailsResponse {
@@ -528,12 +515,12 @@ export type LongitudeParameter = number;
 export type DestinationParameter = string;
 
 /**
- * Optional latitude from a selected place prediction.
+ * Latitude from the selected destination place.
  */
 export type DestinationLatitudeParameter = number;
 
 /**
- * Optional longitude from a selected place prediction.
+ * Longitude from the selected destination place.
  */
 export type DestinationLongitudeParameter = number;
 
@@ -574,17 +561,17 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
- * Optional latitude from a selected place prediction.
+ * Latitude from the selected destination place.
  * @minimum -90
  * @maximum 90
  */
-destinationLat?: DestinationLatitudeParameter;
+destinationLat: DestinationLatitudeParameter;
 /**
- * Optional longitude from a selected place prediction.
+ * Longitude from the selected destination place.
  * @minimum -180
  * @maximum 180
  */
-destinationLng?: DestinationLongitudeParameter;
+destinationLng: DestinationLongitudeParameter;
 /**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */
@@ -608,17 +595,17 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
- * Optional latitude from a selected place prediction.
+ * Latitude from the selected destination place.
  * @minimum -90
  * @maximum 90
  */
-destinationLat?: DestinationLatitudeParameter;
+destinationLat: DestinationLatitudeParameter;
 /**
- * Optional longitude from a selected place prediction.
+ * Longitude from the selected destination place.
  * @minimum -180
  * @maximum 180
  */
-destinationLng?: DestinationLongitudeParameter;
+destinationLng: DestinationLongitudeParameter;
 /**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */
@@ -647,17 +634,17 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
- * Optional latitude from a selected place prediction.
+ * Latitude from the selected destination place.
  * @minimum -90
  * @maximum 90
  */
-destinationLat?: DestinationLatitudeParameter;
+destinationLat: DestinationLatitudeParameter;
 /**
- * Optional longitude from a selected place prediction.
+ * Longitude from the selected destination place.
  * @minimum -180
  * @maximum 180
  */
-destinationLng?: DestinationLongitudeParameter;
+destinationLng: DestinationLongitudeParameter;
 /**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */

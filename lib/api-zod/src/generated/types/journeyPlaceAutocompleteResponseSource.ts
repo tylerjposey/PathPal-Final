@@ -11,5 +11,4 @@ export type JourneyPlaceAutocompleteResponseSource = typeof JourneyPlaceAutocomp
 
 export const JourneyPlaceAutocompleteResponseSource = {
   google: 'google',
-  demo: 'demo',
 } as const;

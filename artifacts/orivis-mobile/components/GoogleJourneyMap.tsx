@@ -20,8 +20,8 @@ export function GoogleJourneyMap({
   lat: number;
   lng: number;
   destination: string;
-  destinationLat?: number;
-  destinationLng?: number;
+  destinationLat: number;
+  destinationLng: number;
   mode: string;
   routeId: string;
   heatPoints: HeatPoint[];
@@ -34,10 +34,8 @@ export function GoogleJourneyMap({
     const query = new URLSearchParams({
       lat: String(lat), lng: String(lng), destination, mode, routeId,
     });
-      if (destinationLat != null && destinationLng != null) {
-        query.set('destinationLat', String(destinationLat));
-        query.set('destinationLng', String(destinationLng));
-      }
+    query.set('destinationLat', String(destinationLat));
+    query.set('destinationLng', String(destinationLng));
     const heat = heatPoints.slice(0, 80)
       .map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)},${p.intensity.toFixed(2)}`).join(';');
     if (heat) query.set('heat', heat);

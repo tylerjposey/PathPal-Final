@@ -12,6 +12,4 @@ export interface JourneyPlaceAutocompleteResponse {
   source: JourneyPlaceAutocompleteResponseSource;
   /** @maxItems 8 */
   suggestions: JourneyPlaceSuggestion[];
-  /** @nullable */
-  message?: string | null;
 }

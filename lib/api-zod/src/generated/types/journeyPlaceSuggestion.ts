@@ -16,14 +16,4 @@ export interface JourneyPlaceSuggestion {
      * @nullable
      */
   description?: string | null;
-  /**
-     * @minimum -90
-     * @maximum 90
-     */
-  lat?: number;
-  /**
-     * @minimum -180
-     * @maximum 180
-     */
-  lng?: number;
 }

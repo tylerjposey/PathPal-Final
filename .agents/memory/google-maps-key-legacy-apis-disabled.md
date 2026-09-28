@@ -1,12 +1,12 @@
 ---
 name: Google Maps key API restrictions
-description: Maps keys can permit Routes API while still blocking legacy APIs, and browser versus server restrictions must stay separate.
+description: Routes and browser-keyed 3D maps work, but the current server key is blocked from Places Autocomplete; preserve the Google-only journey search.
 ---
 
-The original server Maps key returned `REQUEST_DENIED` / 403 "not activated" for legacy Directions and Maps Static APIs. Routes API v2 normally handles walking. When that same server key's API restrictions did not allow Routes, walking requests returned `PERMISSION_DENIED` / `API_KEY_SERVICE_BLOCKED` (403); a separate browser-restricted Maps JavaScript key does not authorize server-side Routes requests.
+As of 2026-09-27, the server Maps key supports Routes API v2, but Google Places Autocomplete (New) returns HTTP 403. A separate browser-restricted Maps JavaScript key successfully serves the Google 3D map and must not be used for server-side Places or Routes calls. Legacy Directions and Static Maps APIs are also unavailable on the server key.
 
-Google Places autocomplete currently falls back to local sample-area and VTA-stop results with the configured server key. Walking via Routes API and the browser-keyed Google 3D map are working.
+Walking directions through Routes API, the browser-keyed Google 3D map, and live VTA transit requests are working. The journey planner must not substitute local sample places or 511 stops when Google Places fails.
 
-**Why:** A live autocomplete request returned `source: "demo"` with the Places-unavailable message, while the coordinate-based walking route returned a live route and the 3D map endpoint rendered the Google map document.
+**Why:** The user requires Google Places as the only autocomplete source; a live check returned 403 from Places while coordinate-backed walking and transit requests returned live routes.
 
-**How to apply:** Keep the local autocomplete fallback. Keep Routes API enabled on the server key and Maps JavaScript API enabled on a distinct HTTP-referrer-restricted browser key. Do not assume Static Maps can render; avoid exposing a server key to the client.
+**How to apply:** Use Places Autocomplete (New) for suggestions, then resolve coordinates through Places Details. If either call fails, return a clear error/503 rather than sample or 511 suggestions. Call 511 only for coordinate-backed transit route searches after an explicit user request; keep the browser key separate and never expose server keys to the client.

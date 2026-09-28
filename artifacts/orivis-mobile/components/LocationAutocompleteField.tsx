@@ -80,26 +80,16 @@ export function LocationAutocompleteField({
     setIsResolving(true);
     setSelectionError('');
     try {
-      let selected: SelectedPlace;
-      if (suggestion.lat != null && suggestion.lng != null) {
-        selected = {
-          placeId: suggestion.placeId,
-          name: suggestion.name,
-          lat: suggestion.lat,
-          lng: suggestion.lng,
-        };
-      } else {
-        const details = await getJourneyPlaceDetails({
-          placeId: suggestion.placeId,
-          sessionToken,
-        });
-        selected = {
-          placeId: details.placeId,
-          name: details.name || suggestion.name,
-          lat: details.latitude,
-          lng: details.longitude,
-        };
-      }
+      const details = await getJourneyPlaceDetails({
+        placeId: suggestion.placeId,
+        sessionToken,
+      });
+      const selected: SelectedPlace = {
+        placeId: details.placeId,
+        name: details.name || suggestion.name,
+        lat: details.latitude,
+        lng: details.longitude,
+      };
       if (!Number.isFinite(selected.lat) || !Number.isFinite(selected.lng)) {
         throw new Error('Coordinates were not returned for this place.');
       }
@@ -154,7 +144,7 @@ export function LocationAutocompleteField({
                 { borderBottomColor: colors.border, opacity: pressed ? 0.65 : 1 },
               ]}
             >
-              <Feather name={suggestion.description === 'VTA bus stop' ? 'map-pin' : 'map'} size={17} color={colors.primary} />
+              <Feather name="map-pin" size={17} color={colors.primary} />
               <View style={styles.suggestionText}>
                 <Text style={[styles.name, { color: colors.foreground }]}>{suggestion.name}</Text>
                 {suggestion.description ? (
@@ -164,10 +154,11 @@ export function LocationAutocompleteField({
             </Pressable>
           ))}
           {!suggestionsQuery.isFetching && searchInput.length >= 3 && suggestions.length === 0 ? (
-            <Text style={[styles.helper, styles.empty, { color: colors.mutedForeground }]}>No matching locations. Try a nearby address, landmark, or bus stop.</Text>
-          ) : null}
-          {suggestionsQuery.data?.source === 'demo' && suggestionsQuery.data.message ? (
-            <Text style={[styles.helper, styles.message, { color: colors.mutedForeground }]}>{suggestionsQuery.data.message}</Text>
+            <Text style={[styles.helper, styles.empty, { color: suggestionsQuery.isError ? colors.destructive : colors.mutedForeground }]}>
+              {suggestionsQuery.isError
+                ? 'Google Places search is unavailable. Check its API setup and try again.'
+                : 'No matching places. Try an address, business, school, landmark, or destination.'}
+            </Text>
           ) : null}
         </View>
       ) : null}
@@ -195,5 +186,4 @@ const styles = StyleSheet.create({
   helper: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingTop: 12 },
   empty: { paddingHorizontal: 14, paddingVertical: 12 },
-  message: { paddingHorizontal: 14, paddingBottom: 12 },
 });

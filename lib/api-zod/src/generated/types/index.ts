@@ -25,6 +25,7 @@ export * from './communityReportUpdateStatus';
 export * from './destinationParameter';
 export * from './errorResponse';
 export * from './getJourneyCatalogParams';
+export * from './getJourneyMap3dParams';
 export * from './getJourneyMapImageParams';
 export * from './getJourneyMapParams';
 export * from './getJourneyOptionsParams';

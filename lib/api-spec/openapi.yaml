@@ -55,7 +55,7 @@ paths:
     get:
       operationId: getJourneyMap
       tags: [journey]
-      summary: Get journey options and a protected static map image URL
+      summary: Get journey options and available map formats
       parameters:
         - $ref: "#/components/parameters/Latitude"
         - $ref: "#/components/parameters/Longitude"
@@ -75,6 +75,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JourneyMapResponse"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /journey/map-3d:
+    get:
+      operationId: getJourneyMap3d
+      tags: [journey]
+      summary: Hosted interactive Google 3D map of one scheduled route
+      parameters:
+        - $ref: "#/components/parameters/Latitude"
+        - $ref: "#/components/parameters/Longitude"
+        - $ref: "#/components/parameters/Destination"
+        - $ref: "#/components/parameters/TravelMode"
+        - name: routeId
+          in: query
+          required: true
+          schema: { type: string, maxLength: 200 }
+        - name: heat
+          in: query
+          required: false
+          description: Up to 80 semicolon-separated latitude,longitude,intensity points.
+          schema: { type: string, maxLength: 3200 }
+      responses:
+        "200":
+          description: Interactive hosted 3D map document
+          content:
+            text/html:
+              schema: { type: string }
         "400":
           description: Invalid query parameters
           content:
@@ -473,7 +504,10 @@ components:
           properties:
             mapImageUrl:
               type: ["string", "null"]
-          required: [mapImageUrl]
+            map3dAvailable:
+              type: boolean
+              description: True only when a separate browser-restricted Maps JavaScript key is configured.
+          required: [mapImageUrl, map3dAvailable]
     JourneyRoute:
       type: object
       properties:

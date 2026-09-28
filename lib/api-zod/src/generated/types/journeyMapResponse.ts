@@ -10,4 +10,6 @@ import type { JourneyOptionsResponse } from './journeyOptionsResponse';
 export type JourneyMapResponse = JourneyOptionsResponse & ({
   /** @nullable */
   mapImageUrl: string | null;
+  /** True only when a separate browser-restricted Maps JavaScript key is configured. */
+  map3dAvailable: boolean;
 });

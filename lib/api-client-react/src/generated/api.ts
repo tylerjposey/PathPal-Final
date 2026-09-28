@@ -27,6 +27,7 @@ import type {
   CommunityReportUpdateResult,
   ErrorResponse,
   GetJourneyCatalogParams,
+  GetJourneyMap3dParams,
   GetJourneyMapImageParams,
   GetJourneyMapParams,
   GetJourneyOptionsParams,
@@ -243,7 +244,7 @@ export const getGetJourneyMapUrl = (params: GetJourneyMapParams,) => {
 }
 
 /**
- * @summary Get journey options and a protected static map image URL
+ * @summary Get journey options and available map formats
  */
 export const getJourneyMap = async (params: GetJourneyMapParams, options?: Parameters<typeof customFetch>[1]): Promise<JourneyMapResponse> => {
 
@@ -290,7 +291,7 @@ export type GetJourneyMapQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get journey options and a protected static map image URL
+ * @summary Get journey options and available map formats
  */
 
 export function useGetJourneyMap<TData = Awaited<ReturnType<typeof getJourneyMap>>, TError = ErrorType<ErrorResponse>>(
@@ -299,6 +300,90 @@ export function useGetJourneyMap<TData = Awaited<ReturnType<typeof getJourneyMap
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetJourneyMapQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetJourneyMap3dUrl = (params: GetJourneyMap3dParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/journey/map-3d?${stringifiedParams}` : `/api/journey/map-3d`
+}
+
+/**
+ * @summary Hosted interactive Google 3D map of one scheduled route
+ */
+export const getJourneyMap3d = async (params: GetJourneyMap3dParams, options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getGetJourneyMap3dUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJourneyMap3dQueryKey = (params?: GetJourneyMap3dParams,) => {
+    return [
+    `/api/journey/map-3d`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetJourneyMap3dQueryOptions = <TData = Awaited<ReturnType<typeof getJourneyMap3d>>, TError = ErrorType<ErrorResponse>>(params: GetJourneyMap3dParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJourneyMap3d>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJourneyMap3dQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJourneyMap3d>>> = ({ signal }) => getJourneyMap3d(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJourneyMap3d>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJourneyMap3dQueryResult = NonNullable<Awaited<ReturnType<typeof getJourneyMap3d>>>
+export type GetJourneyMap3dQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Hosted interactive Google 3D map of one scheduled route
+ */
+
+export function useGetJourneyMap3d<TData = Awaited<ReturnType<typeof getJourneyMap3d>>, TError = ErrorType<ErrorResponse>>(
+ params: GetJourneyMap3dParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJourneyMap3d>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJourneyMap3dQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

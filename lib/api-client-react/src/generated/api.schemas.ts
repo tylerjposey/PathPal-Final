@@ -118,6 +118,8 @@ export interface JourneyOptionsResponse {
 export type JourneyMapResponse = JourneyOptionsResponse & ({
   /** @nullable */
   mapImageUrl: string | null;
+  /** True only when a separate browser-restricted Maps JavaScript key is configured. */
+  map3dAvailable: boolean;
 });
 
 export type JourneyCatalogResponseSource = typeof JourneyCatalogResponseSource[keyof typeof JourneyCatalogResponseSource];
@@ -526,6 +528,37 @@ mode?: TravelModeParameter;
  * @maxLength 200
  */
 routeId?: string;
+};
+
+export type GetJourneyMap3dParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
+lat: LatitudeParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
+lng: LongitudeParameter;
+/**
+ * @minLength 1
+ * @maxLength 150
+ */
+destination: DestinationParameter;
+/**
+ * Restrict journey options to a travel mode. Defaults to considering both.
+ */
+mode?: TravelModeParameter;
+/**
+ * @maxLength 200
+ */
+routeId: string;
+/**
+ * Up to 80 semicolon-separated latitude,longitude,intensity points.
+ * @maxLength 3200
+ */
+heat?: string;
 };
 
 export type GetJourneyMapImageParams = {

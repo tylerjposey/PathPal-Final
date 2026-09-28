@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Chip, Field, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
 import { JourneyMap } from '@/components/JourneyMap';
+import { GoogleJourneyMap } from '@/components/GoogleJourneyMap';
 import { RouteMap } from '@/components/RouteMap';
 import { heatScore, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
@@ -31,6 +32,7 @@ export function JourneyScreen() {
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [travelMode, setTravelMode] = useState<TravelModeParameter>('any');
   const [showHeat, setShowHeat] = useState(false);
+  const [useGoogle3d, setUseGoogle3d] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => setCatalogSearch(search.trim()), 350);
@@ -138,10 +140,19 @@ export function JourneyScreen() {
 
       <SectionTitle title="Map & nearby stops" />
       <Chip label={showHeat ? 'Hide safety heat map' : 'Show safety heat map'} active={showHeat} onPress={() => setShowHeat(!showHeat)} />
-      {hasRouteGeometry ? (
+      {hasRouteGeometry && journey.data?.map3dAvailable ? (
+        <Chip label={useGoogle3d ? 'Switch to 2D map' : 'Switch to Google 3D map'} active={useGoogle3d} onPress={() => setUseGoogle3d(!useGoogle3d)} />
+      ) : null}
+      {hasRouteGeometry && journey.data?.map3dAvailable && useGoogle3d ? (
+        <GoogleJourneyMap
+          lat={origin.lat} lng={origin.lng} destination={searchedDestination}
+          mode={travelMode} routeId={selectedRoute.id} heatPoints={heatPoints}
+          onError={() => setUseGoogle3d(false)}
+        />
+      ) : hasRouteGeometry ? (
         <JourneyMap legs={selectedRoute.legs} heatPoints={heatPoints} fallbackLat={origin.lat} fallbackLng={origin.lng} />
       ) : <RouteMap height={255} heat={showHeat} reports={geocodedReports} />}
-      <Text style={[styles.caption, { color: colors.mutedForeground }]}>{hasRouteGeometry ? 'Interactive OpenStreetMap · VTA bus geometry and schedules: 511 SF Bay · walking geometry: Google Routes · not live position tracking' : 'Illustrative demo map · not live position tracking'}</Text>
+      <Text style={[styles.caption, { color: colors.mutedForeground }]}>{hasRouteGeometry ? `${journey.data?.map3dAvailable && useGoogle3d ? 'Interactive Google 3D map' : 'Interactive OpenStreetMap 2D map'} · VTA bus geometry and schedules: 511 SF Bay · walks: Google Routes when available, otherwise labeled estimates · not live position tracking` : 'Illustrative demo map · not live position tracking'}</Text>
       {showHeat && !geocodedReports.length ? <Text style={[styles.caption, { color: colors.mutedForeground }]}>No reports with map locations are available to display.</Text> : null}
       {journey.isFetching && !journey.data ? <ActivityIndicator color={colors.primary} /> : null}
       {journey.isError ? <Text style={[styles.small, { color: colors.destructive }]}>Live routes are unavailable. Showing an illustrative demo option; tap Refresh to retry.</Text> : null}

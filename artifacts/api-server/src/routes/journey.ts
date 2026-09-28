@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger";
 import { findVtaJourneys, getVtaGtfs, scheduledTimestamp, type Feed, type GtfsJourney, type GtfsStop } from "./vta-gtfs";
+import { parseHeatPoints, renderGoogle3DMap } from "./google-3d-map";
 import {
   GetJourneyCatalogQueryParams,
   GetJourneyCatalogResponse,
@@ -1102,7 +1103,18 @@ async function fetchGoogleWalkingRoute(
       }),
     });
     if (!response.ok) {
-      logger.warn({ provider: "Google Maps", status: response.status }, "Journey walking route unavailable");
+      // Log only Google's machine-readable error category, never its message
+      // or the request: either can contain credential-bearing details.
+      const body = asRecord(await response.json().catch(() => undefined));
+      const error = asRecord(body?.error);
+      const reason = objectList(error?.details)
+        .map((detail) => detail.reason)
+        .find((value): value is string => typeof value === "string" && /^[A-Z_]{3,80}$/.test(value));
+      logger.warn({
+        provider: "Google Maps", status: response.status,
+        category: typeof error?.status === "string" && /^[A-Z_]{3,80}$/.test(error.status) ? error.status : undefined,
+        reason,
+      }, "Journey walking route unavailable");
       return undefined;
     }
     const payload = asRecord(await response.json());
@@ -1279,7 +1291,8 @@ async function buildGtfsRoute(
   return {
     walkingEstimated,
     route: {
-      id: `vta-schedule-${index + 1}`, name: candidate.rides.map((ride) =>
+      id: `vta-schedule-${createHash("sha256").update(candidate.rides.map((ride) =>
+        [ride.routeId, ride.boarding.id, ride.alighting.id, ride.departure].join(":")).join("|")).digest("hex").slice(0, 16)}`, name: candidate.rides.map((ride) =>
         `${ride.routeNumber} · ${ride.routeName}`).join(" → "),
       startStop: firstRide.boarding.name, destinationStop: lastRide.alighting.name,
       durationMinutes: Math.ceil((lastRide.arrival - feed.secondsNow) / 60) + destinationWalkDuration + delayMinutes,
@@ -1356,6 +1369,13 @@ async function buildJourney(lat: number, lng: number, destination: string, mode:
     get511Catalog(),
     mode === "walking" ? Promise.resolve(undefined) : getVtaGtfs(),
   ]);
+  if (mode === "walking" && !walkingRoute) {
+    return demoJourney(
+      lat, lng, destination,
+      "Google walking directions are unavailable; showing an illustrative walking option.",
+      mode,
+    );
+  }
   if ((mode === "transit" && !feed) || (!walkingRoute && !feed)) {
     return demoJourney(
       lat,
@@ -1367,8 +1387,10 @@ async function buildJourney(lat: number, lng: number, destination: string, mode:
       mode,
     );
   }
-  const coordinates = walkingRoute?.route.legs[0]?.alightingStop ??
-    catalog?.stops.find((stop) => normalizedRef(stop.name) === normalizedRef(destination));
+  const destinationName = normalizedRef(destination);
+  const namedStop = catalog?.stops.find((stop) => normalizedRef(stop.name) === destinationName) ??
+    (feed ? [...feed.stops.values()].find((stop) => normalizedRef(stop.name) === destinationName) : undefined);
+  const coordinates = walkingRoute?.route.legs[0]?.alightingStop ?? namedStop;
   const candidates = feed && coordinates && mode !== "walking"
     ? findVtaJourneys(feed, { lat, lng }, coordinates)
     : [];
@@ -1485,11 +1507,45 @@ router.get("/journey/map", async (req, res): Promise<void> => {
     GetJourneyMapResponse.parse({
       ...journey,
       mapImageUrl,
+      map3dAvailable: Boolean(process.env.GOOGLE_MAPS_BROWSER_API_KEY && selectedRoute?.source === "live" &&
+        selectedRoute.legs.some((leg) => !!leg.polyline)),
       ...(mapImageUrl === null && !journey.message
         ? { message: "Google Maps credentials are not configured; map image unavailable." }
         : {}),
     }),
   );
+});
+
+router.get("/journey/map-3d", async (req, res): Promise<void> => {
+  const query = GetJourneyMapQueryParams.safeParse(req.query);
+  const heat = parseHeatPoints(req.query.heat);
+  const key = process.env.GOOGLE_MAPS_BROWSER_API_KEY;
+  if (!query.success || !query.data.routeId || !heat) {
+    res.status(400).json({ error: "Invalid 3D map parameters." });
+    return;
+  }
+  if (!key) {
+    res.status(503).json({ error: "Google 3D maps are not configured." });
+    return;
+  }
+  if (!allowMapImageRequest(req.ip || req.socket.remoteAddress || "unknown")) {
+    res.setHeader("Retry-After", "60");
+    res.status(429).json({ error: "Map request limit reached; retry shortly." });
+    return;
+  }
+  const journey = await buildJourney(
+    query.data.lat, query.data.lng, query.data.destination, parseTravelMode(query.data.mode),
+  );
+  const selected = journey.routes.find((route) => route.id === query.data.routeId && route.source === "live");
+  if (!selected || !selected.legs.some((leg) => !!leg.polyline)) {
+    res.status(404).json({ error: "Route has changed; refresh journey options." });
+    return;
+  }
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.type("html").send(renderGoogle3DMap(key, selected.legs, heat, {
+    lat: query.data.lat, lng: query.data.lng,
+  }));
 });
 
 router.get("/journey/map-image", async (req, res): Promise<void> => {
@@ -1570,6 +1626,22 @@ router.get("/journey/catalog", async (req, res): Promise<void> => {
   }
   const catalog = await get511Catalog();
   if (!catalog?.complete) {
+    const feed = await getVtaGtfs();
+    if (feed) {
+      const search = query.data.query?.trim().toLowerCase() ?? "";
+      const routes = [...feed.routes.values()]
+        .map((route) => `${route.number} · ${route.name}`)
+        .filter((name) => name.toLowerCase().includes(search));
+      const stops = [...feed.byStop.keys()]
+        .map((id) => feed.stops.get(id))
+        .filter((stop): stop is GtfsStop => !!stop && stop.name.toLowerCase().includes(search))
+        .slice(0, 40).map(toJourneyStop);
+      res.json(GetJourneyCatalogResponse.parse({
+        source: "live", routes: [...new Set(routes)], stops,
+        message: "VTA stops and bus lines from the 511 published schedule; live alerts may be unavailable.",
+      }));
+      return;
+    }
     res.json(
       GetJourneyCatalogResponse.parse({
         source: "demo",

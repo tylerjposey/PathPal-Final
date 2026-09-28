@@ -114,7 +114,7 @@ export const GetJourneyOptionsResponse = zod.object({
 
 
 /**
- * @summary Get journey options and a protected static map image URL
+ * @summary Get journey options and available map formats
  */
 export const getJourneyMapQueryLatMin = -90;
 export const getJourneyMapQueryLatMax = 90;
@@ -211,8 +211,39 @@ export const GetJourneyMapResponse = zod.object({
 }),zod.null()]).optional(),
   "message": zod.string().nullish()
 }).and(zod.object({
-  "mapImageUrl": zod.string().nullable()
+  "mapImageUrl": zod.string().nullable(),
+  "map3dAvailable": zod.boolean().describe('True only when a separate browser-restricted Maps JavaScript key is configured.')
 }))
+
+
+/**
+ * @summary Hosted interactive Google 3D map of one scheduled route
+ */
+export const getJourneyMap3dQueryLatMin = -90;
+export const getJourneyMap3dQueryLatMax = 90;
+
+export const getJourneyMap3dQueryLngMin = -180;
+export const getJourneyMap3dQueryLngMax = 180;
+
+export const getJourneyMap3dQueryDestinationMax = 150;
+
+export const getJourneyMap3dQueryModeDefault = `any`;
+export const getJourneyMap3dQueryRouteIdMax = 200;
+
+export const getJourneyMap3dQueryHeatMax = 3200;
+
+
+
+export const GetJourneyMap3dQueryParams = zod.object({
+  "lat": zod.coerce.number().min(getJourneyMap3dQueryLatMin).max(getJourneyMap3dQueryLatMax),
+  "lng": zod.coerce.number().min(getJourneyMap3dQueryLngMin).max(getJourneyMap3dQueryLngMax),
+  "destination": zod.coerce.string().min(1).max(getJourneyMap3dQueryDestinationMax),
+  "mode": zod.enum(['any', 'walking', 'transit']).default(getJourneyMap3dQueryModeDefault).describe('Restrict journey options to a travel mode. Defaults to considering both.'),
+  "routeId": zod.coerce.string().max(getJourneyMap3dQueryRouteIdMax),
+  "heat": zod.coerce.string().max(getJourneyMap3dQueryHeatMax).optional().describe('Up to 80 semicolon-separated latitude,longitude,intensity points.')
+})
+
+export const GetJourneyMap3dResponse = zod.unknown()
 
 
 /**

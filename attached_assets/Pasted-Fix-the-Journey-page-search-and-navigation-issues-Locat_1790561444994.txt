@@ -1,0 +1,50 @@
+Fix the Journey page search and navigation issues.
+
+## Location Search Autocomplete
+
+Replace the current exact-match/verbatim search behavior with an autocomplete search experience.
+
+When a user types a location, display a dropdown of suggested locations that update as they type. Suggestions should include matching addresses, landmarks, bus stops, destinations, and place names.
+
+For example, typing “Spartan” should suggest locations such as “Spartan Taco” and other relevant places containing “Spartan.”
+
+Use Google Places Autocomplete or the enabled Google Maps Places functionality if available. Debounce search requests and avoid unnecessary API calls to conserve credits. If the Places API is unavailable, provide a local fuzzy-search fallback using the existing sample locations and bus stops.
+
+When the user selects a suggestion:
+
+- Save the selected place name
+- Save its latitude and longitude
+- Use the coordinates for walking or bus-route calculations
+- Display the selected destination clearly
+- Do not require an exact text match
+
+## Remove Demo Map Overlay
+
+When Google Maps is available and successfully loaded, do not display the simulated demo map over or on top of the Google map.
+
+Use only the live Google map as the primary map. The simulated map should appear only when the Google Maps API fails, is unavailable, or has not been configured.
+
+Make sure the Google map remains visible behind:
+
+- Bus route polylines
+- Bus-stop markers
+- Destination markers
+- Community report markers
+- Heat-map indicators
+
+## Notification Navigation
+
+Fix the notification screen so users cannot become trapped there.
+
+Add a clearly visible Back button that returns the user to the previous screen and preserves the current app state. Also add a Home or Dashboard button if appropriate.
+
+The navigation fix must work for Parent, Child, Citizen, City Case Manager, and City Worker accounts.
+
+After making these changes, test:
+
+1. Typing a partial location name.
+2. Selecting an autocomplete suggestion.
+3. Calculating a route using the selected coordinates.
+4. Confirming that the Google map is not covered by the demo map.
+5. Opening a notification.
+6. Returning from the notification screen using the Back button.

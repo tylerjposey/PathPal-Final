@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { BrandMark, Button, Card, Chip, Field } from '@/components/OrivisUI';
@@ -18,6 +18,7 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
   const { authenticate, createFamily, joinFamily } = useDemo();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [role, setRole] = useState<Role | null>(null);
+  const [rolePickerVisible, setRolePickerVisible] = useState(false);
   const [username, setUsername] = useState('AI4SG');
   const [password, setPassword] = useState('1234');
   const [familyName, setFamilyName] = useState('The Chen family');
@@ -132,43 +133,54 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
       </Text>
 
       <Card style={styles.formCard}>
-        <View style={styles.modeRow}>
-          <Chip label="Sign in" active={mode === 'signin'} onPress={() => { setMode('signin'); setError(''); }} />
-          <Chip label="Create family" active={mode === 'family'} onPress={() => { setMode('family'); setError(''); }} />
-          <Chip label="Join family" active={mode === 'join'} onPress={() => { setMode('join'); setError(''); }} />
-        </View>
+        <Text style={[styles.formTitle, { color: colors.foreground }]}>Select Account Type</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={role ? `Account type: ${ROLE_LABELS[role]}` : 'Select an account type'}
+          testID="select-account-type"
+          onPress={() => setRolePickerVisible(true)}
+          style={({ pressed }) => [
+            styles.roleSelect,
+            {
+              backgroundColor: colors.card,
+              borderColor: role ? colors.primary : colors.border,
+              opacity: pressed ? 0.78 : 1,
+            },
+          ]}
+        >
+          <Feather name={role ? 'user-check' : 'users'} size={19} color={role ? colors.primary : colors.mutedForeground} />
+          <Text style={[styles.roleSelectText, { color: role ? colors.foreground : colors.mutedForeground }]}>
+            {role ? ROLE_LABELS[role] : 'Choose an account type'}
+          </Text>
+          {role ? <Feather name="check-circle" size={17} color={colors.primary} /> : null}
+          <Feather name="chevron-down" size={17} color={colors.mutedForeground} />
+        </Pressable>
+        {role ? (
+          <View style={[styles.roleHint, { backgroundColor: colors.muted }]}>
+            <Feather name="info" size={14} color={colors.primary} />
+            <Text style={[styles.roleHintText, { color: colors.mutedForeground }]}>
+              {role === 'parent'
+                ? 'Parents can sign in or create a family account.'
+                : role === 'child'
+                  ? 'Children can sign in or join a family with an invitation code.'
+                  : 'This account type uses the existing city or community sign-in flow.'}
+            </Text>
+          </View>
+        ) : null}
+        {role ? (
+          <View style={styles.modeRow}>
+            <Chip label="Sign in" active={mode === 'signin'} onPress={() => { setMode('signin'); setError(''); }} />
+            {role === 'parent' ? (
+              <Chip label="Create family" active={mode === 'family'} onPress={() => { setMode('family'); setError(''); }} />
+            ) : null}
+            {role === 'child' ? (
+              <Chip label="Join family" active={mode === 'join'} onPress={() => { setMode('join'); setError(''); }} />
+            ) : null}
+          </View>
+        ) : null}
 
         {mode === 'signin' ? (
           <>
-            <Text style={[styles.formTitle, { color: colors.foreground }]}>Select Account Type</Text>
-            <View style={styles.roles}>
-              {(Object.keys(ROLE_LABELS) as Role[]).map((item) => (
-                <Pressable
-                  key={item}
-                  testID={`role-${item}`}
-                  onPress={() => {
-                    void Haptics.selectionAsync();
-                    setRole(item);
-                    setError('');
-                  }}
-                  style={[
-                    styles.role,
-                    {
-                      backgroundColor: role === item ? colors.secondary : colors.card,
-                      borderColor: role === item ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  <Feather
-                    name={item === 'parent' ? 'users' : item === 'child' ? 'smile' : item === 'citizen' ? 'user' : item === 'manager' ? 'clipboard' : 'tool'}
-                    size={19}
-                    color={role === item ? colors.primary : colors.mutedForeground}
-                  />
-                  <Text style={[styles.roleText, { color: colors.foreground }]}>{ROLE_LABELS[item]}</Text>
-                  {role === item ? <Feather name="check-circle" size={17} color={colors.primary} /> : null}
-                </Pressable>
-              ))}
-            </View>
             <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" testID="username" />
             <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry testID="password" />
             {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
@@ -208,6 +220,66 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
           Prototype simulation. Not an emergency service or a replacement for trusted adults and local emergency resources.
         </Text>
       </View>
+      <Modal
+        visible={rolePickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRolePickerVisible(false)}
+      >
+        <View style={styles.roleModalRoot}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close account type selection"
+            onPress={() => setRolePickerVisible(false)}
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10, 25, 34, 0.48)' }]}
+          />
+          <View style={[styles.roleSheet, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 18 }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+            <Text style={[styles.formTitle, { color: colors.foreground }]}>Select Account Type</Text>
+            <Text style={[styles.roleSheetSubtitle, { color: colors.mutedForeground }]}>
+              Choose the account flow you want to use.
+            </Text>
+            {(Object.keys(ROLE_LABELS) as Role[]).map((item) => {
+              const selected = role === item;
+              const icon = item === 'parent'
+                ? 'users'
+                : item === 'child'
+                  ? 'smile'
+                  : item === 'citizen'
+                    ? 'user'
+                    : item === 'manager'
+                      ? 'clipboard'
+                      : 'tool';
+              return (
+                <Pressable
+                  key={item}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  testID={`role-${item}`}
+                  onPress={() => {
+                    void Haptics.selectionAsync();
+                    setRole(item);
+                    setMode('signin');
+                    setRolePickerVisible(false);
+                    setError('');
+                  }}
+                  style={[
+                    styles.roleOption,
+                    {
+                      backgroundColor: selected ? colors.secondary : colors.card,
+                      borderColor: selected ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Feather name={icon} size={18} color={selected ? colors.primary : colors.mutedForeground} />
+                  <Text style={[styles.roleOptionText, { color: colors.foreground }]}>{ROLE_LABELS[item]}</Text>
+                  {selected ? <Feather name="check-circle" size={17} color={colors.primary} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
     </KeyboardAwareScrollViewCompat>
   );
 }
@@ -226,9 +298,16 @@ const styles = StyleSheet.create({
   formCard: { gap: 15 },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   formTitle: { fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 2 },
-  roles: { gap: 8 },
-  role: { minHeight: 51, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  roleText: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  roleSelect: { minHeight: 54, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  roleSelectText: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  roleHint: { borderRadius: 14, padding: 11, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  roleHintText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },
+  roleModalRoot: { flex: 1, justifyContent: 'flex-end' },
+  roleSheet: { borderTopLeftRadius: 25, borderTopRightRadius: 25, borderWidth: 1, paddingHorizontal: 20, paddingTop: 12, gap: 9 },
+  sheetHandle: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginBottom: 5 },
+  roleSheetSubtitle: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 18, marginBottom: 3 },
+  roleOption: { minHeight: 51, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  roleOptionText: { flex: 1, fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   error: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   demoNote: { borderRadius: 14, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   demoText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16 },

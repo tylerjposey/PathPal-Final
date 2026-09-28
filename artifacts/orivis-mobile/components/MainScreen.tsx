@@ -20,6 +20,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteMap } from '@/components/RouteMap';
 import { JourneyScreen } from '@/components/JourneyScreen';
+import { FamilySettings } from '@/components/FamilySettings';
 import {
   getGetReportQueryKey,
   useGetReport,
@@ -922,6 +923,7 @@ function ProfileScreen() {
       setResetting(false);
     }
   };
+  if (state.account?.role === 'parent') return <FamilySettings />;
   return (
     <ScreenScroll>
       <ScreenHeader eyebrow={state.account ? ROLE_LABELS[state.account.role] : 'Account'} title={state.account?.name ?? 'Orivis demo'} subtitle={state.account?.username ?? 'Sample account'} />
@@ -937,7 +939,7 @@ function ProfileScreen() {
         </View>
       </Card>
       <SectionTitle title="Prototype controls" />
-      {(state.account?.role === 'parent' || state.account?.role === 'child') ? (
+      {state.account?.role === 'child' ? (
         <Card style={styles.controlCard}>
           <View style={styles.controlCopy}>
             <Feather name="clock" size={20} color={colors.warning} />

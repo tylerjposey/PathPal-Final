@@ -215,6 +215,23 @@ export interface ChildProfile {
   school: string;
 }
 
+export interface FamilyChildProfile extends ChildProfile {
+  id: string;
+}
+
+export interface ParentProfile {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+export interface NotificationPreferences {
+  journeyUpdates: boolean;
+  safetyAlerts: boolean;
+  communityUpdates: boolean;
+  rewardUpdates: boolean;
+}
+
 export interface SafetyReport {
   id: string;
   category: ReportCategory;
@@ -274,9 +291,12 @@ export interface SOSEvent {
 export interface DemoState {
   account: DemoUser | null;
   familyName: string;
+  parentProfile: ParentProfile;
   child: ChildProfile;
+  familyChildren: FamilyChildProfile[];
   invitationCode: string;
   childLogin: { username: string; password: string } | null;
+  notificationPreferences: NotificationPreferences;
   /** -1 means no milestone confirmed yet for the currently selected journey. */
   milestoneIndex: number;
   tripUpdatedAt: string | null;
@@ -335,9 +355,17 @@ export function createInitialDemoState(): DemoState {
   return {
     account: null,
     familyName: 'The Chen family',
+    parentProfile: { name: 'Jordan Chen', email: '', phone: '' },
     child: { name: 'Maya Chen', school: 'River Glen Elementary' },
+    familyChildren: [{ id: 'child-1', name: 'Maya Chen', school: 'River Glen Elementary' }],
     invitationCode: '1234',
     childLogin: null,
+    notificationPreferences: {
+      journeyUpdates: true,
+      safetyAlerts: true,
+      communityUpdates: true,
+      rewardUpdates: true,
+    },
     milestoneIndex: -1,
     tripUpdatedAt: null,
     selectedJourney: null,
@@ -547,6 +575,10 @@ interface DemoContextValue {
   verifyFamilyInvite: (code: string) => boolean;
   createFamily: (familyName: string, childName: string, inviteCode: string) => void;
   joinFamily: (code: string, childName: string, username: string, password: string) => boolean;
+  saveParentProfile: (profile: ParentProfile) => Promise<void>;
+  saveChildProfile: (id: string, profile: ChildProfile) => Promise<void>;
+  saveFamilySettings: (settings: { familyName: string; invitationCode: string }) => Promise<void>;
+  saveNotificationPreferences: (preferences: NotificationPreferences) => Promise<void>;
   setAccount: (account: DemoUser | null) => void;
   signOut: () => void;
   resetDemo: () => Promise<void>;
@@ -618,7 +650,26 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         if (raw) {
           try {
-            const saved = { ...createInitialDemoState(), ...JSON.parse(raw) as Partial<DemoState> };
+            const parsed = JSON.parse(raw) as Partial<DemoState>;
+            const initial = createInitialDemoState();
+            const saved = { ...initial, ...parsed };
+            saved.parentProfile = {
+              ...initial.parentProfile,
+              ...parsed.parentProfile,
+              name: parsed.parentProfile?.name ??
+                (saved.account?.role === 'parent' ? saved.account.name : initial.parentProfile.name),
+            };
+            saved.familyChildren = Array.isArray(parsed.familyChildren) && parsed.familyChildren.length > 0
+              ? parsed.familyChildren.map((child, index) => ({
+                  id: child.id || `child-${index + 1}`,
+                  name: child.name,
+                  school: child.school,
+                }))
+              : [{ id: 'child-1', ...saved.child }];
+            saved.notificationPreferences = {
+              ...initial.notificationPreferences,
+              ...parsed.notificationPreferences,
+            };
             // Journeys saved before route legs/milestones existed lack `mode`/`legs`.
             // Drop them rather than let a stale shape crash milestone rendering; the
             // family can pick a fresh route, and check-in progress resets with it.
@@ -665,16 +716,35 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
   const update = useCallback((recipe: (current: DemoState) => DemoState) => {
     setState((current) => {
-      const next = recipe(current);
+      let next = recipe(current);
+      const existingNotificationIds = new Set(current.notifications.map((notice) => notice.id));
+      const permittedKind = (kind: DemoNotification['kind']) => {
+        if (kind === 'Transit') return current.notificationPreferences.journeyUpdates;
+        if (kind === 'Safety' || kind === 'SOS') return current.notificationPreferences.safetyAlerts;
+        if (kind === 'Case') return current.notificationPreferences.communityUpdates;
+        return current.notificationPreferences.rewardUpdates;
+      };
+      const notifications = next.notifications.filter((notice) =>
+        existingNotificationIds.has(notice.id) || permittedKind(notice.kind),
+      );
+      if (notifications.length !== next.notifications.length) {
+        next = { ...next, notifications };
+      }
       void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
       return next;
     });
   }, []);
 
+  const persistUpdate = useCallback(async (recipe: (current: DemoState) => DemoState) => {
+    const next = recipe(state);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    setState(next);
+  }, [state]);
+
   const authenticate = useCallback((username: string, password: string, role: Role) => {
     if (username.trim().toLowerCase() === 'ai4sg' && password === '1234') {
       const names: Record<Role, string> = {
-        parent: 'Jordan Chen',
+        parent: state.parentProfile.name,
         child: state.child.name,
         citizen: 'Taylor Morgan',
         manager: 'Avery Patel',
@@ -691,7 +761,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       return { username: state.childLogin.username, name: state.child.name, role: 'child' as const };
     }
     return null;
-  }, [state.child.name, state.childLogin]);
+  }, [state.child.name, state.childLogin, state.parentProfile.name]);
 
   const verifyFamilyInvite = useCallback(
     (code: string) => code.trim() === state.invitationCode && code.trim().length > 0,
@@ -703,6 +773,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       ...current,
       familyName: familyName.trim() || 'The Orivis family',
       child: { ...current.child, name: childName.trim() || 'New family member' },
+      familyChildren: current.familyChildren.length
+        ? [{ ...current.familyChildren[0], name: childName.trim() || 'New family member' }, ...current.familyChildren.slice(1)]
+        : [{ id: 'child-1', name: childName.trim() || 'New family member', school: current.child.school }],
       invitationCode: inviteCode.trim() || '1234',
       childLogin: null,
     }));
@@ -715,10 +788,63 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     update((current) => ({
       ...current,
       child: { ...current.child, name: childName.trim() },
+      familyChildren: current.familyChildren.length
+        ? [{ ...current.familyChildren[0], name: childName.trim() }, ...current.familyChildren.slice(1)]
+        : [{ id: 'child-1', name: childName.trim(), school: current.child.school }],
       childLogin: { username: username.trim(), password },
     }));
     return true;
   }, [update, verifyFamilyInvite]);
+
+  const saveParentProfile = useCallback((profile: ParentProfile) => persistUpdate((current) => {
+    const parentProfile = {
+      name: profile.name.trim(),
+      email: profile.email.trim(),
+      phone: profile.phone.trim(),
+    };
+    return {
+      ...current,
+      parentProfile,
+      account: current.account?.role === 'parent'
+        ? { ...current.account, name: parentProfile.name }
+        : current.account,
+    };
+  }), [persistUpdate]);
+
+  const saveChildProfile = useCallback((id: string, profile: ChildProfile) => persistUpdate((current) => {
+    const familyChildren = current.familyChildren.map((child) =>
+      child.id === id
+        ? { ...child, name: profile.name.trim(), school: profile.school.trim() }
+        : child,
+    );
+    const isPrimaryChild = current.familyChildren[0]?.id === id;
+    const child = isPrimaryChild
+      ? { name: profile.name.trim(), school: profile.school.trim() }
+      : current.child;
+    return {
+      ...current,
+      familyChildren,
+      child,
+      account: isPrimaryChild && current.account?.role === 'child'
+        ? { ...current.account, name: child.name }
+        : current.account,
+    };
+  }), [persistUpdate]);
+
+  const saveFamilySettings = useCallback((settings: { familyName: string; invitationCode: string }) =>
+    persistUpdate((current) => ({
+      ...current,
+      familyName: settings.familyName.trim(),
+      invitationCode: settings.invitationCode.trim(),
+    })),
+  [persistUpdate]);
+
+  const saveNotificationPreferences = useCallback((preferences: NotificationPreferences) =>
+    persistUpdate((current) => ({
+      ...current,
+      notificationPreferences: preferences,
+    })),
+  [persistUpdate]);
 
   const setAccount = useCallback((account: DemoUser | null) => {
     const isReportQuery = (query: { queryKey: readonly unknown[] }) =>
@@ -1071,6 +1197,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     verifyFamilyInvite,
     createFamily,
     joinFamily,
+    saveParentProfile,
+    saveChildProfile,
+    saveFamilySettings,
+    saveNotificationPreferences,
     setAccount,
     signOut,
     resetDemo,
@@ -1100,6 +1230,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     verifyFamilyInvite,
     createFamily,
     joinFamily,
+    saveParentProfile,
+    saveChildProfile,
+    saveFamilySettings,
+    saveNotificationPreferences,
     setAccount,
     signOut,
     resetDemo,

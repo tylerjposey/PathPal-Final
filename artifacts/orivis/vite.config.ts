@@ -46,7 +46,10 @@ export default defineConfig(async ({ command }) => {
         'attached_assets',
       ),
     },
-    dedupe: ['react', 'react-dom'],
+    // Workspace-linked API hooks must use the same React Query context as the
+    // app. Without deduplication, production builds can bundle a second copy
+    // and hooks fail after sign-in with "No QueryClient set".
+    dedupe: ['react', 'react-dom', '@tanstack/react-query'],
   },
   root: path.resolve(import.meta.dirname),
   build: {

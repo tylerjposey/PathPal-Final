@@ -5,9 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DestinationLatitudeParameter } from './destinationLatitudeParameter';
+import type { DestinationLongitudeParameter } from './destinationLongitudeParameter';
 import type { DestinationParameter } from './destinationParameter';
 import type { LatitudeParameter } from './latitudeParameter';
 import type { LongitudeParameter } from './longitudeParameter';
+import type { ReportPointsParameter } from './reportPointsParameter';
 import type { TravelModeParameter } from './travelModeParameter';
 
 export type GetJourneyMap3dParams = {
@@ -27,6 +30,18 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
+ * Optional latitude from a selected place prediction.
+ * @minimum -90
+ * @maximum 90
+ */
+destinationLat?: DestinationLatitudeParameter;
+/**
+ * Optional longitude from a selected place prediction.
+ * @minimum -180
+ * @maximum 180
+ */
+destinationLng?: DestinationLongitudeParameter;
+/**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */
 mode?: TravelModeParameter;
@@ -39,4 +54,9 @@ routeId: string;
  * @maxLength 3200
  */
 heat?: string;
+/**
+ * Up to 80 semicolon-separated community-report latitude,longitude points.
+ * @maxLength 3200
+ */
+reports?: ReportPointsParameter;
 };

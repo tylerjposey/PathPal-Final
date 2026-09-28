@@ -6,11 +6,14 @@ import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet
 import { Button, Card, Chip, Field, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
 import { JourneyMap } from '@/components/JourneyMap';
 import { GoogleJourneyMap } from '@/components/GoogleJourneyMap';
+import { LocationAutocompleteField, type SelectedPlace } from '@/components/LocationAutocompleteField';
 import { RouteMap } from '@/components/RouteMap';
 import { heatScore, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
 
 const SAMPLE_ORIGIN = { lat: 37.3089, lng: -121.8982 };
+const SAMPLE_ORIGIN_NAME = 'Willow Glen, San Jose, CA';
+const DEFAULT_DESTINATION = 'River Glen Elementary, San Jose, CA';
 
 const MODE_OPTIONS: { value: TravelModeParameter; label: string }[] = [
   { value: 'any', label: 'Best option' },
@@ -22,10 +25,33 @@ export function JourneyScreen() {
   const colors = useColors();
   const { state, selectJourney } = useDemo();
   const [permission, requestPermission] = Location.useForegroundPermissions();
-  const [origin, setOrigin] = useState(SAMPLE_ORIGIN);
+  const [origin, setOrigin] = useState<SelectedPlace | null>(() => {
+    const saved = state.selectedJourney;
+    return saved?.originLatitude != null && saved.originLongitude != null
+      ? {
+        placeId: 'saved-origin',
+        name: saved.startingLocation ?? SAMPLE_ORIGIN_NAME,
+        lat: saved.originLatitude,
+        lng: saved.originLongitude,
+      }
+      : { placeId: 'sample:willow-glen', name: SAMPLE_ORIGIN_NAME, ...SAMPLE_ORIGIN };
+  });
+  const [originText, setOriginText] = useState(() =>
+    state.selectedJourney?.startingLocation ?? SAMPLE_ORIGIN_NAME);
   const [usingDeviceLocation, setUsingDeviceLocation] = useState(false);
   const [locationError, setLocationError] = useState('');
-  const [destination, setDestination] = useState(state.selectedJourney?.destination ?? 'River Glen Elementary, San Jose, CA');
+  const [destination, setDestination] = useState(state.selectedJourney?.destination ?? DEFAULT_DESTINATION);
+  const [destinationCoordinates, setDestinationCoordinates] = useState<SelectedPlace | null>(() => {
+    const saved = state.selectedJourney;
+    return saved?.destinationLatitude != null && saved.destinationLongitude != null
+      ? {
+        placeId: 'saved-destination',
+        name: saved.destination,
+        lat: saved.destinationLatitude,
+        lng: saved.destinationLongitude,
+      }
+      : null;
+  });
   const [searchedDestination, setSearchedDestination] = useState(destination);
   const [search, setSearch] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -40,11 +66,19 @@ export function JourneyScreen() {
   }, [search]);
 
   const catalogParams = { query: catalogSearch };
-  const journeyParams = { ...origin, destination: searchedDestination, mode: travelMode };
+  const journeyParams = {
+    lat: origin?.lat ?? SAMPLE_ORIGIN.lat,
+    lng: origin?.lng ?? SAMPLE_ORIGIN.lng,
+    destination: searchedDestination,
+    ...(destinationCoordinates
+      ? { destinationLat: destinationCoordinates.lat, destinationLng: destinationCoordinates.lng }
+      : {}),
+    mode: travelMode,
+  };
   const catalog = useGetJourneyCatalog(catalogParams, { query: { queryKey: getGetJourneyCatalogQueryKey(catalogParams), enabled: catalogSearch.length > 0, staleTime: 15 * 60_000 } });
   const journey = useGetJourneyMap(
     journeyParams,
-    { query: { queryKey: getGetJourneyMapQueryKey(journeyParams), enabled: searchedDestination.length > 0, staleTime: 60_000, retry: 1 } },
+    { query: { queryKey: getGetJourneyMapQueryKey(journeyParams), enabled: !!origin && searchedDestination.trim().length > 0, staleTime: 60_000, retry: 1 } },
   );
   const offlineRoute: JourneyRoute = {
     id: 'offline-route', name: 'Demo transit option', startStop: 'Sample stop · Willow Glen',
@@ -55,9 +89,13 @@ export function JourneyScreen() {
   const routes = journey.data?.routes ?? (journey.isError ? [offlineRoute] : []);
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? routes.find((route) => route.recommended) ?? routes[0];
   const hasRouteGeometry = selectedRoute?.source === 'live' && selectedRoute.legs.some((leg) => !!leg.polyline);
+  const canUseGoogleMap = !!journey.data?.map3dAvailable && useGoogle3d;
   const geocodedReports = state.reports.filter((report) =>
     report.latitude != null && report.longitude != null &&
     Number.isFinite(report.latitude) && Number.isFinite(report.longitude));
+  const reportPoints = geocodedReports.slice(0, 80).map((report) => ({
+    lat: report.latitude!, lng: report.longitude!,
+  }));
   const heatPoints = showHeat ? geocodedReports.map((report) => ({
     lat: report.latitude!, lng: report.longitude!,
     intensity: Math.min(1, Math.max(0.2, heatScore(report, geocodedReports) / 12)),
@@ -68,15 +106,24 @@ export function JourneyScreen() {
     try {
       const access = permission?.granted ? permission : await requestPermission();
       if (!access.granted) {
-        setLocationError('Location access was not granted. You can keep using the sample start point.');
+        setLocationError('Location access was not granted. Select a starting place or try again.');
         return;
       }
       const result = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setOrigin({ lat: result.coords.latitude, lng: result.coords.longitude });
+      const place = {
+        placeId: 'device-location',
+        name: 'Your current location',
+        lat: result.coords.latitude,
+        lng: result.coords.longitude,
+      };
+      setOrigin(place);
+      setOriginText(place.name);
       setUsingDeviceLocation(true);
+      setUseGoogle3d(true);
       setSelectedRouteId(null);
+      if (destination.trim()) setSearchedDestination(destination.trim());
     } catch {
-      setLocationError('Location is unavailable. You can still plan a journey from the sample start point.');
+      setLocationError('Location is unavailable. Select a starting place instead.');
     }
   };
 
@@ -87,6 +134,15 @@ export function JourneyScreen() {
       startStop: route.startStop,
       destinationStop: route.destinationStop,
       destination: searchedDestination,
+        startingLocation: origin?.name ?? SAMPLE_ORIGIN_NAME,
+        originLatitude: origin?.lat ?? SAMPLE_ORIGIN.lat,
+        originLongitude: origin?.lng ?? SAMPLE_ORIGIN.lng,
+        ...(destinationCoordinates
+          ? {
+            destinationLatitude: destinationCoordinates.lat,
+            destinationLongitude: destinationCoordinates.lng,
+          }
+          : {}),
       durationMinutes: route.durationMinutes,
       walkingMeters: route.walkingMeters,
       transfers: route.transfers,
@@ -113,28 +169,93 @@ export function JourneyScreen() {
       <Card tone="soft">
         <View style={styles.infoRow}>
           <Feather name="map-pin" size={20} color={colors.primary} />
-          <View style={styles.flex}>
-            <Text style={[styles.title, { color: colors.foreground }]}>{usingDeviceLocation ? 'Using your current position' : 'Sample start · Willow Glen, San Jose'}</Text>
-            <Text style={[styles.small, { color: colors.mutedForeground }]}>Location helps identify nearby stops and recommend routes. It is not used on other pages or saved with your journey.</Text>
-          </View>
+          <Text style={[styles.small, styles.flex, { color: colors.mutedForeground }]}>
+            Choose a place for each endpoint, or use your device location for the start. Location access is requested only when you tap the current-location button.
+          </Text>
         </View>
-        <Button label="Use My Location · Find Nearby Stops" icon="navigation" onPress={() => { void locate(); }} testID="use-my-location" />
+        <LocationAutocompleteField
+          label="Starting Location"
+          value={originText}
+          onChangeText={(text) => {
+            setOriginText(text);
+            setOrigin(null);
+            setUsingDeviceLocation(false);
+            setUseGoogle3d(true);
+            setSearchedDestination('');
+            setSelectedRouteId(null);
+          }}
+          onSelect={(place) => {
+            setOrigin(place);
+            setOriginText(place.name);
+            setUsingDeviceLocation(false);
+            setUseGoogle3d(true);
+            setLocationError('');
+            setSelectedRouteId(null);
+            if (destination.trim()) setSearchedDestination(destination.trim());
+          }}
+          placeholder="Search an address, landmark, or stop"
+          testID="journey-origin"
+          initiallySelected
+        />
+        {origin ? (
+          <Text style={[styles.small, { color: colors.mutedForeground }]}>
+            {usingDeviceLocation ? 'Using your current position' : `Selected start · ${origin.name}`}
+          </Text>
+        ) : (
+          <Text style={[styles.small, { color: colors.warning }]}>Choose a suggested starting place before finding routes.</Text>
+        )}
+        <Button label="Use My Current Location" icon="navigation" onPress={() => { void locate(); }} testID="use-my-location" />
         {locationError ? <Text style={[styles.small, { color: colors.destructive }]}>{locationError}</Text> : null}
         {permission?.status === 'denied' && !permission.canAskAgain && Platform.OS !== 'web' ? (
           <Button label="Open location settings" icon="settings" variant="secondary" onPress={() => { void Linking.openSettings().catch(() => setLocationError('Unable to open settings.')); }} />
         ) : null}
+        <LocationAutocompleteField
+          label="Destination"
+          value={destination}
+          onChangeText={(text) => {
+            setDestination(text);
+            setDestinationCoordinates(null);
+            setUseGoogle3d(true);
+            setSearchedDestination('');
+            setSelectedRouteId(null);
+          }}
+          onSelect={(place) => {
+            setDestination(place.name);
+            setDestinationCoordinates(place);
+            setUseGoogle3d(true);
+            setSearchedDestination(place.name);
+            setSelectedRouteId(null);
+          }}
+          placeholder="Search an address, landmark, or destination"
+          testID="journey-destination"
+          initiallySelected
+        />
+        {destinationCoordinates ? (
+          <Text style={[styles.small, { color: colors.mutedForeground }]}>
+            Selected destination coordinates · {destinationCoordinates.lat.toFixed(5)}, {destinationCoordinates.lng.toFixed(5)}
+          </Text>
+        ) : null}
       </Card>
-
-      <SectionTitle title="Where are you going?" />
-      <Field label="Child’s destination" value={destination} onChangeText={setDestination} placeholder="Search for a school or address" returnKeyType="search" onSubmitEditing={() => { if (destination.trim()) { setSearchedDestination(destination.trim()); setSelectedRouteId(null); } }} testID="journey-destination" />
-      <Button label="Find routes" icon="search" onPress={() => { if (destination.trim()) { setSearchedDestination(destination.trim()); setSelectedRouteId(null); } }} testID="find-routes" />
+      <Button
+        label="Find routes"
+        icon="search"
+        disabled={!origin || !destination.trim()}
+        onPress={() => {
+          if (origin && destination.trim()) {
+            setSearchedDestination(destination.trim());
+            setUseGoogle3d(true);
+            setSelectedRouteId(null);
+          }
+        }}
+        testID="find-routes"
+      />
       <View style={styles.matches}>
         {MODE_OPTIONS.map((option) => (
           <Chip
             key={option.value}
             label={option.label}
             active={travelMode === option.value}
-            onPress={() => { setTravelMode(option.value); setSelectedRouteId(null); }}
+            onPress={() => { setTravelMode(option.value); setSelectedRouteId(null); setUseGoogle3d(true); }}
           />
         ))}
       </View>
@@ -144,7 +265,19 @@ export function JourneyScreen() {
       {catalog.data && catalogSearch ? (
         <View style={styles.matches}>
           {catalog.data.routes.slice(0, 5).map((name, index) => <Chip key={`${name}-${index}`} label={name} onPress={() => setSearch(name)} />)}
-          {catalog.data.stops.slice(0, 5).map((stop) => <Chip key={stop.id} label={stop.name} onPress={() => { setDestination(stop.name); setSearchedDestination(stop.name); setSelectedRouteId(null); }} />)}
+          {catalog.data.stops.slice(0, 5).map((stop) => (
+            <Chip
+              key={stop.id}
+              label={stop.name}
+              onPress={() => {
+                const place = { placeId: stop.id, name: stop.name, lat: stop.lat, lng: stop.lng };
+                setDestination(stop.name);
+                setDestinationCoordinates(place);
+                setSearchedDestination(stop.name);
+                setSelectedRouteId(null);
+              }}
+            />
+          ))}
           {!catalog.data.routes.length && !catalog.data.stops.length ? <Text style={[styles.small, { color: colors.mutedForeground }]}>No matching routes or stops found.</Text> : null}
         </View>
       ) : null}
@@ -154,18 +287,39 @@ export function JourneyScreen() {
       {hasRouteGeometry && journey.data?.map3dAvailable ? (
         <Chip label={useGoogle3d ? 'Switch to 2D map' : 'Switch to Google 3D map'} active={useGoogle3d} onPress={() => setUseGoogle3d(!useGoogle3d)} />
       ) : null}
-      {hasRouteGeometry && journey.data?.map3dAvailable && useGoogle3d ? (
+      {journey.isFetching && !journey.data ? (
+        <View style={[styles.mapPlaceholder, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={[styles.small, { color: colors.mutedForeground }]}>Loading journey map…</Text>
+        </View>
+      ) : canUseGoogleMap ? (
         <GoogleJourneyMap
-          lat={origin.lat} lng={origin.lng} destination={searchedDestination}
-          mode={travelMode} routeId={selectedRoute.id} heatPoints={heatPoints}
+          lat={origin?.lat ?? SAMPLE_ORIGIN.lat}
+          lng={origin?.lng ?? SAMPLE_ORIGIN.lng}
+          destination={searchedDestination}
+          destinationLat={destinationCoordinates?.lat}
+          destinationLng={destinationCoordinates?.lng}
+          mode={travelMode}
+          routeId={selectedRoute?.id ?? 'base-map'}
+          heatPoints={heatPoints}
+          reportPoints={reportPoints}
           onError={() => setUseGoogle3d(false)}
         />
       ) : hasRouteGeometry ? (
-        <JourneyMap legs={selectedRoute.legs} heatPoints={heatPoints} fallbackLat={origin.lat} fallbackLng={origin.lng} />
-      ) : <RouteMap height={255} heat={showHeat} reports={geocodedReports} />}
-      <Text style={[styles.caption, { color: colors.mutedForeground }]}>{hasRouteGeometry ? `${journey.data?.map3dAvailable && useGoogle3d ? 'Interactive Google 3D map' : 'Interactive OpenStreetMap 2D map'} · VTA bus geometry and schedules: 511 SF Bay · walks: Google Routes when available, otherwise labeled estimates · not live position tracking` : 'Illustrative demo map · not live position tracking'}</Text>
+        <JourneyMap legs={selectedRoute.legs} heatPoints={heatPoints} fallbackLat={origin?.lat ?? SAMPLE_ORIGIN.lat} fallbackLng={origin?.lng ?? SAMPLE_ORIGIN.lng} />
+      ) : (
+        <View testID="journey-demo-map">
+          <RouteMap height={255} heat={showHeat} reports={geocodedReports} />
+        </View>
+      )}
+      <Text style={[styles.caption, { color: colors.mutedForeground }]}>
+        {canUseGoogleMap
+          ? 'Interactive Google 3D map · route lines, stops, destination, reports, and safety heat map are shown on the live map.'
+          : hasRouteGeometry
+            ? 'Interactive OpenStreetMap 2D map · VTA bus geometry and schedules: 511 SF Bay · walks: Google Routes when available · not live position tracking.'
+            : 'Illustrative demo map shown only when the live Google map is unavailable · not live position tracking.'}
+      </Text>
       {showHeat && !geocodedReports.length ? <Text style={[styles.caption, { color: colors.mutedForeground }]}>No reports with map locations are available to display.</Text> : null}
-      {journey.isFetching && !journey.data ? <ActivityIndicator color={colors.primary} /> : null}
       {journey.isError ? <Text style={[styles.small, { color: colors.destructive }]}>Live routes are unavailable. Showing an illustrative demo option; tap Refresh to retry.</Text> : null}
       {journey.data?.message ? <Text style={[styles.small, { color: colors.mutedForeground }]}>{journey.data.message}</Text> : null}
       <Card>
@@ -216,6 +370,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 120, gap: 12 },
   flex: { flex: 1 },
   infoRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  mapPlaceholder: { height: 255, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 15, lineHeight: 22 },
   small: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 4 },
   caption: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },

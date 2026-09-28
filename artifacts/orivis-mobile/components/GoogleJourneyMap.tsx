@@ -3,16 +3,29 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 type HeatPoint = { lat: number; lng: number; intensity: number };
+type ReportPoint = { lat: number; lng: number };
 
 export function GoogleJourneyMap({
-  lat, lng, destination, mode, routeId, heatPoints, onError,
+  lat,
+  lng,
+  destination,
+  destinationLat,
+  destinationLng,
+  mode,
+  routeId,
+  heatPoints,
+  reportPoints,
+  onError,
 }: {
   lat: number;
   lng: number;
   destination: string;
+  destinationLat?: number;
+  destinationLng?: number;
   mode: string;
   routeId: string;
   heatPoints: HeatPoint[];
+  reportPoints: ReportPoint[];
   onError: () => void;
 }) {
   // Serve the document from the API origin rather than from about:blank. The
@@ -21,11 +34,18 @@ export function GoogleJourneyMap({
     const query = new URLSearchParams({
       lat: String(lat), lng: String(lng), destination, mode, routeId,
     });
+      if (destinationLat != null && destinationLng != null) {
+        query.set('destinationLat', String(destinationLat));
+        query.set('destinationLng', String(destinationLng));
+      }
     const heat = heatPoints.slice(0, 80)
       .map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)},${p.intensity.toFixed(2)}`).join(';');
     if (heat) query.set('heat', heat);
+      const reports = reportPoints.slice(0, 80)
+        .map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join(';');
+      if (reports) query.set('reports', reports);
     return `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/journey/map-3d?${query.toString()}`;
-  }, [lat, lng, destination, mode, routeId, heatPoints]);
+  }, [lat, lng, destination, destinationLat, destinationLng, mode, routeId, heatPoints, reportPoints]);
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const onMessage = (event: MessageEvent) => {
@@ -36,7 +56,7 @@ export function GoogleJourneyMap({
   }, [url, onError]);
 
   return (
-    <View style={styles.container}>
+    <View testID="journey-google-map" style={styles.container}>
       {Platform.OS === 'web' ? (
         <iframe
           src={url}

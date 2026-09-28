@@ -2,5 +2,5 @@
 - [Orivis demo account scope](orivis-demo-account-scope.md) — keep shared demo sign-in for report workflows unless the user explicitly opts into verified accounts.
 - [Expo web map taps](expo-web-map-taps.md) — React Native Web press events may lack locationX/Y; map pins need a finite web-compatible coordinate path.
 - [Role-scoped report views](role-scoped-report-views.md) — server authorization alone is insufficient when a mobile demo retains report state across role switches.
-- [Google Maps key legacy APIs disabled](google-maps-key-legacy-apis-disabled.md) — this project's key only works with Routes API (v2), not legacy Directions/Static Maps APIs.
+- [Google Maps API availability](google-maps-key-legacy-apis-disabled.md) — use local autocomplete fallback; Routes API and browser-keyed 3D maps work, but legacy server APIs do not.
 - [React Native Alert.alert is a no-op on web](react-native-web-alert-noop.md) — confirmation dialogs via Alert.alert silently do nothing in Expo web preview; not a Playwright artifact.

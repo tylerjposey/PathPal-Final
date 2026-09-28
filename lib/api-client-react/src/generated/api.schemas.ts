@@ -138,6 +138,61 @@ export interface JourneyCatalogResponse {
   message?: string | null;
 }
 
+export interface JourneyPlaceSuggestion {
+  /** @maxLength 300 */
+  placeId: string;
+  /** @maxLength 200 */
+  name: string;
+  /**
+     * @maxLength 300
+     * @nullable
+     */
+  description?: string | null;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  lat?: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  lng?: number;
+}
+
+export type JourneyPlaceAutocompleteResponseSource = typeof JourneyPlaceAutocompleteResponseSource[keyof typeof JourneyPlaceAutocompleteResponseSource];
+
+
+export const JourneyPlaceAutocompleteResponseSource = {
+  google: 'google',
+  demo: 'demo',
+} as const;
+
+export interface JourneyPlaceAutocompleteResponse {
+  source: JourneyPlaceAutocompleteResponseSource;
+  /** @maxItems 8 */
+  suggestions: JourneyPlaceSuggestion[];
+  /** @nullable */
+  message?: string | null;
+}
+
+export interface JourneyPlaceDetailsResponse {
+  /** @maxLength 300 */
+  placeId: string;
+  /** @maxLength 200 */
+  name: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+}
+
 export type CommunityReportCategory = typeof CommunityReportCategory[keyof typeof CommunityReportCategory];
 
 
@@ -472,6 +527,27 @@ export type LongitudeParameter = number;
 
 export type DestinationParameter = string;
 
+/**
+ * Optional latitude from a selected place prediction.
+ */
+export type DestinationLatitudeParameter = number;
+
+/**
+ * Optional longitude from a selected place prediction.
+ */
+export type DestinationLongitudeParameter = number;
+
+export type AutocompleteInputParameter = string;
+
+export type PlacesSessionTokenParameter = string;
+
+export type PlacesPlaceIdParameter = string;
+
+/**
+ * Up to 80 semicolon-separated community-report latitude,longitude points.
+ */
+export type ReportPointsParameter = string;
+
 export type TravelModeParameter = typeof TravelModeParameter[keyof typeof TravelModeParameter];
 
 
@@ -498,6 +574,18 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
+ * Optional latitude from a selected place prediction.
+ * @minimum -90
+ * @maximum 90
+ */
+destinationLat?: DestinationLatitudeParameter;
+/**
+ * Optional longitude from a selected place prediction.
+ * @minimum -180
+ * @maximum 180
+ */
+destinationLng?: DestinationLongitudeParameter;
+/**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */
 mode?: TravelModeParameter;
@@ -519,6 +607,18 @@ lng: LongitudeParameter;
  * @maxLength 150
  */
 destination: DestinationParameter;
+/**
+ * Optional latitude from a selected place prediction.
+ * @minimum -90
+ * @maximum 90
+ */
+destinationLat?: DestinationLatitudeParameter;
+/**
+ * Optional longitude from a selected place prediction.
+ * @minimum -180
+ * @maximum 180
+ */
+destinationLng?: DestinationLongitudeParameter;
 /**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */
@@ -547,6 +647,18 @@ lng: LongitudeParameter;
  */
 destination: DestinationParameter;
 /**
+ * Optional latitude from a selected place prediction.
+ * @minimum -90
+ * @maximum 90
+ */
+destinationLat?: DestinationLatitudeParameter;
+/**
+ * Optional longitude from a selected place prediction.
+ * @minimum -180
+ * @maximum 180
+ */
+destinationLng?: DestinationLongitudeParameter;
+/**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */
 mode?: TravelModeParameter;
@@ -559,6 +671,11 @@ routeId: string;
  * @maxLength 3200
  */
 heat?: string;
+/**
+ * Up to 80 semicolon-separated community-report latitude,longitude points.
+ * @maxLength 3200
+ */
+reports?: ReportPointsParameter;
 };
 
 export type GetJourneyMapImageParams = {
@@ -576,5 +693,31 @@ export type GetJourneyCatalogParams = {
  * @maxLength 150
  */
 query?: string;
+};
+
+export type GetJourneyPlaceAutocompleteParams = {
+/**
+ * @minLength 3
+ * @maxLength 150
+ */
+input: AutocompleteInputParameter;
+/**
+ * @minLength 1
+ * @maxLength 200
+ */
+sessionToken: PlacesSessionTokenParameter;
+};
+
+export type GetJourneyPlaceDetailsParams = {
+/**
+ * @minLength 1
+ * @maxLength 300
+ */
+placeId: PlacesPlaceIdParameter;
+/**
+ * @minLength 1
+ * @maxLength 200
+ */
+sessionToken: PlacesSessionTokenParameter;
 };
 

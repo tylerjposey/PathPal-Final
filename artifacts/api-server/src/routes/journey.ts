@@ -2,15 +2,24 @@ import { createHash, randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger";
 import { findVtaJourneys, getVtaGtfs, scheduledTimestamp, type Feed, type GtfsJourney, type GtfsStop } from "./vta-gtfs";
-import { parseHeatPoints, renderGoogle3DMap } from "./google-3d-map";
+import {
+  parseCommunityReportPoints,
+  parseHeatPoints,
+  renderGoogle3DMap,
+} from "./google-3d-map";
 import {
   GetJourneyCatalogQueryParams,
   GetJourneyCatalogResponse,
   GetJourneyMapImageQueryParams,
+  GetJourneyMap3dQueryParams,
   GetJourneyMapQueryParams,
   GetJourneyMapResponse,
   GetJourneyOptionsQueryParams,
   GetJourneyOptionsResponse,
+  GetJourneyPlaceAutocompleteQueryParams,
+  GetJourneyPlaceAutocompleteResponse,
+  GetJourneyPlaceDetailsQueryParams,
+  GetJourneyPlaceDetailsResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -19,6 +28,9 @@ const GOOGLE_COMPUTE_ROUTES_URL =
   "https://routes.googleapis.com/directions/v2:computeRoutes";
 const GOOGLE_STATIC_MAP_URL =
   "https://maps.googleapis.com/maps/api/staticmap";
+const GOOGLE_PLACES_AUTOCOMPLETE_URL =
+  "https://places.googleapis.com/v1/places:autocomplete";
+const GOOGLE_PLACES_BASE_URL = "https://places.googleapis.com/v1/places";
 const UPSTREAM_TIMEOUT_MS = 8_000;
 const CATALOG_TTL_MS = 15 * 60_000;
 const STOP_MONITORING_TTL_MS = 60_000;
@@ -107,6 +119,27 @@ type ParsedGoogleRoute = {
 };
 
 type TravelMode = "any" | "walking" | "transit";
+type Coordinate = { lat: number; lng: number };
+type PlaceSuggestion = {
+  placeId: string;
+  name: string;
+  description?: string;
+  lat?: number;
+  lng?: number;
+};
+
+const SAMPLE_PLACES: PlaceSuggestion[] = [
+  { placeId: "local:willow-glen", name: "Willow Glen, San Jose, CA", description: "Sample area", lat: 37.3089, lng: -121.8982 },
+  { placeId: "local:downtown-san-jose", name: "Downtown San Jose, CA", description: "Sample area", lat: 37.3352, lng: -121.8811 },
+  { placeId: "local:japantown", name: "Japantown, San Jose, CA", description: "Sample area", lat: 37.3478, lng: -121.895 },
+  { placeId: "local:east-san-jose", name: "East San Jose, CA", description: "Sample area", lat: 37.354, lng: -121.818 },
+  { placeId: "local:alum-rock", name: "Alum Rock, San Jose, CA", description: "Sample area", lat: 37.366, lng: -121.827 },
+  { placeId: "local:santa-clara", name: "Santa Clara, CA", description: "Sample area", lat: 37.3541, lng: -121.9552 },
+];
+
+const placesRequestsByIp = new Map<string, number[]>();
+const PLACES_RATE_WINDOW_MS = 60_000;
+const PLACES_RATE_LIMIT = 60;
 
 type MapSpec = {
   lat: number;
@@ -507,6 +540,195 @@ async function get511Catalog(): Promise<TransitCatalog | undefined> {
   return catalogInFlight;
 }
 
+function allowPlacesRequest(ip: string): boolean {
+  const now = Date.now();
+  for (const [key, timestamps] of placesRequestsByIp) {
+    const recent = timestamps.filter((timestamp) => timestamp > now - PLACES_RATE_WINDOW_MS);
+    if (recent.length) placesRequestsByIp.set(key, recent);
+    else placesRequestsByIp.delete(key);
+  }
+  if (placesRequestsByIp.size >= 2_048 && !placesRequestsByIp.has(ip)) return false;
+  const timestamps = placesRequestsByIp.get(ip) ?? [];
+  if (timestamps.length >= PLACES_RATE_LIMIT) return false;
+  timestamps.push(now);
+  placesRequestsByIp.set(ip, timestamps);
+  return true;
+}
+
+function normalizedLocationText(value: string): string {
+  return value.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function editDistance(left: string, right: string): number {
+  const row = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i += 1) {
+    let diagonal = row[0];
+    row[0] = i;
+    for (let j = 1; j <= right.length; j += 1) {
+      const previous = row[j];
+      row[j] = Math.min(
+        row[j] + 1,
+        row[j - 1] + 1,
+        diagonal + (left[i - 1] === right[j - 1] ? 0 : 1),
+      );
+      diagonal = previous;
+    }
+  }
+  return row[right.length];
+}
+
+function localLocationScore(query: string, name: string): number | undefined {
+  const normalizedQuery = normalizedLocationText(query);
+  const normalizedName = normalizedLocationText(name);
+  if (!normalizedQuery || !normalizedName) return undefined;
+  if (normalizedName.includes(normalizedQuery)) return 0;
+  const queryWords = normalizedQuery.split(" ");
+  const nameWords = normalizedName.split(" ");
+  if (queryWords.every((word) => nameWords.some((candidate) => candidate.startsWith(word)))) {
+    return 1;
+  }
+  const firstWord = queryWords[0];
+  const maxDistance = firstWord.length < 5 ? 1 : 2;
+  const closestDistance = Math.min(...nameWords.map((word) => editDistance(firstWord, word)));
+  return closestDistance <= maxDistance ? 2 + closestDistance : undefined;
+}
+
+async function searchLocalPlaces(input: string): Promise<PlaceSuggestion[]> {
+  const [catalog, feed] = await Promise.all([get511Catalog(), getVtaGtfs()]);
+  const stops = new Map<string, JourneyStop>();
+  for (const stop of catalog?.stops ?? []) stops.set(stop.id, stop);
+  if (feed) {
+    for (const id of feed.byStop.keys()) {
+      const stop = feed.stops.get(id);
+      if (stop) {
+        const journeyStop = toJourneyStop(stop);
+        stops.set(journeyStop.id, journeyStop);
+      }
+    }
+  }
+  const candidates: PlaceSuggestion[] = [
+    ...SAMPLE_PLACES,
+    ...[...stops.values()].map((stop) => ({
+      placeId: `local:stop:${stop.id}`,
+      name: stop.name,
+      description: "VTA bus stop",
+      lat: stop.lat,
+      lng: stop.lng,
+    })),
+  ];
+  return candidates
+    .map((suggestion) => ({
+      suggestion,
+      score: localLocationScore(input, suggestion.name),
+    }))
+    .filter((result): result is { suggestion: PlaceSuggestion; score: number } =>
+      result.score !== undefined,
+    )
+    .sort((left, right) =>
+      left.score - right.score || left.suggestion.name.localeCompare(right.suggestion.name),
+    )
+    .slice(0, 8)
+    .map(({ suggestion }) => suggestion);
+}
+
+async function autocompleteGooglePlaces(
+  input: string,
+  sessionToken: string,
+): Promise<PlaceSuggestion[] | undefined> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return undefined;
+  try {
+    const response = await fetch(GOOGLE_PLACES_AUTOCOMPLETE_URL, {
+      method: "POST",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask":
+          "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text,suggestions.placePrediction.structuredFormat.secondaryText.text",
+      },
+      body: JSON.stringify({
+        input,
+        sessionToken,
+        includedRegionCodes: ["us"],
+        locationBias: {
+          circle: {
+            center: { latitude: 37.3352, longitude: -121.8811 },
+            radius: 50_000,
+          },
+        },
+      }),
+    });
+    if (!response.ok) {
+      logger.warn({ provider: "Google Places", status: response.status }, "Place autocomplete unavailable");
+      return undefined;
+    }
+    const payload = asRecord(await response.json());
+    const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+    return suggestions
+      .map((item): PlaceSuggestion | undefined => {
+        const prediction = asRecord(getPath(item, "placePrediction"));
+        const placeId = safeText(prediction?.placeId);
+        const name = safeText(getPath(prediction, "text", "text"));
+        if (!placeId || !name) return undefined;
+        const description = safeText(getPath(prediction, "structuredFormat", "secondaryText", "text"));
+        return { placeId, name, ...(description ? { description } : {}) };
+      })
+      .filter((suggestion): suggestion is PlaceSuggestion => !!suggestion)
+      .slice(0, 8);
+  } catch {
+    return undefined;
+  }
+}
+
+async function getGooglePlaceDetails(
+  placeId: string,
+  sessionToken: string,
+): Promise<{ placeId: string; name: string; latitude: number; longitude: number } | undefined> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey || placeId.startsWith("local:")) return undefined;
+  try {
+    const url = new URL(`${GOOGLE_PLACES_BASE_URL}/${encodeURIComponent(placeId)}`);
+    url.searchParams.set("sessionToken", sessionToken);
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      headers: {
+        Accept: "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "id,displayName,formattedAddress,location",
+      },
+    });
+    if (!response.ok) {
+      logger.warn({ provider: "Google Places", status: response.status }, "Place details unavailable");
+      return undefined;
+    }
+    const payload = asRecord(await response.json());
+    const location = asRecord(payload?.location);
+    const placeIdFromResponse = safeText(payload?.id) ?? placeId;
+    const name =
+      safeText(getPath(payload, "displayName", "text")) ??
+      safeText(payload?.formattedAddress);
+    const latitude = location ? numberField(location, ["latitude"]) : undefined;
+    const longitude = location ? numberField(location, ["longitude"]) : undefined;
+    if (
+      !name ||
+      latitude === undefined ||
+      longitude === undefined ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180
+    ) {
+      return undefined;
+    }
+    return { placeId: placeIdFromResponse, name, latitude, longitude };
+  } catch {
+    return undefined;
+  }
+}
+
 async function getStopMonitoringAlerts(
   apiKey: string | undefined,
   agency: string | undefined,
@@ -875,8 +1097,12 @@ async function fetchCachedGoogleRoutes(
   lat: number,
   lng: number,
   destination: string,
+  destinationCoordinates?: Coordinate,
 ): Promise<GoogleRoutesResult> {
-  const cacheKey = `${lat.toFixed(5)}:${lng.toFixed(5)}:${destination.trim().toLowerCase()}`;
+  const destinationKey = destinationCoordinates
+    ? `${destinationCoordinates.lat.toFixed(5)},${destinationCoordinates.lng.toFixed(5)}`
+    : destination.trim().toLowerCase();
+  const cacheKey = `${lat.toFixed(5)}:${lng.toFixed(5)}:${destinationKey}`;
   const now = Date.now();
   const cached = googleRoutesCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.value;
@@ -885,7 +1111,11 @@ async function fetchCachedGoogleRoutes(
 
   const request = (async (): Promise<GoogleRoutesResult> => {
     try {
-      const walkingRoute = await fetchGoogleWalkingRoute(lat, lng, destination);
+      const walkingRoute = await fetchGoogleWalkingRoute(
+        lat,
+        lng,
+        destinationCoordinates ?? destination,
+      );
       const result: GoogleRoutesResult = { walkingRoute };
       googleRoutesCache.set(cacheKey, { value: result, expiresAt: Date.now() + GOOGLE_ROUTES_TTL_MS });
       for (const [key, entry] of googleRoutesCache) {
@@ -927,6 +1157,7 @@ function demoJourney(
   destination: string,
   message: string,
   mode: TravelMode,
+  destinationCoordinates?: Coordinate,
 ) {
   const stop: JourneyStop = {
     id: "demo-origin-stop",
@@ -938,8 +1169,8 @@ function demoJourney(
   const destinationStop: JourneyStop = {
     id: "demo-destination-stop",
     name: destination,
-    lat,
-    lng,
+    lat: destinationCoordinates?.lat ?? lat,
+    lng: destinationCoordinates?.lng ?? lng,
   };
   const routes: JourneyRoute[] = [];
   if (mode !== "transit") {
@@ -1363,9 +1594,15 @@ function buildRouteLegs(
   });
 }
 
-async function buildJourney(lat: number, lng: number, destination: string, mode: TravelMode) {
+async function buildJourney(
+  lat: number,
+  lng: number,
+  destination: string,
+  mode: TravelMode,
+  destinationCoordinates?: Coordinate,
+) {
   const [{ walkingRoute }, catalog, feed] = await Promise.all([
-    fetchCachedGoogleRoutes(lat, lng, destination),
+    fetchCachedGoogleRoutes(lat, lng, destination, destinationCoordinates),
     get511Catalog(),
     mode === "walking" ? Promise.resolve(undefined) : getVtaGtfs(),
   ]);
@@ -1374,6 +1611,7 @@ async function buildJourney(lat: number, lng: number, destination: string, mode:
       lat, lng, destination,
       "Google walking directions are unavailable; showing an illustrative walking option.",
       mode,
+      destinationCoordinates,
     );
   }
   if ((mode === "transit" && !feed) || (!walkingRoute && !feed)) {
@@ -1385,12 +1623,15 @@ async function buildJourney(lat: number, lng: number, destination: string, mode:
         ? "511 VTA schedule and Google walking directions are unavailable; showing demo data."
         : "511 VTA schedule is unavailable; showing demo bus data.",
       mode,
+      destinationCoordinates,
     );
   }
   const destinationName = normalizedRef(destination);
   const namedStop = catalog?.stops.find((stop) => normalizedRef(stop.name) === destinationName) ??
     (feed ? [...feed.stops.values()].find((stop) => normalizedRef(stop.name) === destinationName) : undefined);
-  const coordinates = walkingRoute?.route.legs[0]?.alightingStop ?? namedStop;
+  const coordinates = destinationCoordinates ??
+    walkingRoute?.route.legs[0]?.alightingStop ??
+    namedStop;
   const candidates = feed && coordinates && mode !== "walking"
     ? findVtaJourneys(feed, { lat, lng }, coordinates)
     : [];
@@ -1427,7 +1668,7 @@ async function buildJourney(lat: number, lng: number, destination: string, mode:
   // illustrative demo bus option whenever no live bus route was actually built,
   // not only when the feed itself failed to load.
   const demoBusRoutes = mode !== "walking" && !transitJourneyRoutes.length
-    ? demoJourney(lat, lng, destination, "", "transit").routes
+     ? demoJourney(lat, lng, destination, "", "transit", destinationCoordinates).routes
     : [];
   const rankedRoutes = rankJourneyRoutes([...transitJourneyRoutes, ...walkingJourneyRoutes, ...demoBusRoutes]);
   const nearestStop = stops[0] ?? null;
@@ -1452,9 +1693,24 @@ function parseTravelMode(value: string | undefined): TravelMode {
   return value === "walking" || value === "transit" ? value : "any";
 }
 
+function hasValidDestinationCoordinates(
+  destinationLat: number | undefined,
+  destinationLng: number | undefined,
+): boolean {
+  return (destinationLat === undefined) === (destinationLng === undefined);
+}
+
+function getDestinationCoordinates(
+  destinationLat: number | undefined,
+  destinationLng: number | undefined,
+): Coordinate | undefined {
+  if (destinationLat === undefined || destinationLng === undefined) return undefined;
+  return { lat: destinationLat, lng: destinationLng };
+}
+
 router.get("/journey/options", async (req, res): Promise<void> => {
   const query = GetJourneyOptionsQueryParams.safeParse(req.query);
-  if (!query.success) {
+  if (!query.success || !hasValidDestinationCoordinates(query.data?.destinationLat, query.data?.destinationLng)) {
     res.status(400).json({ error: "Invalid journey query parameters." });
     return;
   }
@@ -1463,13 +1719,14 @@ router.get("/journey/options", async (req, res): Promise<void> => {
     query.data.lng,
     query.data.destination,
     parseTravelMode(query.data.mode),
+    getDestinationCoordinates(query.data.destinationLat, query.data.destinationLng),
   );
   res.json(GetJourneyOptionsResponse.parse(response));
 });
 
 router.get("/journey/map", async (req, res): Promise<void> => {
   const query = GetJourneyMapQueryParams.safeParse(req.query);
-  if (!query.success) {
+  if (!query.success || !hasValidDestinationCoordinates(query.data?.destinationLat, query.data?.destinationLng)) {
     res.status(400).json({ error: "Invalid journey query parameters." });
     return;
   }
@@ -1478,6 +1735,7 @@ router.get("/journey/map", async (req, res): Promise<void> => {
     query.data.lng,
     query.data.destination,
     parseTravelMode(query.data.mode),
+    getDestinationCoordinates(query.data.destinationLat, query.data.destinationLng),
   );
   const selectedRoute =
     (query.data.routeId ? journey.routes.find((route) => route.id === query.data.routeId) : undefined) ??
@@ -1511,8 +1769,7 @@ router.get("/journey/map", async (req, res): Promise<void> => {
     GetJourneyMapResponse.parse({
       ...journey,
       mapImageUrl,
-      map3dAvailable: Boolean(process.env.GOOGLE_MAPS_BROWSER_API_KEY && selectedRoute?.source === "live" &&
-        selectedRoute.legs.some((leg) => !!leg.polyline)),
+      map3dAvailable: Boolean(process.env.GOOGLE_MAPS_BROWSER_API_KEY),
       ...(mapImageUrl === null && !journey.message
         ? { message: "Google Maps credentials are not configured; map image unavailable." }
         : {}),
@@ -1521,10 +1778,16 @@ router.get("/journey/map", async (req, res): Promise<void> => {
 });
 
 router.get("/journey/map-3d", async (req, res): Promise<void> => {
-  const query = GetJourneyMapQueryParams.safeParse(req.query);
+  const query = GetJourneyMap3dQueryParams.safeParse(req.query);
   const heat = parseHeatPoints(req.query.heat);
+  const reports = parseCommunityReportPoints(req.query.reports);
   const key = process.env.GOOGLE_MAPS_BROWSER_API_KEY;
-  if (!query.success || !query.data.routeId || !heat) {
+  if (
+    !query.success ||
+    !hasValidDestinationCoordinates(query.data?.destinationLat, query.data?.destinationLng) ||
+    !heat ||
+    !reports
+  ) {
     res.status(400).json({ error: "Invalid 3D map parameters." });
     return;
   }
@@ -1538,18 +1801,32 @@ router.get("/journey/map-3d", async (req, res): Promise<void> => {
     return;
   }
   const journey = await buildJourney(
-    query.data.lat, query.data.lng, query.data.destination, parseTravelMode(query.data.mode),
+    query.data.lat,
+    query.data.lng,
+    query.data.destination,
+    parseTravelMode(query.data.mode),
+    getDestinationCoordinates(query.data.destinationLat, query.data.destinationLng),
   );
-  const selected = journey.routes.find((route) => route.id === query.data.routeId && route.source === "live");
-  if (!selected || !selected.legs.some((leg) => !!leg.polyline)) {
-    res.status(404).json({ error: "Route has changed; refresh journey options." });
-    return;
-  }
+  const selected = journey.routes.find((route) => route.id === query.data.routeId) ??
+    journey.routes.find((route) => route.recommended) ??
+    journey.routes[0];
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.type("html").send(renderGoogle3DMap(key, selected.legs, heat, {
-    lat: query.data.lat, lng: query.data.lng,
-  }));
+  const mapLegs = selected?.source === "live" ? selected.legs : [];
+  const lastStop = mapLegs[mapLegs.length - 1]?.alightingStop;
+  const destination = {
+    name: query.data.destination,
+    lat: query.data.destinationLat ?? lastStop?.lat ?? query.data.lat,
+    lng: query.data.destinationLng ?? lastStop?.lng ?? query.data.lng,
+  };
+  res.type("html").send(renderGoogle3DMap(
+    key,
+    mapLegs,
+    heat,
+    reports,
+    { lat: query.data.lat, lng: query.data.lng },
+    destination,
+  ));
 });
 
 router.get("/journey/map-image", async (req, res): Promise<void> => {
@@ -1677,6 +1954,64 @@ router.get("/journey/catalog", async (req, res): Promise<void> => {
       : catalog.stops,
   };
   res.json(GetJourneyCatalogResponse.parse(response));
+});
+
+router.get("/journey/places/autocomplete", async (req, res): Promise<void> => {
+  const query = GetJourneyPlaceAutocompleteQueryParams.safeParse(req.query);
+  if (!query.success) {
+    res.status(400).json({ error: "Invalid place autocomplete query." });
+    return;
+  }
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  if (!allowPlacesRequest(ip)) {
+    res.setHeader("Retry-After", "60");
+    res.status(429).json({ error: "Place search limit reached; wait before searching again." });
+    return;
+  }
+
+  const googleSuggestions = await autocompleteGooglePlaces(
+    query.data.input.trim(),
+    query.data.sessionToken,
+  );
+  if (googleSuggestions?.length) {
+    res.json(GetJourneyPlaceAutocompleteResponse.parse({
+      source: "google",
+      suggestions: googleSuggestions,
+    }));
+    return;
+  }
+
+  const localSuggestions = await searchLocalPlaces(query.data.input.trim());
+  res.json(GetJourneyPlaceAutocompleteResponse.parse({
+    source: "demo",
+    suggestions: localSuggestions,
+    message: process.env.GOOGLE_MAPS_API_KEY
+      ? "Google Places is unavailable right now. Showing matching sample areas and bus stops."
+      : "Google Places is not configured. Showing matching sample areas and bus stops.",
+  }));
+});
+
+router.get("/journey/places/details", async (req, res): Promise<void> => {
+  const query = GetJourneyPlaceDetailsQueryParams.safeParse(req.query);
+  if (!query.success || query.data.placeId.startsWith("local:")) {
+    res.status(400).json({ error: "Invalid place selection." });
+    return;
+  }
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  if (!allowPlacesRequest(ip)) {
+    res.setHeader("Retry-After", "60");
+    res.status(429).json({ error: "Place search limit reached; wait before trying again." });
+    return;
+  }
+  const place = await getGooglePlaceDetails(
+    query.data.placeId,
+    query.data.sessionToken,
+  );
+  if (!place) {
+    res.status(503).json({ error: "Place coordinates are temporarily unavailable." });
+    return;
+  }
+  res.json(GetJourneyPlaceDetailsResponse.parse(place));
 });
 
 export default router;

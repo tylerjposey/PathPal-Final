@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './autocompleteInputParameter';
 export * from './communityReport';
 export * from './communityReportCategory';
 export * from './communityReportDetail';
@@ -22,6 +23,8 @@ export * from './communityReportUpdateCategory';
 export * from './communityReportUpdateLocation';
 export * from './communityReportUpdateResult';
 export * from './communityReportUpdateStatus';
+export * from './destinationLatitudeParameter';
+export * from './destinationLongitudeParameter';
 export * from './destinationParameter';
 export * from './errorResponse';
 export * from './getJourneyCatalogParams';
@@ -29,6 +32,8 @@ export * from './getJourneyMap3dParams';
 export * from './getJourneyMapImageParams';
 export * from './getJourneyMapParams';
 export * from './getJourneyOptionsParams';
+export * from './getJourneyPlaceAutocompleteParams';
+export * from './getJourneyPlaceDetailsParams';
 export * from './healthStatus';
 export * from './journeyCatalogResponse';
 export * from './journeyCatalogResponseSource';
@@ -37,12 +42,19 @@ export * from './journeyLegType';
 export * from './journeyMapResponse';
 export * from './journeyOptionsResponse';
 export * from './journeyOptionsResponseSource';
+export * from './journeyPlaceAutocompleteResponse';
+export * from './journeyPlaceAutocompleteResponseSource';
+export * from './journeyPlaceDetailsResponse';
+export * from './journeyPlaceSuggestion';
 export * from './journeyRoute';
 export * from './journeyRouteMode';
 export * from './journeyRouteSource';
 export * from './journeyStop';
 export * from './latitudeParameter';
 export * from './longitudeParameter';
+export * from './placesPlaceIdParameter';
+export * from './placesSessionTokenParameter';
+export * from './reportPointsParameter';
 export * from './reportSession';
 export * from './reportSessionInput';
 export * from './reportSessionInputRole';

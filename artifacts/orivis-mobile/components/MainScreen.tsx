@@ -131,6 +131,8 @@ export function MainScreen({
   const role = state.account?.role ?? verificationAccount?.role ?? 'parent';
   const tabs = tabsForRole(role);
   const [tab, setTab] = useState<TabKey>('home');
+  const [tabBeforeAlerts, setTabBeforeAlerts] = useState<TabKey>('home');
+  const [mountedTabs, setMountedTabs] = useState<Set<TabKey>>(() => new Set(['home']));
   const [modal, setModal] = useState<ModalName>(verificationAccount && !state.account ? 'verify' : null);
   const [selectedReport, setSelectedReport] = useState<SafetyReport | null>(null);
 
@@ -141,6 +143,24 @@ export function MainScreen({
   const openCase = (report: SafetyReport) => {
     setSelectedReport(report);
     setModal('case');
+  };
+
+  const navigateTo = (nextTab: TabKey) => {
+    if (nextTab === 'alerts' && tab !== 'alerts') setTabBeforeAlerts(tab);
+    setMountedTabs((current) => {
+      if (current.has(nextTab)) return current;
+      const next = new Set(current);
+      next.add(nextTab);
+      return next;
+    });
+    setTab(nextTab);
+  };
+
+  const returnFromAlerts = () => {
+    const destinationTab = tabs.some((item) => item.key === tabBeforeAlerts)
+      ? tabBeforeAlerts
+      : 'home';
+    setTab(destinationTab);
   };
 
   return (
@@ -171,7 +191,7 @@ export function MainScreen({
             </Pressable>
           ) : null}
           <Pressable
-            onPress={() => setTab('alerts')}
+            onPress={() => navigateTo('alerts')}
             style={({ pressed }) => [styles.bell, { opacity: pressed ? 0.5 : 1 }]}
           >
             <Feather name="bell" size={21} color={colors.foreground} />
@@ -181,14 +201,30 @@ export function MainScreen({
       </View>
 
       <View style={styles.body}>
-        {tab === 'home' ? <Home role={role} onNavigate={setTab} onReport={() => setModal('report')} onSOS={() => setModal('sos')} onCase={openCase} /> : null}
-        {tab === 'map' ? role === 'parent' || role === 'child' ? <JourneyScreen /> : <MapScreen role={role} onCase={openCase} /> : null}
-        {tab === 'reports' ? <ReportsScreen role={role} onCreate={() => setModal('report')} onCase={openCase} /> : null}
-        {tab === 'history' ? <ReportHistoryScreen onCase={openCase} /> : null}
-        {tab === 'tasks' ? <WorkerTasks onCase={openCase} /> : null}
-        {tab === 'rewards' ? <RewardsScreen /> : null}
-        {tab === 'alerts' ? <AlertsScreen /> : null}
-        {tab === 'profile' ? <ProfileScreen /> : null}
+        {(['home', 'map', 'reports', 'history', 'tasks', 'rewards', 'alerts', 'profile'] as TabKey[]).map((screenTab) => (
+          <View
+            key={screenTab}
+            style={[styles.tabPanel, tab !== screenTab ? styles.hiddenTabPanel : null]}
+          >
+            {mountedTabs.has(screenTab) ? (
+              screenTab === 'home'
+                ? <Home role={role} onNavigate={navigateTo} onReport={() => setModal('report')} onSOS={() => setModal('sos')} onCase={openCase} />
+                : screenTab === 'map'
+                  ? role === 'parent' || role === 'child' ? <JourneyScreen /> : <MapScreen role={role} onCase={openCase} />
+                  : screenTab === 'reports'
+                    ? <ReportsScreen role={role} onCreate={() => setModal('report')} onCase={openCase} />
+                    : screenTab === 'history'
+                      ? <ReportHistoryScreen onCase={openCase} />
+                      : screenTab === 'tasks'
+                        ? <WorkerTasks onCase={openCase} />
+                        : screenTab === 'rewards'
+                          ? <RewardsScreen />
+                          : screenTab === 'alerts'
+                            ? <AlertsScreen onBack={returnFromAlerts} onHome={() => navigateTo('home')} isActive={tab === 'alerts'} />
+                            : <ProfileScreen />
+            ) : null}
+          </View>
+        ))}
       </View>
 
       {tab !== 'alerts' ? (
@@ -201,7 +237,7 @@ export function MainScreen({
                 testID={`tab-${item.key}`}
                 onPress={() => {
                   void Haptics.selectionAsync();
-                  setTab(item.key);
+                  navigateTo(item.key);
                 }}
                 style={styles.tab}
               >
@@ -813,15 +849,38 @@ function RewardsScreen() {
   );
 }
 
-function AlertsScreen() {
+function AlertsScreen({ onBack, onHome, isActive }: { onBack: () => void; onHome: () => void; isActive: boolean }) {
   const colors = useColors();
   const { state, markNotificationsRead } = useDemo();
   useEffect(() => {
+    if (!isActive) return;
     const id = setTimeout(markNotificationsRead, 600);
     return () => clearTimeout(id);
-  }, [markNotificationsRead]);
+  }, [isActive, markNotificationsRead]);
   return (
     <ScreenScroll>
+      <View style={styles.alertNavigation}>
+        <Pressable
+          testID="notifications-back"
+          accessibilityRole="button"
+          accessibilityLabel="Back to previous screen"
+          onPress={onBack}
+          style={[styles.alertAction, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <Feather name="arrow-left" size={17} color={colors.primary} />
+          <Text style={[styles.alertActionText, { color: colors.foreground }]}>Back</Text>
+        </Pressable>
+        <Pressable
+          testID="notifications-home"
+          accessibilityRole="button"
+          accessibilityLabel="Go to home dashboard"
+          onPress={onHome}
+          style={[styles.alertAction, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <Feather name="home" size={17} color={colors.primary} />
+          <Text style={[styles.alertActionText, { color: colors.foreground }]}>Home</Text>
+        </Pressable>
+      </View>
       <ScreenHeader eyebrow="Activity" title="Notifications" subtitle="Real push and text delivery are not connected in this prototype." />
       {state.notifications.map((notice) => (
         <Card key={notice.id} style={styles.notice}>
@@ -1556,6 +1615,8 @@ const styles = StyleSheet.create({
   bell: { width: 39, height: 39, alignItems: 'center', justifyContent: 'center' },
   unread: { position: 'absolute', width: 7, height: 7, borderRadius: 4, right: 8, top: 8 },
   body: { flex: 1 },
+  tabPanel: { flex: 1 },
+  hiddenTabPanel: { display: 'none' },
   scroll: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 116 },
   tabbar: { minHeight: 70, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'flex-start', paddingTop: 7, paddingHorizontal: 6 },
   tab: { flex: 1, alignItems: 'center', gap: 2 },
@@ -1628,6 +1689,19 @@ const styles = StyleSheet.create({
   rewardIcon: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   redeem: { width: 38, height: 38, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   historyText: { fontFamily: 'Inter_600SemiBold', fontSize: 12.5 },
+  alertNavigation: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  alertAction: {
+    flex: 1,
+    minHeight: 46,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  alertActionText: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
   noticeIcon: { width: 42, height: 42, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   noticeTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

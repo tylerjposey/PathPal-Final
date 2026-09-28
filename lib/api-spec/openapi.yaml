@@ -37,6 +37,8 @@ paths:
         - $ref: "#/components/parameters/Latitude"
         - $ref: "#/components/parameters/Longitude"
         - $ref: "#/components/parameters/Destination"
+        - $ref: "#/components/parameters/DestinationLatitude"
+        - $ref: "#/components/parameters/DestinationLongitude"
         - $ref: "#/components/parameters/TravelMode"
       responses:
         "200":
@@ -60,6 +62,8 @@ paths:
         - $ref: "#/components/parameters/Latitude"
         - $ref: "#/components/parameters/Longitude"
         - $ref: "#/components/parameters/Destination"
+        - $ref: "#/components/parameters/DestinationLatitude"
+        - $ref: "#/components/parameters/DestinationLongitude"
         - $ref: "#/components/parameters/TravelMode"
         - name: routeId
           in: query
@@ -90,6 +94,8 @@ paths:
         - $ref: "#/components/parameters/Latitude"
         - $ref: "#/components/parameters/Longitude"
         - $ref: "#/components/parameters/Destination"
+        - $ref: "#/components/parameters/DestinationLatitude"
+        - $ref: "#/components/parameters/DestinationLongitude"
         - $ref: "#/components/parameters/TravelMode"
         - name: routeId
           in: query
@@ -100,6 +106,7 @@ paths:
           required: false
           description: Up to 80 semicolon-separated latitude,longitude,intensity points.
           schema: { type: string, maxLength: 3200 }
+        - $ref: "#/components/parameters/ReportPoints"
       responses:
         "200":
           description: Interactive hosted 3D map document
@@ -160,6 +167,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JourneyCatalogResponse"
+  /journey/places/autocomplete:
+    get:
+      operationId: getJourneyPlaceAutocomplete
+      tags: [journey]
+      summary: Autocomplete journey starting locations and destinations
+      parameters:
+        - $ref: "#/components/parameters/AutocompleteInput"
+        - $ref: "#/components/parameters/PlacesSessionToken"
+      responses:
+        "200":
+          description: Google Places predictions or a local fuzzy-search fallback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyPlaceAutocompleteResponse"
+        "400":
+          description: Invalid autocomplete query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /journey/places/details:
+    get:
+      operationId: getJourneyPlaceDetails
+      tags: [journey]
+      summary: Resolve a selected place prediction to coordinates
+      parameters:
+        - $ref: "#/components/parameters/PlacesPlaceId"
+        - $ref: "#/components/parameters/PlacesSessionToken"
+      responses:
+        "200":
+          description: Selected place name and coordinates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyPlaceDetailsResponse"
+        "400":
+          description: Invalid place selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Place details are unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /reports:
     get:
       operationId: listReports
@@ -441,6 +496,54 @@ components:
         type: string
         minLength: 1
         maxLength: 150
+    DestinationLatitude:
+      name: destinationLat
+      in: query
+      required: false
+      description: Optional latitude from a selected place prediction.
+      schema:
+        type: number
+        minimum: -90
+        maximum: 90
+    DestinationLongitude:
+      name: destinationLng
+      in: query
+      required: false
+      description: Optional longitude from a selected place prediction.
+      schema:
+        type: number
+        minimum: -180
+        maximum: 180
+    AutocompleteInput:
+      name: input
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 150
+    PlacesSessionToken:
+      name: sessionToken
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    PlacesPlaceId:
+      name: placeId
+      in: query
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 300
+    ReportPoints:
+      name: reports
+      in: query
+      required: false
+      description: Up to 80 semicolon-separated community-report latitude,longitude points.
+      schema: { type: string, maxLength: 3200 }
     TravelMode:
       name: mode
       in: query
@@ -640,6 +743,36 @@ components:
         message:
           type: ["string", "null"]
       required: [source, routes, stops]
+    JourneyPlaceSuggestion:
+      type: object
+      properties:
+        placeId: { type: string, maxLength: 300 }
+        name: { type: string, maxLength: 200 }
+        description: { type: ["string", "null"], maxLength: 300 }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+      required: [placeId, name]
+    JourneyPlaceAutocompleteResponse:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [google, demo]
+        suggestions:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/JourneyPlaceSuggestion"
+        message: { type: ["string", "null"] }
+      required: [source, suggestions]
+    JourneyPlaceDetailsResponse:
+      type: object
+      properties:
+        placeId: { type: string, maxLength: 300 }
+        name: { type: string, maxLength: 200 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+      required: [placeId, name, latitude, longitude]
     CommunityReport:
       type: object
       properties:

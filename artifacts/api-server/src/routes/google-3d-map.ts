@@ -7,6 +7,7 @@ type Leg = {
   routeNumber: string | null;
 };
 export type HeatPoint = { lat: number; lng: number; intensity: number };
+export type CommunityReportPoint = { lat: number; lng: number };
 
 export function parseHeatPoints(value: unknown): HeatPoint[] | undefined {
   if (value === undefined) return [];
@@ -26,10 +27,37 @@ export function parseHeatPoints(value: unknown): HeatPoint[] | undefined {
   return points;
 }
 
+export function parseCommunityReportPoints(value: unknown): CommunityReportPoint[] | undefined {
+  if (value === undefined) return [];
+  if (typeof value !== "string" || value.length > 3200) return undefined;
+  if (!value) return [];
+  const rows = value.split(";");
+  if (rows.length > 80) return undefined;
+  const points: CommunityReportPoint[] = [];
+  for (const row of rows) {
+    const fields = row.split(",");
+    if (fields.length !== 2 || fields.some((field) => !/^-?\d+(?:\.\d+)?$/.test(field))) {
+      return undefined;
+    }
+    const [lat, lng] = fields.map(Number);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+      lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return undefined;
+    }
+    points.push({ lat, lng });
+  }
+  return points;
+}
+
 const scriptData = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 
 export function renderGoogle3DMap(
-  key: string, legs: Leg[], heat: HeatPoint[], fallback: { lat: number; lng: number },
+  key: string,
+  legs: Leg[],
+  heat: HeatPoint[],
+  reports: CommunityReportPoint[],
+  fallback: { lat: number; lng: number },
+  destination: { name: string; lat: number; lng: number },
 ): string {
   const routes = legs.map((leg, index) => ({
     polyline: leg.polyline, type: leg.type, routeNumber: leg.routeNumber,
@@ -54,7 +82,9 @@ export function renderGoogle3DMap(
 <script>
   const routeLegs = ${scriptData(routes)};
   const heatPoints = ${scriptData(heat)};
+  const reportPoints = ${scriptData(reports)};
   const fallback = ${scriptData(fallback)};
+  const destination = ${scriptData(destination)};
   function decode(str) {
     let i=0, lat=0, lng=0, points=[];
     while(i<str.length) {
@@ -81,8 +111,13 @@ export function renderGoogle3DMap(
       if(!document.createElement('canvas').getContext('webgl2')) { showError(); return; }
       const {Map3DElement,Polyline3DElement,Marker3DElement,Polygon3DElement} =
         await google.maps.importLibrary('maps3d');
-      const points = routeLegs.flatMap(l => l.polyline ? decode(l.polyline) : []);
-      if (!points.length) points.push(fallback);
+      const points = [
+        ...routeLegs.flatMap(l => l.polyline ? decode(l.polyline) : []),
+        fallback,
+        destination,
+        ...reportPoints,
+        ...heatPoints,
+      ];
       const minLat=Math.min(...points.map(p=>p.lat)), maxLat=Math.max(...points.map(p=>p.lat));
       const minLng=Math.min(...points.map(p=>p.lng)), maxLng=Math.max(...points.map(p=>p.lng));
       const center={lat:(minLat+maxLat)/2,lng:(minLng+maxLng)/2,altitude:0};
@@ -109,6 +144,16 @@ export function renderGoogle3DMap(
             position:{lat:stop.lat,lng:stop.lng,altitude:0},label:stop.name
           }));
         }
+      });
+      map.append(new Marker3DElement({
+        position:{lat:destination.lat,lng:destination.lng,altitude:0},
+        label:destination.name || 'Destination'
+      }));
+      reportPoints.forEach(point => {
+        map.append(new Marker3DElement({
+          position:{lat:point.lat,lng:point.lng,altitude:0},
+          label:'Community report'
+        }));
       });
       heatPoints.forEach(point => {
         const latRadius=45/111320, lngRadius=45/(111320*Math.max(0.1,Math.cos(point.lat*Math.PI/180)));

@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DestinationLatitudeParameter } from './destinationLatitudeParameter';
+import type { DestinationLongitudeParameter } from './destinationLongitudeParameter';
 import type { DestinationParameter } from './destinationParameter';
 import type { LatitudeParameter } from './latitudeParameter';
 import type { LongitudeParameter } from './longitudeParameter';
@@ -26,6 +28,18 @@ lng: LongitudeParameter;
  * @maxLength 150
  */
 destination: DestinationParameter;
+/**
+ * Optional latitude from a selected place prediction.
+ * @minimum -90
+ * @maximum 90
+ */
+destinationLat?: DestinationLatitudeParameter;
+/**
+ * Optional longitude from a selected place prediction.
+ * @minimum -180
+ * @maximum 180
+ */
+destinationLng?: DestinationLongitudeParameter;
 /**
  * Restrict journey options to a travel mode. Defaults to considering both.
  */

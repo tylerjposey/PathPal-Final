@@ -31,10 +31,14 @@ import type {
   GetJourneyMapImageParams,
   GetJourneyMapParams,
   GetJourneyOptionsParams,
+  GetJourneyPlaceAutocompleteParams,
+  GetJourneyPlaceDetailsParams,
   HealthStatus,
   JourneyCatalogResponse,
   JourneyMapResponse,
   JourneyOptionsResponse,
+  JourneyPlaceAutocompleteResponse,
+  JourneyPlaceDetailsResponse,
   ReportSession,
   ReportSessionInput
 } from './api.schemas';
@@ -552,6 +556,174 @@ export function useGetJourneyCatalog<TData = Awaited<ReturnType<typeof getJourne
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetJourneyCatalogQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetJourneyPlaceAutocompleteUrl = (params: GetJourneyPlaceAutocompleteParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/journey/places/autocomplete?${stringifiedParams}` : `/api/journey/places/autocomplete`
+}
+
+/**
+ * @summary Autocomplete journey starting locations and destinations
+ */
+export const getJourneyPlaceAutocomplete = async (params: GetJourneyPlaceAutocompleteParams, options?: Parameters<typeof customFetch>[1]): Promise<JourneyPlaceAutocompleteResponse> => {
+
+  return customFetch<JourneyPlaceAutocompleteResponse>(getGetJourneyPlaceAutocompleteUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJourneyPlaceAutocompleteQueryKey = (params?: GetJourneyPlaceAutocompleteParams,) => {
+    return [
+    `/api/journey/places/autocomplete`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetJourneyPlaceAutocompleteQueryOptions = <TData = Awaited<ReturnType<typeof getJourneyPlaceAutocomplete>>, TError = ErrorType<ErrorResponse>>(params: GetJourneyPlaceAutocompleteParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJourneyPlaceAutocomplete>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJourneyPlaceAutocompleteQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJourneyPlaceAutocomplete>>> = ({ signal }) => getJourneyPlaceAutocomplete(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJourneyPlaceAutocomplete>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJourneyPlaceAutocompleteQueryResult = NonNullable<Awaited<ReturnType<typeof getJourneyPlaceAutocomplete>>>
+export type GetJourneyPlaceAutocompleteQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Autocomplete journey starting locations and destinations
+ */
+
+export function useGetJourneyPlaceAutocomplete<TData = Awaited<ReturnType<typeof getJourneyPlaceAutocomplete>>, TError = ErrorType<ErrorResponse>>(
+ params: GetJourneyPlaceAutocompleteParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJourneyPlaceAutocomplete>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJourneyPlaceAutocompleteQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetJourneyPlaceDetailsUrl = (params: GetJourneyPlaceDetailsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/journey/places/details?${stringifiedParams}` : `/api/journey/places/details`
+}
+
+/**
+ * @summary Resolve a selected place prediction to coordinates
+ */
+export const getJourneyPlaceDetails = async (params: GetJourneyPlaceDetailsParams, options?: Parameters<typeof customFetch>[1]): Promise<JourneyPlaceDetailsResponse> => {
+
+  return customFetch<JourneyPlaceDetailsResponse>(getGetJourneyPlaceDetailsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJourneyPlaceDetailsQueryKey = (params?: GetJourneyPlaceDetailsParams,) => {
+    return [
+    `/api/journey/places/details`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetJourneyPlaceDetailsQueryOptions = <TData = Awaited<ReturnType<typeof getJourneyPlaceDetails>>, TError = ErrorType<ErrorResponse>>(params: GetJourneyPlaceDetailsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJourneyPlaceDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJourneyPlaceDetailsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJourneyPlaceDetails>>> = ({ signal }) => getJourneyPlaceDetails(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJourneyPlaceDetails>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJourneyPlaceDetailsQueryResult = NonNullable<Awaited<ReturnType<typeof getJourneyPlaceDetails>>>
+export type GetJourneyPlaceDetailsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Resolve a selected place prediction to coordinates
+ */
+
+export function useGetJourneyPlaceDetails<TData = Awaited<ReturnType<typeof getJourneyPlaceDetails>>, TError = ErrorType<ErrorResponse>>(
+ params: GetJourneyPlaceDetailsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJourneyPlaceDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJourneyPlaceDetailsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

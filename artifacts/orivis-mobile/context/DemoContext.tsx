@@ -55,6 +55,11 @@ export interface SelectedJourney {
   startStop: string;
   destinationStop: string;
   destination: string;
+  startingLocation?: string;
+  originLatitude?: number;
+  originLongitude?: number;
+  destinationLatitude?: number;
+  destinationLongitude?: number;
   durationMinutes: number;
   walkingMeters: number;
   transfers: number;

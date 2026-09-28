@@ -9,6 +9,8 @@ import {
   Text,
   TextInput,
   type TextInputProps,
+  type StyleProp,
+  type TextStyle,
   View,
   type ViewStyle,
 } from 'react-native';
@@ -33,11 +35,13 @@ export function ScreenHeader({
   eyebrow,
   title,
   subtitle,
+  subtitleStyle,
   right,
 }: {
   eyebrow?: string;
   title?: string;
   subtitle?: string;
+  subtitleStyle?: StyleProp<TextStyle>;
   right?: ReactNode;
 }) {
   const colors = useColors();
@@ -46,7 +50,7 @@ export function ScreenHeader({
       <View style={styles.headerText}>
         {eyebrow ? <Text style={[styles.eyebrow, { color: colors.primary }]}>{eyebrow.toUpperCase()}</Text> : null}
         {title ? <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text> : null}
-        {subtitle ? <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
+        {subtitle ? <Text style={[styles.subtitle, { color: colors.mutedForeground }, subtitleStyle]}>{subtitle}</Text> : null}
       </View>
       {right}
     </View>
@@ -80,17 +84,19 @@ export function Card({
 
 export function SectionTitle({
   title,
+  titleStyle,
   action,
   onAction,
 }: {
   title: string;
+  titleStyle?: StyleProp<TextStyle>;
   action?: string;
   onAction?: () => void;
 }) {
   const colors = useColors();
   return (
     <View style={styles.sectionTitle}>
-      <Text style={[styles.sectionTitleText, { color: colors.foreground }]}>{title}</Text>
+      <Text style={[styles.sectionTitleText, { color: colors.foreground }, titleStyle]}>{title}</Text>
       {action && onAction ? (
         <Pressable onPress={onAction} hitSlop={8}>
           <Text style={[styles.sectionAction, { color: colors.primary }]}>{action}</Text>

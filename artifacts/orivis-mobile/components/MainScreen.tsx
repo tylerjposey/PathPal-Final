@@ -16,6 +16,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteMap } from '@/components/RouteMap';
@@ -80,6 +86,115 @@ function milestoneIcon(kind: MilestoneKind): keyof typeof Feather.glyphMap {
     case 'arrive':
       return 'check-circle';
   }
+}
+
+const journeyProgressInset = 14;
+const journeyCheckpointSize = 18;
+const journeyTravelerSize = 28;
+const journeyFlagSize = 18;
+
+function JourneyProgressTrack({
+  milestones,
+  currentIndex,
+  travelerName,
+}: {
+  milestones: JourneyMilestone[];
+  currentIndex: number;
+  travelerName: string;
+}) {
+  const colors = useColors();
+  const [trackWidth, setTrackWidth] = useState(0);
+  const checkpointCount = milestones.length;
+  const completedCount = Math.min(checkpointCount, Math.max(0, currentIndex + 1));
+  const progress = checkpointCount ? completedCount / checkpointCount : 0;
+  const trackSpan = Math.max(0, trackWidth - journeyProgressInset * 2);
+  const traveledDistance = useSharedValue(0);
+
+  useEffect(() => {
+    traveledDistance.value = withTiming(trackSpan * progress, {
+      duration: 480,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [progress, trackSpan, traveledDistance]);
+
+  const fillStyle = useAnimatedStyle(() => ({ width: traveledDistance.value }));
+  const travelerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: traveledDistance.value }],
+  }));
+
+  return (
+    <View
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={`${travelerName}’s journey progress`}
+      accessibilityValue={{ min: 0, max: checkpointCount, now: completedCount }}
+      testID="journey-progress-track"
+      style={styles.journeyProgressTrack}
+      onLayout={({ nativeEvent }) => setTrackWidth(nativeEvent.layout.width)}
+    >
+      <View
+        style={[styles.journeyProgressBase, { backgroundColor: colors.primaryForeground }]}
+      />
+      <Animated.View
+        style={[
+          styles.journeyProgressFill,
+          { backgroundColor: colors.success },
+          fillStyle,
+        ]}
+      />
+      {milestones.map((milestone, index) => {
+        const checkpointCenter =
+          journeyProgressInset + ((index + 1) / checkpointCount) * trackSpan;
+        const complete = index < completedCount;
+        const next = index === completedCount && completedCount < checkpointCount;
+        const icon = complete
+          ? 'check'
+          : milestone.kind === 'arrive'
+            ? 'flag'
+            : milestoneIcon(milestone.kind);
+        return (
+          <View
+            key={milestone.key}
+            testID={`journey-checkpoint-${milestone.key}`}
+            style={[
+              styles.journeyCheckpoint,
+              {
+                left: checkpointCenter - journeyCheckpointSize / 2,
+                backgroundColor: complete ? colors.success : next ? colors.primary : colors.navy,
+                borderColor: complete ? colors.success : colors.primaryForeground,
+              },
+            ]}
+          >
+            <Feather name={icon} size={9} color={colors.primaryForeground} />
+          </View>
+        );
+      })}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.journeyDestinationFlag,
+          {
+            left: journeyProgressInset + trackSpan - journeyFlagSize / 2,
+          },
+        ]}
+      >
+        <Feather
+          name="flag"
+          size={15}
+          color={completedCount === checkpointCount ? colors.success : colors.primaryForeground}
+        />
+      </View>
+      <Animated.View
+        style={[
+          styles.journeyTraveler,
+          { left: journeyProgressInset - journeyTravelerSize / 2, backgroundColor: colors.primaryForeground, borderColor: colors.primary },
+          travelerStyle,
+        ]}
+      >
+        <Feather name="user" size={12} color={colors.primary} />
+      </Animated.View>
+    </View>
+  );
 }
 
 function tabsForRole(role: Role): { key: TabKey; label: string; icon: keyof typeof Feather.glyphMap }[] {
@@ -334,6 +449,13 @@ function Home({
   const currentIndex = state.milestoneIndex;
   const isComplete = currentIndex >= milestones.length - 1;
   const nextMilestone = milestones[Math.min(currentIndex + 1, milestones.length - 1)];
+  const homeSubtitle = isComplete
+    ? role === 'parent'
+      ? `${state.child.name} reached the destination.`
+      : 'You reached your destination.'
+    : role === 'parent'
+      ? `${state.child.name}’s planned trip is ready.`
+      : 'Your route is ready. Check in at each step.';
   const routeName = journey.name;
   const startStop = journey.startStop;
   const destinationStop = journey.destinationStop;
@@ -343,7 +465,7 @@ function Home({
       <ScreenHeader
         eyebrow={ROLE_LABELS[role]}
         title={`${nowGreeting}, ${state.account?.name.split(' ')[0] ?? 'there'}.`}
-        subtitle={role === 'parent' ? `${state.child.name}’s planned trip is ready.` : 'Your route is ready. Check in at each step.'}
+        subtitle={homeSubtitle}
       />
 
       <LinearGradient colors={[colors.navy, colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.journeyHero}>
@@ -359,11 +481,11 @@ function Home({
           ) : null}
         </View>
          <Text style={[styles.heroTitle, { color: colors.primaryForeground }]} numberOfLines={2}>{startStop}</Text>
-        <View style={styles.routeLine}>
-          <View style={[styles.routePoint, { borderColor: colors.primaryForeground }]} />
-          <View style={[styles.routeTrack, { backgroundColor: colors.primaryForeground }]} />
-          <Feather name="flag" size={17} color={colors.primaryForeground} />
-        </View>
+        <JourneyProgressTrack
+          milestones={milestones}
+          currentIndex={currentIndex}
+          travelerName={state.child.name}
+        />
          <Text style={[styles.heroDestination, { color: colors.primaryForeground }]}>{destinationStop} · {journey.durationMinutes} min</Text>
         <View style={styles.heroFooter}>
           <View>
@@ -1631,9 +1753,12 @@ const styles = StyleSheet.create({
   delayBadge: { backgroundColor: '#D94F53', borderRadius: 11, paddingHorizontal: 9, paddingVertical: 5 },
   delayText: { fontFamily: 'Inter_700Bold', fontSize: 9 },
   heroTitle: { fontFamily: 'Inter_700Bold', fontSize: 24, letterSpacing: -0.5, marginTop: 25 },
-  routeLine: { flexDirection: 'row', alignItems: 'center', marginVertical: 10 },
-  routePoint: { width: 14, height: 14, borderRadius: 7, borderWidth: 3 },
-  routeTrack: { flex: 1, height: 2, opacity: 0.65 },
+  journeyProgressTrack: { height: 52, marginVertical: 10, position: 'relative', overflow: 'visible' },
+  journeyProgressBase: { position: 'absolute', left: journeyProgressInset, right: journeyProgressInset, top: 33, height: 2, borderRadius: 1, opacity: 0.42 },
+  journeyProgressFill: { position: 'absolute', left: journeyProgressInset, top: 33, height: 2, borderRadius: 1 },
+  journeyCheckpoint: { position: 'absolute', top: 25, width: journeyCheckpointSize, height: journeyCheckpointSize, borderWidth: 1.5, borderRadius: journeyCheckpointSize / 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  journeyDestinationFlag: { position: 'absolute', top: 1, width: journeyFlagSize, height: journeyFlagSize, marginLeft: -journeyFlagSize / 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  journeyTraveler: { position: 'absolute', top: 20, width: journeyTravelerSize, height: journeyTravelerSize, borderWidth: 2, borderRadius: journeyTravelerSize / 2, alignItems: 'center', justifyContent: 'center', zIndex: 3, elevation: 2 },
   heroDestination: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   heroFooter: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 25 },
   heroMeta: { fontFamily: 'Inter_700Bold', fontSize: 12 },

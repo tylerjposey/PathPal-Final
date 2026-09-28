@@ -397,7 +397,9 @@ router.post("/reports", async (req, res): Promise<void> => {
   try {
     const claims = authenticate(req);
     if (!["parent", "child", "citizen"].includes(claims.role)) throw new HttpError(403, "Only parent, child, or citizen demo roles may submit reports.");
-    enforceCreateRateLimit(req.ip || req.socket.remoteAddress || "unknown");
+    if (process.env.NODE_ENV !== "development") {
+      enforceCreateRateLimit(req.ip || req.socket.remoteAddress || "unknown");
+    }
     const parsed = CreateReportBody.safeParse(req.body);
     if (!parsed.success) throw new HttpError(400, "Invalid community report input.");
     const { description: rawDescription, location: locationName, category, photoBase64, contentType, latitude, longitude } = parsed.data;

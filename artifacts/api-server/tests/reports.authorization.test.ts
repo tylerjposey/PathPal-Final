@@ -41,6 +41,7 @@ const workerToken = signedToken("worker", testWorker);
 let server: ReturnType<typeof app.listen>;
 let baseUrl: string;
 const createdIds: string[] = [];
+const createdPhotoIds = new Set<string>();
 
 const photoStorage = new Storage({
   credentials: {
@@ -92,6 +93,7 @@ async function createReport(token: string, label: string, includePhoto: boolean)
   assert.equal(response.status, 201, `Test report creation failed: ${payload.error ?? response.status}`);
   assert.ok(payload.id, "Created report must have an ID.");
   createdIds.push(payload.id);
+  if (includePhoto) createdPhotoIds.add(payload.id);
   assert.equal(payload.reporterAccountId, token === reporterAToken ? testReporterA : testReporterB);
   assert.equal(payload.status, "Submitted", "Request input must not set a report status.");
   assert.equal(payload.assignedTeam, null, "Request input must not assign a staff team.");
@@ -160,6 +162,19 @@ test("reporters list, read, and download only their own reports and photos", asy
   assert.equal(ownPhoto.status, 200);
   assert.equal(ownPhoto.headers.get("content-type"), "image/png");
   assert.deepEqual(Buffer.from(await ownPhoto.arrayBuffer()), pngBytes);
+});
+
+test("development mode accepts more than five report submissions from one client", async () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "development";
+  try {
+    for (let index = 0; index < 6; index += 1) {
+      await createReport(reporterAToken, `development-volume-${index}`, false);
+    }
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+  }
 });
 
 test("report input cannot spoof the reporter, assign a team, set status, or edit the report", async () => {
@@ -236,6 +251,8 @@ test("managers can access both reporters' reports and photos", async () => {
   for (const id of createdIds) assert.ok(listed.some((row) => row.id === id));
   for (const id of createdIds) {
     assert.equal((await api(`/reports/${id}`, managerToken)).status, 200);
+  }
+  for (const id of createdPhotoIds) {
     assert.equal((await api(`/reports/${id}/photo`, managerToken)).status, 200);
   }
 });

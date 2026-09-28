@@ -174,8 +174,14 @@ const mapSpecCache = new Map<string, CacheEntry<MapSpec>>();
 type GoogleRoutesResult = {
   walkingRoute: ParsedGoogleRoute | undefined;
 };
+type GoogleTransitResult = {
+  routes: ParsedGoogleRoute[];
+  stops: JourneyStop[];
+};
 const googleRoutesCache = new Map<string, CacheEntry<GoogleRoutesResult>>();
 const googleRoutesInFlight = new Map<string, Promise<GoogleRoutesResult>>();
+const googleTransitCache = new Map<string, CacheEntry<GoogleTransitResult | undefined>>();
+const googleTransitInFlight = new Map<string, Promise<GoogleTransitResult | undefined>>();
 
 function storeMapSpec(spec: MapSpec): string {
   const now = Date.now();
@@ -918,8 +924,8 @@ function parseGoogleRoute(
 async function fetchGoogleDirections(
   lat: number,
   lng: number,
-  destination: string,
-): Promise<{ routes: ParsedGoogleRoute[]; stops: JourneyStop[] } | undefined> {
+  destination: string | Coordinate,
+): Promise<GoogleTransitResult | undefined> {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) return undefined;
   try {
@@ -934,7 +940,9 @@ async function fetchGoogleDirections(
       },
       body: JSON.stringify({
         origin: { location: { latLng: { latitude: lat, longitude: lng } } },
-        destination: { address: destination },
+        destination: typeof destination === "string"
+          ? { address: destination }
+          : { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
         travelMode: "TRANSIT",
         computeAlternativeRoutes: true,
       }),
@@ -979,6 +987,38 @@ async function fetchGoogleDirections(
   } catch {
     return undefined;
   }
+}
+
+async function fetchCachedGoogleDirections(
+  lat: number,
+  lng: number,
+  destination: string | Coordinate,
+): Promise<GoogleTransitResult | undefined> {
+  const destinationKey = typeof destination === "string"
+    ? destination.trim().toLowerCase()
+    : `${destination.lat.toFixed(5)},${destination.lng.toFixed(5)}`;
+  const key = `${lat.toFixed(5)},${lng.toFixed(5)}:${destinationKey}`;
+  const cached = googleTransitCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const pendingRequest = googleTransitInFlight.get(key);
+  if (pendingRequest) return pendingRequest;
+
+  const request = fetchGoogleDirections(lat, lng, destination)
+    .then((result) => {
+      googleTransitCache.set(key, { value: result, expiresAt: Date.now() + GOOGLE_ROUTES_TTL_MS });
+      for (const [cacheKey, entry] of googleTransitCache) {
+        if (entry.expiresAt <= Date.now()) googleTransitCache.delete(cacheKey);
+      }
+      while (googleTransitCache.size > 128) {
+        const oldestKey = googleTransitCache.keys().next().value;
+        if (!oldestKey) break;
+        googleTransitCache.delete(oldestKey);
+      }
+      return result;
+    })
+    .finally(() => googleTransitInFlight.delete(key));
+  googleTransitInFlight.set(key, request);
+  return request;
 }
 
 function isVtaBusLeg(legStop: LegStop, catalog: TransitCatalog | undefined): boolean {
@@ -1520,6 +1560,17 @@ function buildRouteLegs(
   });
 }
 
+function buildGoogleTransitRoute(
+  route: ParsedGoogleRoute,
+  catalog: TransitCatalog | undefined,
+): JourneyRoute {
+  return {
+    ...route.route,
+    name: `Google Transit · ${route.route.name}`,
+    legs: buildRouteLegs(route, catalog, new Map<string, StopPrediction[]>()),
+  };
+}
+
 async function buildJourney(
   lat: number,
   lng: number,
@@ -1537,18 +1588,6 @@ async function buildJourney(
     return demoJourney(
       lat, lng, destination,
       "Google walking directions are unavailable; showing an illustrative walking option.",
-      mode,
-      destinationCoordinates,
-    );
-  }
-  if ((mode === "transit" && !feed) || (!walkingRoute && !feed)) {
-    return demoJourney(
-      lat,
-      lng,
-      destination,
-      feed
-        ? "511 VTA schedule and Google walking directions are unavailable; showing demo data."
-        : "511 VTA schedule is unavailable; showing demo bus data.",
       mode,
       destinationCoordinates,
     );
@@ -1578,6 +1617,20 @@ async function buildJourney(
       buildGtfsRoute(candidate, index, feed, { lat, lng }, coordinates, catalog, monitoredStops)))
     : [];
   const transitJourneyRoutes = built.map(({ route }) => route);
+  const googleTransitResult = mode !== "walking" && !transitJourneyRoutes.length
+    ? await fetchCachedGoogleDirections(lat, lng, destinationCoordinates ?? destination)
+    : undefined;
+  const uniqueGoogleTransitRoutes = new Map<string, ParsedGoogleRoute>();
+  if (googleTransitResult) {
+    for (const route of filterVtaBusRoutes(googleTransitResult.routes, catalog)) {
+      const previous = uniqueGoogleTransitRoutes.get(route.route.id);
+      if (!previous || route.route.durationMinutes < previous.route.durationMinutes) {
+        uniqueGoogleTransitRoutes.set(route.route.id, route);
+      }
+    }
+  }
+  const googleTransitRoutes = [...uniqueGoogleTransitRoutes.values()]
+    .map((route) => buildGoogleTransitRoute(route, catalog));
   const busStops = feed
     ? [...feed.byStop.keys()].map((id) => feed.stops.get(id)).filter((stop): stop is GtfsStop => !!stop).map(toJourneyStop)
     : catalog?.stops ?? [];
@@ -1590,21 +1643,25 @@ async function buildJourney(
     .slice(0, 12);
   const alerts = [...new Set((catalog?.alerts ?? []).map((alert) => alert.text))];
   const walkingJourneyRoutes = mode !== "transit" && walkingRoute ? [walkingRoute.route] : [];
-  // A live 511 feed does not guarantee a usable bus option: the destination may not
-  // resolve to a stop, or no scheduled trip may connect it. Fall back to an
-  // illustrative demo bus option whenever no live bus route was actually built,
-  // not only when the feed itself failed to load.
-  const demoBusRoutes = mode !== "walking" && !transitJourneyRoutes.length
-     ? demoJourney(lat, lng, destination, "", "transit", destinationCoordinates).routes
-    : [];
-  const rankedRoutes = rankJourneyRoutes([...transitJourneyRoutes, ...walkingJourneyRoutes, ...demoBusRoutes]);
+  const rankedRoutes = rankJourneyRoutes([
+    ...transitJourneyRoutes,
+    ...googleTransitRoutes,
+    ...walkingJourneyRoutes,
+  ]);
   const nearestStop = stops[0] ?? null;
   const notices: string[] = [];
-  if (feed && mode !== "walking") notices.push("VTA bus trips use the 511 published schedule; arrival estimates are not live vehicle positions.");
+  if (transitJourneyRoutes.length) notices.push("VTA bus trips use the 511 published schedule; arrival estimates are not live vehicle positions.");
+  if (googleTransitRoutes.length) {
+    notices.push(feed
+      ? "Google Maps provided this VTA bus route and path; 511 schedule predictions may be unavailable."
+      : "Google Maps provided this VTA bus route and path; 511 schedule and delay details are unavailable.");
+  }
   if (!catalog?.complete && mode !== "walking") notices.push(catalog?.message ?? "511 real-time feeds are unavailable; delays and alerts may be missing.");
-  if (!feed && mode !== "walking") notices.push("511 VTA schedule is unavailable; the bus option is an illustrative demo.");
+  if (!feed && mode !== "walking" && !googleTransitRoutes.length) notices.push("511 VTA schedule is unavailable; no verified bus route can be shown right now.");
   if (built.some(({ walkingEstimated }) => walkingEstimated)) notices.push("Some connecting walks use straight-line estimates because walking directions were unavailable.");
-  if (mode !== "walking" && !transitJourneyRoutes.length) notices.push("No scheduled VTA bus option was found for this destination and time.");
+  if (feed && mode !== "walking" && !transitJourneyRoutes.length && !googleTransitRoutes.length) {
+    notices.push("No VTA bus route was found for this destination and time.");
+  }
   if (!walkingRoute && mode !== "transit") notices.push("Google walking directions are unavailable.");
   return {
     source: rankedRoutes.length ? "live" as const : "demo" as const,

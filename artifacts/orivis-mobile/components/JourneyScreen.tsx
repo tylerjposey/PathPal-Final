@@ -93,6 +93,17 @@ export function JourneyScreen() {
       delayMinutes: route.delayMinutes,
       alerts: route.alerts,
       source: route.source,
+      mode: route.mode,
+      legs: route.legs.map((leg) => ({
+        type: leg.type,
+        routeNumber: leg.routeNumber,
+        routeName: leg.routeName,
+        boardingStop: { name: leg.boardingStop.name },
+        alightingStop: { name: leg.alightingStop.name },
+        durationMinutes: leg.durationMinutes,
+        delayMinutes: leg.delayMinutes,
+        transferGuidance: leg.transferGuidance,
+      })),
     });
   };
 

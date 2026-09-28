@@ -1422,8 +1422,12 @@ async function buildJourney(lat: number, lng: number, destination: string, mode:
     .slice(0, 12);
   const alerts = [...new Set((catalog?.alerts ?? []).map((alert) => alert.text))];
   const walkingJourneyRoutes = mode !== "transit" && walkingRoute ? [walkingRoute.route] : [];
-  const demoBusRoutes = mode === "any" && !feed
-    ? demoJourney(lat, lng, destination, "VTA schedule unavailable; bus option is a demo.", "transit").routes
+  // A live 511 feed does not guarantee a usable bus option: the destination may not
+  // resolve to a stop, or no scheduled trip may connect it. Fall back to an
+  // illustrative demo bus option whenever no live bus route was actually built,
+  // not only when the feed itself failed to load.
+  const demoBusRoutes = mode !== "walking" && !transitJourneyRoutes.length
+    ? demoJourney(lat, lng, destination, "", "transit").routes
     : [];
   const rankedRoutes = rankJourneyRoutes([...transitJourneyRoutes, ...walkingJourneyRoutes, ...demoBusRoutes]);
   const nearestStop = stops[0] ?? null;

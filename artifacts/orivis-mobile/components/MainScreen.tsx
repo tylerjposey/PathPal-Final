@@ -41,13 +41,17 @@ import {
 import {
   REPORT_CATEGORIES,
   ROLE_LABELS,
+  DEFAULT_DEMO_JOURNEY,
+  buildJourneyMilestones,
   heatColor,
   heatScore,
+  journeyMilestoneActionLabel,
   type CaseStatus,
+  type JourneyMilestone,
+  type MilestoneKind,
   type ReportCategory,
   type Role,
   type SafetyReport,
-  type TripStep,
   useDemo,
 } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
@@ -62,12 +66,20 @@ import {
 type TabKey = 'home' | 'map' | 'reports' | 'history' | 'alerts' | 'rewards' | 'tasks' | 'profile';
 type ModalName = 'report' | 'sos' | 'case' | 'verify' | null;
 
-const tripSteps: { value: TripStep; title: string; subtitle: string; icon: keyof typeof Feather.glyphMap }[] = [
-  { value: 'waiting', title: 'Ready at stop', subtitle: 'Willow St & Bird Ave', icon: 'map-pin' },
-  { value: 'boarded', title: 'Boarded bus', subtitle: 'VTA Route 22', icon: 'navigation' },
-  { value: 'off', title: 'Got off bus', subtitle: 'Bird Ave & Minnesota', icon: 'log-out' },
-  { value: 'arrived', title: 'Reached destination', subtitle: 'River Glen Elementary', icon: 'check-circle' },
-];
+function milestoneIcon(kind: MilestoneKind): keyof typeof Feather.glyphMap {
+  switch (kind) {
+    case 'walk-start':
+      return 'map-pin';
+    case 'board':
+      return 'navigation';
+    case 'alight':
+      return 'log-out';
+    case 'transfer-walk':
+      return 'shuffle';
+    case 'arrive':
+      return 'check-circle';
+  }
+}
 
 function tabsForRole(role: Role): { key: TabKey; label: string; icon: keyof typeof Feather.glyphMap }[] {
   if (role === 'manager') {
@@ -241,7 +253,7 @@ function Home({
   onCase: (report: SafetyReport) => void;
 }) {
   const colors = useColors();
-  const { state, updateTripStep, reportBusDelay } = useDemo();
+  const { state, confirmMilestone, reportBusDelay } = useDemo();
   const nowGreeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
   if (role === 'manager') return <ManagerHome onCase={onCase} />;
   if (role === 'worker') return <WorkerHome onCase={onCase} />;
@@ -280,13 +292,15 @@ function Home({
     );
   }
 
-  const currentIndex = tripSteps.findIndex((step) => step.value === state.tripStep);
-  const nextStep = tripSteps[Math.min(currentIndex + 1, tripSteps.length - 1)];
-  const journey = state.selectedJourney;
-  const routeName = journey?.name ?? 'VTA Route 22';
-  const startStop = journey?.startStop ?? 'Willow St & Bird Ave';
-  const destinationStop = journey?.destinationStop ?? 'Bird Ave & Minnesota';
-  const delay = Math.max(journey?.delayMinutes ?? 0, state.busDelayed ? 8 : 0);
+  const journey = state.selectedJourney ?? DEFAULT_DEMO_JOURNEY;
+  const milestones = useMemo(() => buildJourneyMilestones(journey), [journey]);
+  const currentIndex = state.milestoneIndex;
+  const isComplete = currentIndex >= milestones.length - 1;
+  const nextMilestone = milestones[Math.min(currentIndex + 1, milestones.length - 1)];
+  const routeName = journey.name;
+  const startStop = journey.startStop;
+  const destinationStop = journey.destinationStop;
+  const delay = Math.max(journey.delayMinutes ?? 0, state.busDelayed ? 8 : 0);
   return (
     <ScreenScroll>
       <ScreenHeader
@@ -299,7 +313,7 @@ function Home({
         <View style={styles.heroTop}>
           <View style={styles.routeBadge}>
             <Feather name="navigation" size={14} color={colors.primaryForeground} />
-             <Text style={[styles.heroEyebrow, { color: colors.primaryForeground }]}>{routeName.toUpperCase()} · {journey?.source === 'live' ? 'LIVE ROUTE' : 'DEMO ROUTE'}</Text>
+             <Text style={[styles.heroEyebrow, { color: colors.primaryForeground }]}>{routeName.toUpperCase()} · {journey.source === 'live' ? 'LIVE ROUTE' : 'DEMO ROUTE'}</Text>
           </View>
            {delay > 0 ? (
             <View style={styles.delayBadge}>
@@ -313,11 +327,11 @@ function Home({
           <View style={[styles.routeTrack, { backgroundColor: colors.primaryForeground }]} />
           <Feather name="flag" size={17} color={colors.primaryForeground} />
         </View>
-         <Text style={[styles.heroDestination, { color: colors.primaryForeground }]}>{destinationStop}{journey ? ` · ${journey.durationMinutes} min` : ' · River Glen Elementary'}</Text>
+         <Text style={[styles.heroDestination, { color: colors.primaryForeground }]}>{destinationStop} · {journey.durationMinutes} min</Text>
         <View style={styles.heroFooter}>
           <View>
             <Text style={[styles.heroMeta, { color: colors.primaryForeground }]}>
-              {state.tripStep === 'waiting' ? 'Awaiting first check-in' : `${tripSteps[currentIndex].title} confirmed`}
+              {currentIndex < 0 ? 'Awaiting first check-in' : `${milestones[currentIndex].title} confirmed`}
             </Text>
             <Text style={[styles.heroSub, { color: colors.primaryForeground }]}>Planned route only · no live tracking</Text>
              {state.tripUpdatedAt ? <Text style={[styles.heroSub, { color: colors.primaryForeground }]}>Updated {formatTime(state.tripUpdatedAt)}</Text> : null}
@@ -334,20 +348,20 @@ function Home({
           <Card>
             <View style={styles.nextStep}>
               <View style={[styles.bigStepIcon, { backgroundColor: colors.secondary }]}>
-                <Feather name={nextStep.icon} size={25} color={colors.primary} />
+                <Feather name={milestoneIcon(nextMilestone.kind)} size={25} color={colors.primary} />
               </View>
               <View style={styles.flex}>
-                <Text style={[styles.cardTitle, { color: colors.foreground }]}>{nextStep.title}</Text>
-                 <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{state.tripStep === 'boarded' ? destinationStop : state.tripStep === 'off' ? journey?.destination ?? state.child.school : startStop}</Text>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>{nextMilestone.title}</Text>
+                 <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{nextMilestone.subtitle}</Text>
               </View>
             </View>
             <Button
-               label={state.tripStep === 'arrived' ? 'Journey complete' : state.tripStep === 'waiting' ? 'I boarded the bus' : state.tripStep === 'boarded' ? 'I got off the bus' : 'I reached my destination'}
+               label={isComplete ? 'Journey complete' : journeyMilestoneActionLabel(nextMilestone)}
               icon="check"
-              disabled={state.tripStep === 'arrived'}
+              disabled={isComplete}
                onPress={() => {
-                 updateTripStep(nextStep.value);
-                 Alert.alert('Check-in confirmed', `Your ${nextStep.title.toLowerCase()} update is on the parent dashboard. An in-app and simulated text alert were created.`);
+                 confirmMilestone(currentIndex + 1);
+                 Alert.alert('Check-in confirmed', `Your ${nextMilestone.title.toLowerCase()} update is on the parent dashboard. An in-app and simulated text alert were created.`);
                }}
             />
           </Card>
@@ -381,26 +395,26 @@ function Home({
         <>
           <SectionTitle title={`${state.child.name}’s progress`} />
           <Card>
-            {tripSteps.map((step, index) => {
-              const complete = index <= currentIndex && state.tripStep !== 'waiting';
-              const current = index === currentIndex;
+            {milestones.map((milestone, index) => {
+              const complete = index <= currentIndex;
+              const current = index === currentIndex + 1 && !isComplete;
               return (
-                <View key={step.value} style={styles.timelineRow}>
+                <View key={milestone.key} style={styles.timelineRow}>
                   <View style={styles.timelineVisual}>
                     <View style={[styles.timelineDot, { backgroundColor: complete ? colors.success : current ? colors.primary : colors.muted, borderColor: current ? colors.primary : colors.border }]}>
                       {complete ? <Feather name="check" size={11} color={colors.primaryForeground} /> : null}
                     </View>
-                    {index < tripSteps.length - 1 ? <View style={[styles.timelineBar, { backgroundColor: complete ? colors.success : colors.border }]} /> : null}
+                    {index < milestones.length - 1 ? <View style={[styles.timelineBar, { backgroundColor: complete ? colors.success : colors.border }]} /> : null}
                   </View>
-                  <View style={[styles.timelineCopy, index < tripSteps.length - 1 ? { paddingBottom: 17 } : null]}>
-                    <Text style={[styles.timelineTitle, { color: colors.foreground }]}>{step.title}</Text>
-                     <Text style={[styles.timelineSub, { color: colors.mutedForeground }]}>{index === 0 || index === 1 ? startStop : index === 2 ? destinationStop : journey?.destination ?? state.child.school}</Text>
+                  <View style={[styles.timelineCopy, index < milestones.length - 1 ? { paddingBottom: 17 } : null]}>
+                    <Text style={[styles.timelineTitle, { color: colors.foreground }]}>{milestone.title}</Text>
+                     <Text style={[styles.timelineSub, { color: colors.mutedForeground }]}>{milestone.subtitle}{milestone.delayMinutes ? ` · ${milestone.delayMinutes} min delay` : ''}</Text>
                   </View>
                 </View>
               );
             })}
           </Card>
-           {state.tripUpdatedAt ? <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Latest child update: {formatTime(state.tripUpdatedAt)} · {tripSteps[currentIndex]?.title}</Text> : null}
+           {state.tripUpdatedAt && currentIndex >= 0 ? <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Latest child update: {formatTime(state.tripUpdatedAt)} · {milestones[currentIndex]?.title}</Text> : null}
           <SectionTitle title="Family snapshot" />
           <Card>
             <View style={styles.metrics}>

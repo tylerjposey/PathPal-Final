@@ -37,7 +37,17 @@ export type ReportCategory =
   | 'Suspicious activity'
   | 'Other concerns';
 export type CaseStatus = 'Submitted' | 'Under Review' | 'Assigned' | 'Resolved';
-export type TripStep = 'waiting' | 'boarded' | 'off' | 'arrived';
+
+export interface SelectedJourneyLeg {
+  type: 'walk' | 'bus';
+  routeNumber: string | null;
+  routeName: string | null;
+  boardingStop: { name: string };
+  alightingStop: { name: string };
+  durationMinutes: number;
+  delayMinutes: number | null;
+  transferGuidance: string | null;
+}
 
 export interface SelectedJourney {
   id: string;
@@ -51,7 +61,114 @@ export interface SelectedJourney {
   delayMinutes: number;
   alerts: string[];
   source: 'live' | 'demo';
+  mode: 'walking' | 'transit';
+  legs: SelectedJourneyLeg[];
 }
+
+export type MilestoneKind = 'walk-start' | 'board' | 'alight' | 'transfer-walk' | 'arrive';
+
+export interface JourneyMilestone {
+  key: string;
+  title: string;
+  subtitle: string;
+  kind: MilestoneKind;
+  delayMinutes: number | null;
+}
+
+/**
+ * Turns a saved journey's actual legs into an ordered list of confirmable
+ * milestones. Walking-only journeys collapse to two steps; multi-bus journeys
+ * surface every boarding, alighting, and connecting walk in order, so a
+ * missed transfer can't be skipped over.
+ */
+export function buildJourneyMilestones(journey: SelectedJourney): JourneyMilestone[] {
+  // Defensive: journeys persisted by an older build of the app predate the
+  // `mode`/`legs` fields, so treat a missing/malformed legs array as absent
+  // rather than throwing.
+  const legs = Array.isArray(journey.legs) ? journey.legs : [];
+  if (journey.mode === 'walking' || !legs.length) {
+    return [
+      { key: 'walk-start', title: 'Started Walking', subtitle: journey.startStop, kind: 'walk-start', delayMinutes: null },
+      { key: 'walk-end', title: 'Reached Destination', subtitle: journey.destinationStop, kind: 'arrive', delayMinutes: null },
+    ];
+  }
+  const milestones: JourneyMilestone[] = [];
+  legs.forEach((leg, index) => {
+    const isLastLeg = index === legs.length - 1;
+    if (leg.type === 'walk') {
+      milestones.push({
+        key: `leg-${index}-walk`,
+        title: index === 0 && !isLastLeg ? 'Started walking to the stop' : isLastLeg ? 'Reached destination' : 'Walking to next stop',
+        subtitle: `${leg.boardingStop.name} to ${leg.alightingStop.name}`,
+        kind: isLastLeg ? 'arrive' : 'transfer-walk',
+        delayMinutes: null,
+      });
+    } else {
+      const label = leg.routeNumber ? `Route ${leg.routeNumber}` : leg.routeName ?? 'the bus';
+      milestones.push({
+        key: `leg-${index}-board`,
+        title: `Boarded ${label}`,
+        subtitle: `at ${leg.boardingStop.name}`,
+        kind: 'board',
+        delayMinutes: leg.delayMinutes,
+      });
+      milestones.push({
+        key: `leg-${index}-alight`,
+        title: `Got off ${label}`,
+        subtitle: `at ${leg.alightingStop.name}`,
+        kind: 'alight',
+        delayMinutes: leg.delayMinutes,
+      });
+    }
+  });
+  if (legs[legs.length - 1]?.type === 'bus') {
+    milestones.push({ key: 'arrived', title: 'Reached destination', subtitle: journey.destinationStop, kind: 'arrive', delayMinutes: null });
+  }
+  return milestones;
+}
+
+export function journeyMilestoneActionLabel(milestone: JourneyMilestone): string {
+  switch (milestone.kind) {
+    case 'walk-start':
+      return 'I started walking';
+    case 'board':
+      return `I boarded ${milestone.title.replace('Boarded ', '')}`;
+    case 'alight':
+      return `I got off ${milestone.title.replace('Got off ', '')}`;
+    case 'transfer-walk':
+      return "I'm walking to the next stop";
+    case 'arrive':
+      return 'I reached my destination';
+  }
+}
+
+/** A default illustrative route so the dashboard has milestones before any real journey is saved. */
+export const DEFAULT_DEMO_JOURNEY: SelectedJourney = {
+  id: 'default-demo-journey',
+  name: 'VTA Route 22',
+  startStop: 'Willow St & Bird Ave',
+  destinationStop: 'Bird Ave & Minnesota',
+  destination: 'River Glen Elementary, San Jose, CA',
+  durationMinutes: 30,
+  walkingMeters: 350,
+  transfers: 0,
+  delayMinutes: 0,
+  alerts: [],
+  source: 'demo',
+  mode: 'transit',
+  legs: [
+    {
+      type: 'bus',
+      routeNumber: '22',
+      routeName: 'VTA Route 22',
+      boardingStop: { name: 'Willow St & Bird Ave' },
+      alightingStop: { name: 'Bird Ave & Minnesota' },
+      durationMinutes: 30,
+      delayMinutes: null,
+      transferGuidance: null,
+    },
+  ],
+};
 
 export const ROLE_LABELS: Record<Role, string> = {
   parent: 'Parent',
@@ -155,7 +272,8 @@ export interface DemoState {
   child: ChildProfile;
   invitationCode: string;
   childLogin: { username: string; password: string } | null;
-  tripStep: TripStep;
+  /** -1 means no milestone confirmed yet for the currently selected journey. */
+  milestoneIndex: number;
   tripUpdatedAt: string | null;
   selectedJourney: SelectedJourney | null;
   busDelayed: boolean;
@@ -215,7 +333,7 @@ export function createInitialDemoState(): DemoState {
     child: { name: 'Maya Chen', school: 'River Glen Elementary' },
     invitationCode: '1234',
     childLogin: null,
-    tripStep: 'waiting',
+    milestoneIndex: -1,
     tripUpdatedAt: null,
     selectedJourney: null,
     busDelayed: true,
@@ -427,7 +545,7 @@ interface DemoContextValue {
   setAccount: (account: DemoUser | null) => void;
   signOut: () => void;
   resetDemo: () => Promise<void>;
-  updateTripStep: (step: TripStep) => void;
+  confirmMilestone: (index: number) => void;
   selectJourney: (journey: SelectedJourney) => void;
   simulateMissedCheckin: () => void;
   reportBusDelay: () => void;
@@ -496,6 +614,13 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         if (raw) {
           try {
             const saved = { ...createInitialDemoState(), ...JSON.parse(raw) as Partial<DemoState> };
+            // Journeys saved before route legs/milestones existed lack `mode`/`legs`.
+            // Drop them rather than let a stale shape crash milestone rendering; the
+            // family can pick a fresh route, and check-in progress resets with it.
+            if (saved.selectedJourney && (!Array.isArray(saved.selectedJourney.legs) || !saved.selectedJourney.mode)) {
+              saved.selectedJourney = null;
+              saved.milestoneIndex = -1;
+            }
             const buckets = { ...saved.legacyReportsByAccount };
             for (const [scope, rows] of Object.entries(buckets)) {
               buckets[scope] = uniqueReports(legacyReportsFrom(rows));
@@ -661,24 +786,22 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     await queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
   }, [state.account?.role, state.reports, queryClient]);
 
-  const updateTripStep = useCallback((step: TripStep) => {
+  const confirmMilestone = useCallback((index: number) => {
     update((current) => {
       if (current.account?.role !== 'child') return current;
-      const sequence: TripStep[] = ['waiting', 'boarded', 'off', 'arrived'];
-      if (sequence.indexOf(step) !== sequence.indexOf(current.tripStep) + 1) return current;
-      const detail: Record<TripStep, string> = {
-        waiting: 'is ready at the starting stop.',
-        boarded: 'confirmed boarding Route 22.',
-        off: 'confirmed getting off at the destination stop.',
-        arrived: 'confirmed arriving safely at school.',
-      };
+      const journey = current.selectedJourney ?? DEFAULT_DEMO_JOURNEY;
+      const milestones = buildJourneyMilestones(journey);
+      if (index !== current.milestoneIndex + 1 || index < 0 || index >= milestones.length) return current;
+      const milestone = milestones[index];
+      const delayNote = milestone.delayMinutes ? ` A ${milestone.delayMinutes} minute delay was reported.` : '';
+      const detail = `${milestone.title.toLowerCase()} ${milestone.subtitle}.${delayNote}`;
       return {
         ...current,
-        tripStep: step,
+        milestoneIndex: index,
         tripUpdatedAt: new Date().toISOString(),
         notifications: [
-          notification(`${current.child.name} checked in · simulated text`, `${current.child.name} ${detail[step]} No text was actually sent.`, 'Transit', 'Simulated text'),
-          notification(`${current.child.name} checked in`, `${current.child.name} ${detail[step]} (simulated family alert).`, 'Transit'),
+          notification(`${current.child.name} checked in · simulated text`, `${current.child.name} ${detail} No text was actually sent.`, 'Transit', 'Simulated text'),
+          notification(`${current.child.name} checked in`, `${current.child.name} ${detail} (simulated family alert).`, 'Transit'),
           ...current.notifications,
         ],
       };
@@ -689,7 +812,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     update((current) => ({
       ...current,
       selectedJourney: journey,
-      tripStep: 'waiting',
+      milestoneIndex: -1,
       busDelayed: false,
       tripUpdatedAt: new Date().toISOString(),
       notifications: [
@@ -946,7 +1069,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setAccount,
     signOut,
     resetDemo,
-    updateTripStep,
+    confirmMilestone,
     selectJourney,
     simulateMissedCheckin,
     reportBusDelay,
@@ -975,7 +1098,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setAccount,
     signOut,
     resetDemo,
-    updateTripStep,
+    confirmMilestone,
     selectJourney,
     simulateMissedCheckin,
     reportBusDelay,

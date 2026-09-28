@@ -3,3 +3,4 @@
 - [Expo web map taps](expo-web-map-taps.md) — React Native Web press events may lack locationX/Y; map pins need a finite web-compatible coordinate path.
 - [Role-scoped report views](role-scoped-report-views.md) — server authorization alone is insufficient when a mobile demo retains report state across role switches.
 - [Google Maps key legacy APIs disabled](google-maps-key-legacy-apis-disabled.md) — this project's key only works with Routes API (v2), not legacy Directions/Static Maps APIs.
+- [React Native Alert.alert is a no-op on web](react-native-web-alert-noop.md) — confirmation dialogs via Alert.alert silently do nothing in Expo web preview; not a Playwright artifact.

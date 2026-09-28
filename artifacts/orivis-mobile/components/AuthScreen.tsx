@@ -105,7 +105,7 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
       <View style={styles.brandRow}>
         <BrandMark size={48} />
         <View>
-          <Text style={[styles.brand, { color: colors.foreground }]}>Orivis</Text>
+          <Text style={[styles.brand, { color: colors.foreground }]}>PathPal</Text>
           <Text style={[styles.brandSub, { color: colors.mutedForeground }]}>Move with confidence</Text>
         </View>
       </View>

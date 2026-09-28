@@ -5,6 +5,7 @@ import { findVtaJourneys, getVtaGtfs, scheduledTimestamp, type Feed, type GtfsJo
 import {
   parseCommunityReportPoints,
   parseHeatPoints,
+  renderGoogle3DMapError,
   renderGoogle3DMap,
 } from "./google-3d-map";
 import {
@@ -873,8 +874,24 @@ function parseGoogleRoute(
   const encodedPolyline = safePolyline(asRecord(route.polyline)?.encodedPolyline);
   const durationMinutes = Math.max(1, Math.ceil(durationSeconds / 60));
   const routeName = lineNames.length ? lineNames.join(" → ") : `Transit option ${index + 1}`;
+  // Google returns routes in a ranking order that can change between requests.
+  // Keep the route identity tied to its meaningful geometry/stops instead of
+  // the response index so a second map build can select the same route.
+  const routeIdentity = JSON.stringify({
+    lineRefs,
+    startStop,
+    destinationStop,
+    encodedPolyline,
+    legs: legStops.map((leg) => ({
+      type: leg.type,
+      routeNumber: leg.routeNumber,
+      boarding: leg.boarding,
+      alighting: leg.alighting,
+      polyline: leg.polyline,
+    })),
+  });
   const journeyRoute: JourneyRoute = {
-    id: `google-route-${index + 1}`,
+    id: `google-route-${createHash("sha256").update(routeIdentity).digest("hex").slice(0, 16)}`,
     name: routeName,
     startStop: startStop ?? "Starting location",
     destinationStop: destinationStop ?? "Destination",
@@ -1717,12 +1734,16 @@ router.get("/journey/map-3d", async (req, res): Promise<void> => {
     parseTravelMode(query.data.mode),
     getDestinationCoordinates(query.data.destinationLat, query.data.destinationLng),
   );
-  const selected = journey.routes.find((route) => route.id === query.data.routeId) ??
-    journey.routes.find((route) => route.recommended) ??
-    journey.routes[0];
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  const mapLegs = selected?.source === "live" ? selected.legs : [];
+  const selected = query.data.routeId
+    ? journey.routes.find((route) => route.id === query.data.routeId)
+    : journey.routes.find((route) => route.recommended) ?? journey.routes[0];
+  if (query.data.routeId && !selected) {
+    res.status(404).type("html").send(renderGoogle3DMapError());
+    return;
+  }
+  const mapLegs = selected?.legs ?? [];
   const lastStop = mapLegs[mapLegs.length - 1]?.alightingStop;
   const destination = {
     name: query.data.destination,

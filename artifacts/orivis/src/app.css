@@ -6,10 +6,9 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 a { text-decoration: none; }
 .app-layout { min-height: 100dvh; display: flex; background: #f5f8f7; color: #142c3b; }
 .sidebar { width: 252px; flex: 0 0 252px; position: sticky; top: 0; height: 100dvh; background: #15374a; color: #e9f2f0; display: flex; flex-direction: column; padding: 32px 17px 19px; z-index: 30; }
-.sidebar-brand,.signin-brand { display: inline-flex; align-items: center; gap: 11px; font-size: 28px; line-height: 1; font-weight: 700; letter-spacing: -.075em; color: #f4faf8; width: max-content; padding-left: 12px; }
+.sidebar-brand,.signin-brand { display: inline-flex; align-items: center; gap: 11px; font-size: 28px; line-height: 1; font-weight: 700; letter-spacing: -.04em; color: #f4faf8; width: max-content; padding-left: 12px; }
 .brand-period { color: #64c8be; }
-.brand-icon { width: 35px; height: 35px; display: grid; place-items: center; border: 1px solid #6ccbc5; color: #75d3cb; border-radius: 10px; transform: rotate(-8deg); }
-.brand-icon svg { transform: rotate(8deg); }
+.brand-icon { width: 35px; height: 35px; display: block; object-fit: contain; background: #eaf7fb; border-radius: 10px; padding: 2px; }
 .sidebar-overline { margin: 63px 15px 17px; color: #89a9b1; font: 10px 'Space Mono',monospace; letter-spacing: .11em; }
 .sidebar-nav { display: flex; flex-direction: column; gap: 5px; }
 .nav-item { display: flex; align-items: center; gap: 15px; color: #b9cdd0; min-height: 47px; padding: 0 15px; border-radius: 10px; font-size: 13px; font-weight: 600; transition: background .2s, color .2s; }

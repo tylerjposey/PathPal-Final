@@ -51,6 +51,15 @@ export function parseCommunityReportPoints(value: unknown): CommunityReportPoint
 
 const scriptData = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
 
+export function renderGoogle3DMapError(): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Journey map unavailable</title></head>
+<body><p>The selected journey route is no longer available. Refresh routes and try again.</p>
+<script>
+  if (window.parent !== window) window.parent.postMessage('orivis-map-error','*');
+  if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage('orivis-map-error');
+</script></body></html>`;
+}
+
 export function renderGoogle3DMap(
   key: string,
   legs: Leg[],
@@ -63,7 +72,16 @@ export function renderGoogle3DMap(
     polyline: leg.polyline, type: leg.type, routeNumber: leg.routeNumber,
     color: leg.type === "walk" ? "#64748B" : ["#1565C0", "#EF6C00", "#8E24AA", "#2E7D32", "#C62828"][index % 5],
     boarding: leg.boardingStop, alighting: leg.alightingStop,
+    approximate: !leg.polyline &&
+      Number.isFinite(leg.boardingStop.lat) && Number.isFinite(leg.boardingStop.lng) &&
+      Number.isFinite(leg.alightingStop.lat) && Number.isFinite(leg.alightingStop.lng) &&
+      leg.boardingStop.lat >= -90 && leg.boardingStop.lat <= 90 &&
+      leg.alightingStop.lat >= -90 && leg.alightingStop.lat <= 90 &&
+      leg.boardingStop.lng >= -180 && leg.boardingStop.lng <= 180 &&
+      leg.alightingStop.lng >= -180 && leg.alightingStop.lng <= 180 &&
+      (leg.boardingStop.lat !== leg.alightingStop.lat || leg.boardingStop.lng !== leg.alightingStop.lng),
   }));
+  const hasApproximateSegments = routes.some((leg) => leg.approximate);
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -77,7 +95,9 @@ export function renderGoogle3DMap(
   #error { display:none; padding:25px; color:#18313b; }
 </style></head><body>
 <div id="map"></div>
-<div id="notice">3D Google map · bus shapes from 511 · walks from Google Routes</div>
+<div id="notice">${hasApproximateSegments
+    ? "3D Google map · some segments are straight-line approximations; exact stops are still shown"
+    : "3D Google map · bus shapes from 511 · walks from Google Routes"}</div>
 <div id="error" role="alert">Google 3D map could not load. Use the 2D map option to view the journey.</div>
 <script>
   const routeLegs = ${scriptData(routes)};
@@ -112,7 +132,8 @@ export function renderGoogle3DMap(
       const {Map3DElement,Polyline3DElement,Marker3DElement,Polygon3DElement} =
         await google.maps.importLibrary('maps3d');
       const points = [
-        ...routeLegs.flatMap(l => l.polyline ? decode(l.polyline) : []),
+        ...routeLegs.flatMap(l => l.polyline ? decode(l.polyline) :
+          l.approximate ? [l.boarding, l.alighting] : []),
         fallback,
         destination,
         ...reportPoints,
@@ -129,11 +150,17 @@ export function renderGoogle3DMap(
       document.getElementById('map').append(map);
       const markerKeys=new Set();
       routeLegs.forEach(leg => {
-        const path=leg.polyline ? decode(leg.polyline) : [];
+        const path=leg.polyline ? decode(leg.polyline) :
+          leg.approximate ? [leg.boarding, leg.alighting] : [];
         if(path.length>1) {
           map.append(new Polyline3DElement({
-            path, strokeColor:leg.color, outerColor:'#ffffff', strokeWidth:leg.type==='bus'?8:5,
-            outerWidth:0.3, altitudeMode:'RELATIVE_TO_GROUND', drawsOccludedSegments:true,
+            path,
+            strokeColor:leg.approximate ? '#71808A' : leg.color,
+            outerColor:'#ffffff',
+            strokeWidth:leg.approximate ? 3 : leg.type==='bus' ? 8 : 5,
+            outerWidth:leg.approximate ? 0.1 : 0.3,
+            altitudeMode:'RELATIVE_TO_GROUND',
+            drawsOccludedSegments:true,
           }));
         }
         for(const stop of [leg.boarding,leg.alighting]) {

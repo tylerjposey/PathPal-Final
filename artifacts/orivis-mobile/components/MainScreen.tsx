@@ -178,7 +178,7 @@ export function MainScreen({
       >
         <View style={styles.brand}>
           <BrandMark size={36} />
-          <Text style={[styles.brandText, { color: colors.foreground }]}>Orivis</Text>
+          <Text style={[styles.brandText, { color: colors.foreground }]}>PathPal</Text>
         </View>
         <View style={styles.topActions}>
           {role === 'child' ? (
@@ -829,7 +829,7 @@ function RewardsScreen() {
             disabled={state.rewardPoints < reward.cost}
             onPress={() => {
               const okay = redeemReward(reward.name, reward.cost);
-              if (okay) Alert.alert('Reward redeemed', 'This is a simulated redemption for the Orivis prototype.');
+              if (okay) Alert.alert('Reward redeemed', 'This is a simulated redemption for the PathPal prototype.');
             }}
             style={({ pressed }) => [styles.redeem, { backgroundColor: colors.secondary, opacity: state.rewardPoints < reward.cost ? 0.35 : pressed ? 0.6 : 1 }]}
           >
@@ -926,7 +926,7 @@ function ProfileScreen() {
   if (state.account?.role === 'parent') return <FamilySettings />;
   return (
     <ScreenScroll>
-      <ScreenHeader eyebrow={state.account ? ROLE_LABELS[state.account.role] : 'Account'} title={state.account?.name ?? 'Orivis demo'} subtitle={state.account?.username ?? 'Sample account'} />
+      <ScreenHeader eyebrow={state.account ? ROLE_LABELS[state.account.role] : 'Account'} title={state.account?.name ?? 'PathPal demo'} subtitle={state.account?.username ?? 'Sample account'} />
       <Card>
         <View style={styles.profileRow}>
           <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
@@ -1097,7 +1097,7 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
             <View style={styles.flex}>
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>Simulated AI review</Text>
               <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
-                Orivis will create a sample category, severity score, department, and priority from your description. {state.account?.reportServiceUnavailable ? 'Report service is unavailable; the report cannot be saved until a server connection is restored.' : 'A report is only confirmed after the server accepts it.'}
+                PathPal will create a sample category, severity score, department, and priority from your description. {state.account?.reportServiceUnavailable ? 'Report service is unavailable; the report cannot be saved until a server connection is restored.' : 'A report is only confirmed after the server accepts it.'}
               </Text>
             </View>
           </View>

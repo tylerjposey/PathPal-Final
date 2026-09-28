@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Chip, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
 import { GoogleJourneyMap } from '@/components/GoogleJourneyMap';
+import { JourneyMap } from '@/components/JourneyMap';
 import { LocationAutocompleteField, type SelectedPlace } from '@/components/LocationAutocompleteField';
 import { heatScore, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
@@ -53,8 +54,11 @@ export function JourneyScreen() {
   const [searchRequested, setSearchRequested] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [travelMode, setTravelMode] = useState<TravelModeParameter>('any');
+  const [mapView, setMapView] = useState<'2d' | '3d'>('2d');
   const [showHeat, setShowHeat] = useState(false);
   const [googleMapFailed, setGoogleMapFailed] = useState(false);
+  const [mapNotice, setMapNotice] = useState('');
+  const [mapLinkError, setMapLinkError] = useState('');
   const searchedDestination = destinationCoordinates?.name ?? '';
   const endpointsSelected = !!origin && !!destinationCoordinates;
   const journeyParams = {
@@ -67,10 +71,38 @@ export function JourneyScreen() {
   };
   const journey = useGetJourneyMap(
     journeyParams,
-    { query: { queryKey: getGetJourneyMapQueryKey(journeyParams), enabled: searchRequested && endpointsSelected, staleTime: 60_000, retry: 1 } },
+    { query: { queryKey: getGetJourneyMapQueryKey(journeyParams), enabled: searchRequested && endpointsSelected, staleTime: 60_000, retry: 2 } },
   );
   const routes = searchRequested ? journey.data?.routes ?? [] : [];
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? routes.find((route) => route.recommended) ?? routes[0];
+  const savedJourneyMatchesRoute = Boolean(
+    selectedRoute &&
+    savedJourney?.id === selectedRoute.id &&
+    savedJourney.destination === searchedDestination &&
+    savedJourney.startStop === selectedRoute.startStop &&
+    savedJourney.source === selectedRoute.source &&
+    savedJourney.mode === selectedRoute.mode,
+  );
+  const savedJourneyMatchesEndpoints = Boolean(
+    savedJourney &&
+    origin &&
+    destinationCoordinates &&
+    savedJourney.originLatitude === origin.lat &&
+    savedJourney.originLongitude === origin.lng &&
+    savedJourney.destinationLatitude === destinationCoordinates.lat &&
+    savedJourney.destinationLongitude === destinationCoordinates.lng,
+  );
+  const canOpenSavedJourney = Boolean(
+    savedJourney &&
+    isValidCoordinate(savedJourney.originLatitude, savedJourney.originLongitude) &&
+    isValidCoordinate(savedJourney.destinationLatitude, savedJourney.destinationLongitude),
+  );
+  const hasApproximateSegments = Boolean(selectedRoute?.legs.some((leg) =>
+    !leg.polyline &&
+    isValidCoordinate(leg.boardingStop.lat, leg.boardingStop.lng) &&
+    isValidCoordinate(leg.alightingStop.lat, leg.alightingStop.lng) &&
+    !sameCoordinate(leg.boardingStop.lat, leg.boardingStop.lng, leg.alightingStop.lat, leg.alightingStop.lng),
+  ));
   const canUseGoogleMap = searchRequested && !!journey.data?.map3dAvailable && !googleMapFailed;
   const geocodedReports = state.reports.filter((report) =>
     report.latitude != null && report.longitude != null &&
@@ -82,6 +114,36 @@ export function JourneyScreen() {
     lat: report.latitude!, lng: report.longitude!,
     intensity: Math.min(1, Math.max(0.2, heatScore(report, geocodedReports) / 12)),
   })) : [];
+
+  const openSavedJourneyInMaps = async (provider: 'google' | 'apple') => {
+    if (!savedJourney || !canOpenSavedJourney) {
+      setMapLinkError('Route coordinates are unavailable. Find and select the route again.');
+      return;
+    }
+    const originPoint = `${savedJourney.originLatitude},${savedJourney.originLongitude}`;
+    const destinationPoint = `${savedJourney.destinationLatitude},${savedJourney.destinationLongitude}`;
+    const walking = savedJourney.mode === 'walking';
+    const params = new URLSearchParams();
+    if (provider === 'google') {
+      params.set('api', '1');
+      params.set('origin', originPoint);
+      params.set('destination', destinationPoint);
+      params.set('travelmode', walking ? 'walking' : 'transit');
+    } else {
+      params.set('saddr', originPoint);
+      params.set('daddr', destinationPoint);
+      params.set('dirflg', walking ? 'w' : 'r');
+    }
+    const url = provider === 'google'
+      ? `https://www.google.com/maps/dir/?${params.toString()}`
+      : `https://maps.apple.com/?${params.toString()}`;
+    try {
+      await Linking.openURL(url);
+      setMapLinkError('');
+    } catch {
+      setMapLinkError(`Could not open ${provider === 'google' ? 'Google Maps' : 'Apple Maps'}. Try opening the link in a browser.`);
+    }
+  };
 
   const locate = async () => {
     setLocationError('');
@@ -104,6 +166,9 @@ export function JourneyScreen() {
       setSearchRequested(false);
       setGoogleMapFailed(false);
       setSelectedRouteId(null);
+      setMapView('2d');
+      setMapNotice('');
+      setMapLinkError('');
     } catch {
       setLocationError('Location is unavailable. Select a starting place instead.');
     }
@@ -165,6 +230,8 @@ export function JourneyScreen() {
             setSearchRequested(false);
             setGoogleMapFailed(false);
             setSelectedRouteId(null);
+            setMapView('2d');
+            setMapLinkError('');
           }}
           onSelect={(place) => {
             setOrigin(place);
@@ -174,6 +241,8 @@ export function JourneyScreen() {
             setGoogleMapFailed(false);
             setLocationError('');
             setSelectedRouteId(null);
+            setMapView('2d');
+            setMapLinkError('');
           }}
           placeholder="Search an address, business, school, or landmark"
           testID="journey-origin"
@@ -200,6 +269,8 @@ export function JourneyScreen() {
             setSearchRequested(false);
             setGoogleMapFailed(false);
             setSelectedRouteId(null);
+            setMapView('2d');
+            setMapLinkError('');
           }}
           onSelect={(place) => {
             setDestination(place.name);
@@ -207,6 +278,8 @@ export function JourneyScreen() {
             setSearchRequested(false);
             setGoogleMapFailed(false);
             setSelectedRouteId(null);
+            setMapView('2d');
+            setMapLinkError('');
           }}
           placeholder="Search an address, business, school, or landmark"
           testID="journey-destination"
@@ -227,6 +300,9 @@ export function JourneyScreen() {
             setSearchRequested(true);
             setGoogleMapFailed(false);
             setSelectedRouteId(null);
+            setMapView('2d');
+            setMapNotice('');
+            setMapLinkError('');
           }
         }}
         testID="find-routes"
@@ -242,14 +318,57 @@ export function JourneyScreen() {
         ))}
       </View>
 
-      <SectionTitle title="Google Maps" />
+      <SectionTitle title="Journey map" />
       <Chip label={showHeat ? 'Hide safety heat map' : 'Show safety heat map'} active={showHeat} onPress={() => setShowHeat(!showHeat)} />
+      {searchRequested ? (
+        <View style={[styles.mapModeBar, { backgroundColor: colors.muted }]}>
+          {(['2d', '3d'] as const).map((view) => {
+            const unavailable = view === '3d' && !journey.data?.map3dAvailable;
+            const active = mapView === view;
+            return (
+              <Pressable
+                key={view}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${view.toUpperCase()} map`}
+                accessibilityState={{ selected: active, disabled: unavailable }}
+                testID={`journey-map-view-${view}`}
+                disabled={unavailable}
+                onPress={() => {
+                  setMapView(view);
+                  setMapNotice('');
+                  if (view === '3d') setGoogleMapFailed(false);
+                }}
+                style={[
+                  styles.mapModeButton,
+                  {
+                    backgroundColor: active ? colors.card : 'transparent',
+                    opacity: unavailable ? 0.45 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.mapModeText, { color: active ? colors.primary : colors.mutedForeground }]}>
+                  {view.toUpperCase()}
+                </Text>
+                <Text style={[styles.mapModeSubtext, { color: active ? colors.foreground : colors.mutedForeground }]}>
+                  {view === '2d' ? 'Street map' : unavailable ? 'Unavailable' : 'Globe view'}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {searchRequested && !journey.data?.map3dAvailable ? (
+        <Text style={[styles.caption, { color: colors.mutedForeground }]}>
+          3D maps are unavailable right now. The 2D route map is still available.
+        </Text>
+      ) : null}
+      {mapNotice ? <Text style={[styles.small, { color: colors.warning }]}>{mapNotice}</Text> : null}
       {searchRequested && journey.isFetching && !journey.data ? (
         <View style={[styles.mapPlaceholder, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={[styles.small, { color: colors.mutedForeground }]}>Loading journey map…</Text>
+          <Text style={[styles.small, { color: colors.mutedForeground }]}>Loading route and map…</Text>
         </View>
-      ) : canUseGoogleMap ? (
+      ) : mapView === '3d' && canUseGoogleMap ? (
         <GoogleJourneyMap
           lat={origin?.lat ?? 0}
           lng={origin?.lng ?? 0}
@@ -260,28 +379,59 @@ export function JourneyScreen() {
           routeId={selectedRoute?.id ?? 'base-map'}
           heatPoints={heatPoints}
           reportPoints={reportPoints}
-          onError={() => setGoogleMapFailed(true)}
+          onError={() => {
+            setGoogleMapFailed(true);
+            setMapView('2d');
+            setMapNotice('The 3D map could not load. Showing the 2D route map instead.');
+          }}
+        />
+      ) : mapView === '3d' ? (
+        <View
+          testID="journey-3d-map-unavailable"
+          style={[styles.mapPlaceholder, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <Feather name="alert-triangle" size={22} color={colors.warning} />
+          <Text style={[styles.small, { color: colors.mutedForeground, textAlign: 'center' }]}>
+            {googleMapFailed
+              ? 'The 3D map could not load. Switch to 2D or try the 3D map again.'
+              : 'The 3D map is unavailable for this search. The 2D route map remains available.'}
+          </Text>
+        </View>
+      ) : selectedRoute ? (
+        <JourneyMap
+          legs={selectedRoute.legs}
+          heatPoints={heatPoints}
+          fallbackLat={origin?.lat ?? 0}
+          fallbackLng={origin?.lng ?? 0}
         />
       ) : (
         <View
-          testID={searchRequested ? 'journey-google-map-unavailable' : 'journey-map-empty'}
+          testID={searchRequested ? 'journey-map-unavailable' : 'journey-map-empty'}
           style={[styles.mapPlaceholder, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
           <Feather name={searchRequested ? 'alert-triangle' : 'map-pin'} size={22} color={searchRequested ? colors.warning : colors.primary} />
           <Text style={[styles.small, { color: colors.mutedForeground, textAlign: 'center' }]}>
             {!searchRequested
-              ? 'Select both places and tap Find routes to load Google Maps.'
+              ? 'Select both places and tap Find routes to display the 2D map.'
               : journey.isError
                 ? 'Journey data is unavailable. Refresh to try again.'
-                : googleMapFailed
-                  ? 'Google Maps could not load this route. Check the map setup and try again.'
-                  : 'Google Maps is unavailable for this journey.'}
+                : 'No route geometry is available to display for this search.'}
           </Text>
         </View>
       )}
-      {canUseGoogleMap ? (
+      {searchRequested && mapView === '2d' && selectedRoute ? (
         <Text style={[styles.caption, { color: colors.mutedForeground }]}>
-          Google Maps · selected route, stops, destination, reports, and safety heat map.
+          2D street map · OpenStreetMap. Exact route shapes are used when available.
+        </Text>
+      ) : null}
+      {searchRequested && mapView === '3d' && canUseGoogleMap ? (
+        <Text style={[styles.caption, { color: colors.mutedForeground }]}>
+          Google Maps 3D · selected route, stops, destination, reports, and safety heat map.
+        </Text>
+      ) : null}
+      {searchRequested && mapView === '2d' && hasApproximateSegments ? (
+        <Text style={[styles.caption, { color: colors.warning }]}>
+          Dashed gray segments are approximate straight lines between stops; follow the listed route details.
         </Text>
       ) : null}
       {showHeat && !geocodedReports.length ? <Text style={[styles.caption, { color: colors.mutedForeground }]}>No reports with map locations are available to display.</Text> : null}
@@ -310,7 +460,7 @@ export function JourneyScreen() {
         <Text style={[styles.small, { color: colors.mutedForeground }]}>No route options were returned for these selected places.</Text>
       ) : null}
       {routes.map((route) => (
-        <Pressable key={route.id} testID={`route-${route.id}`} onPress={() => setSelectedRouteId(route.id)} style={[styles.option, { backgroundColor: colors.card, borderColor: selectedRoute?.id === route.id ? colors.primary : colors.border }]}>
+        <Pressable key={route.id} testID={`route-${route.id}`} onPress={() => { setSelectedRouteId(route.id); setMapLinkError(''); }} style={[styles.option, { backgroundColor: colors.card, borderColor: selectedRoute?.id === route.id ? colors.primary : colors.border }]}>
           <View style={styles.optionHeading}>
             <View style={styles.flex}>
               {route.recommended ? <Text style={[styles.recommended, { color: colors.primary }]}>RECOMMENDED ROUTE</Text> : null}
@@ -334,7 +484,30 @@ export function JourneyScreen() {
           {route.alerts.map((alert, index) => <Text key={`${index}-${alert}`} style={[styles.small, { color: colors.warning }]}>Service alert: {alert}</Text>)}
         </Pressable>
       ))}
-      {selectedRoute ? <Button label={state.selectedJourney?.id === selectedRoute.id && state.selectedJourney?.destination === searchedDestination && state.selectedJourney?.startStop === selectedRoute.startStop && state.selectedJourney?.source === selectedRoute.source ? 'Selected journey' : 'Choose this route'} icon="check" onPress={() => chooseRoute(selectedRoute)} disabled={!selectedRoute.available} testID="choose-route" /> : null}
+      {selectedRoute ? <Button label={savedJourneyMatchesRoute ? 'Selected journey' : 'Choose this route'} icon="check" onPress={() => { chooseRoute(selectedRoute); setMapLinkError(''); }} disabled={!selectedRoute.available} testID="choose-route" /> : null}
+      {savedJourneyMatchesRoute && canOpenSavedJourney ? (
+        <>
+          <Button label="Open in Google Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('google'); }} testID="open-route-google-maps" />
+          <Button label="Open in Apple Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('apple'); }} testID="open-route-apple-maps" />
+          <Text style={[styles.caption, { color: colors.mutedForeground }]}>
+            External map apps may calculate a different path. Confirm the route and service details before traveling.
+          </Text>
+        </>
+      ) : null}
+      {!searchRequested && savedJourneyMatchesEndpoints && canOpenSavedJourney ? (
+        <Card style={styles.savedRouteCard}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Your selected route</Text>
+          <Text style={[styles.small, { color: colors.mutedForeground }]}>
+            {savedJourney?.startingLocation || savedJourney?.startStop} → {savedJourney?.destination}
+          </Text>
+          <Button label="Open in Google Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('google'); }} testID="open-saved-route-google-maps" />
+          <Button label="Open in Apple Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('apple'); }} testID="open-saved-route-apple-maps" />
+          <Text style={[styles.caption, { color: colors.mutedForeground }]}>
+            External map apps may calculate a different path. Confirm the route and service details before traveling.
+          </Text>
+        </Card>
+      ) : null}
+      {mapLinkError ? <Text accessibilityRole="alert" style={[styles.small, { color: colors.destructive }]}>{mapLinkError}</Text> : null}
       {searchRequested && journey.data?.alerts.length ? (
         <>
           <SectionTitle title="Service alerts" />
@@ -351,6 +524,11 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   infoRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   mapPlaceholder: { height: 255, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  mapModeBar: { flexDirection: 'row', gap: 5, padding: 4, borderRadius: 15 },
+  mapModeButton: { flex: 1, minHeight: 53, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 7 },
+  mapModeText: { fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 0.3 },
+  mapModeSubtext: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 },
+  savedRouteCard: { gap: 10 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 15, lineHeight: 22 },
   small: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 4 },
   caption: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
@@ -360,3 +538,11 @@ const styles = StyleSheet.create({
   recommended: { fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.1, marginBottom: 3 },
   metrics: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
 });
+
+function isValidCoordinate(lat: number | null | undefined, lng: number | null | undefined): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat! >= -90 && lat! <= 90 && lng! >= -180 && lng! <= 180;
+}
+
+function sameCoordinate(lat1: number, lng1: number, lat2: number, lng2: number): boolean {
+  return Math.abs(lat1 - lat2) < 1e-6 && Math.abs(lng1 - lng2) < 1e-6;
+}

@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import React, { type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -15,11 +16,15 @@ import { useColors } from '@/hooks/useColors';
 
 export function BrandMark({ size = 42, inverse = false }: { size?: number; inverse?: boolean }) {
   const colors = useColors();
-  const foreground = inverse ? colors.primaryForeground : colors.primary;
+  void inverse;
   return (
-    <View style={[styles.mark, { width: size, height: size, borderRadius: size * 0.34, backgroundColor: inverse ? colors.primaryForeground : colors.primary }]}>
-      <Feather name="shield" size={size * 0.52} color={inverse ? colors.primary : colors.primaryForeground} />
-      <View style={[styles.markDot, { backgroundColor: inverse ? colors.primary : colors.primaryForeground }]} />
+    <View style={[styles.mark, { width: size, height: size, borderRadius: size * 0.34, backgroundColor: colors.brandSurface }]}>
+      <Image
+        source={require('../assets/images/pathpal-mark.png')}
+        resizeMode="contain"
+        accessibilityLabel="PathPal logo"
+        style={{ width: size * 0.96, height: size * 0.96 }}
+      />
     </View>
   );
 }

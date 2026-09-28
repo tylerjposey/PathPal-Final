@@ -57,12 +57,27 @@ function buildMapHtml(
       let index = 0, lat = 0, lng = 0, coordinates = [];
       while (index < str.length) {
         let result = 0, shift = 0, b;
-        do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        do {
+          if (index >= str.length || shift > 30) return [];
+          b = str.charCodeAt(index++) - 63;
+          if (b < 0 || b > 63) return [];
+          result |= (b & 0x1f) << shift;
+          shift += 5;
+        } while (b >= 0x20);
         lat += (result & 1) ? ~(result >> 1) : (result >> 1);
         result = 0; shift = 0;
-        do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        do {
+          if (index >= str.length || shift > 30) return [];
+          b = str.charCodeAt(index++) - 63;
+          if (b < 0 || b > 63) return [];
+          result |= (b & 0x1f) << shift;
+          shift += 5;
+        } while (b >= 0x20);
         lng += (result & 1) ? ~(result >> 1) : (result >> 1);
-        coordinates.push([lat * 1e-5, lng * 1e-5]);
+        const point = [lat * 1e-5, lng * 1e-5];
+        if (!Number.isFinite(point[0]) || point[0] < -90 || point[0] > 90 ||
+            !Number.isFinite(point[1]) || point[1] < -180 || point[1] > 180) return [];
+        coordinates.push(point);
       }
       return coordinates;
     }
@@ -98,18 +113,35 @@ function buildMapHtml(
 
     const allBounds = [];
     const stopKeys = new Set();
+    const validStop = stop =>
+      stop &&
+      Number.isFinite(stop.lat) && stop.lat >= -90 && stop.lat <= 90 &&
+      Number.isFinite(stop.lng) && stop.lng >= -180 && stop.lng <= 180;
     legs.forEach((leg) => {
-      const points = leg.polyline ? decodePolyline(leg.polyline) : [];
+      const decodedPoints = leg.polyline ? decodePolyline(leg.polyline) : [];
+      const exactGeometry = decodedPoints.length > 1;
+      const canApproximate =
+        !exactGeometry &&
+        validStop(leg.boarding) &&
+        validStop(leg.alighting) &&
+        (Math.abs(leg.boarding.lat - leg.alighting.lat) > 1e-6 ||
+          Math.abs(leg.boarding.lng - leg.alighting.lng) > 1e-6);
+      const points = exactGeometry
+        ? decodedPoints
+        : canApproximate
+          ? [[leg.boarding.lat, leg.boarding.lng], [leg.alighting.lat, leg.alighting.lng]]
+          : [];
       if (points.length > 1) {
         L.polyline(points, {
-          color: leg.color,
-          weight: leg.type === 'bus' ? 5 : 4,
-          opacity: 0.9,
-          dashArray: leg.dashed ? '2 8' : null,
+          color: exactGeometry ? leg.color : '#64748B',
+          weight: exactGeometry ? leg.type === 'bus' ? 5 : 4 : 3,
+          opacity: exactGeometry ? 0.9 : 0.68,
+          dashArray: exactGeometry ? leg.dashed ? '2 8' : null : '7 8',
         }).addTo(map);
         points.forEach((p) => allBounds.push(p));
       }
       [leg.boarding, leg.alighting].forEach((stop) => {
+        if (!validStop(stop)) return;
         const key = stop.lat.toFixed(5) + ',' + stop.lng.toFixed(5);
         if (stopKeys.has(key)) return;
         stopKeys.add(key);
@@ -160,7 +192,7 @@ export function JourneyMap({
 
   if (Platform.OS === 'web') {
     return (
-      <View style={[styles.container, { height }]}>
+      <View testID="journey-2d-map" style={[styles.container, { height }]}>
         <iframe
           srcDoc={html}
           style={{ width: '100%', height: '100%', border: 0 }}
@@ -171,7 +203,7 @@ export function JourneyMap({
   }
 
   return (
-    <View style={[styles.container, { height }]}>
+    <View testID="journey-2d-map" style={[styles.container, { height }]}>
       <WebView
         originWhitelist={['*']}
         source={{ html }}

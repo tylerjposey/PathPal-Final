@@ -771,7 +771,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const createFamily = useCallback((familyName: string, childName: string, inviteCode: string) => {
     update((current) => ({
       ...current,
-      familyName: familyName.trim() || 'The Orivis family',
+      familyName: familyName.trim() || 'The PathPal family',
       child: { ...current.child, name: childName.trim() || 'New family member' },
       familyChildren: current.familyChildren.length
         ? [{ ...current.familyChildren[0], name: childName.trim() || 'New family member' }, ...current.familyChildren.slice(1)]
@@ -1092,7 +1092,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         sosEvents: [event, ...current.sosEvents],
         notifications: [
           notification('SOS practice activated', `${current.child.name} started a simulated SOS. No emergency services were contacted.`, 'SOS', 'Simulated text'),
-          notification('SOS practice activated', `A simulated alert for ${current.child.name} is visible in the Orivis demo.`, 'SOS'),
+          notification('SOS practice activated', `A simulated alert for ${current.child.name} is visible in the PathPal demo.`, 'SOS'),
           ...current.notifications,
         ],
       };

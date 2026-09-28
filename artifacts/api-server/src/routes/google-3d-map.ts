@@ -72,22 +72,14 @@ export function renderGoogle3DMap(
     polyline: leg.polyline, type: leg.type, routeNumber: leg.routeNumber,
     color: leg.type === "walk" ? "#64748B" : ["#1565C0", "#EF6C00", "#8E24AA", "#2E7D32", "#C62828"][index % 5],
     boarding: leg.boardingStop, alighting: leg.alightingStop,
-    approximate: !leg.polyline &&
-      Number.isFinite(leg.boardingStop.lat) && Number.isFinite(leg.boardingStop.lng) &&
-      Number.isFinite(leg.alightingStop.lat) && Number.isFinite(leg.alightingStop.lng) &&
-      leg.boardingStop.lat >= -90 && leg.boardingStop.lat <= 90 &&
-      leg.alightingStop.lat >= -90 && leg.alightingStop.lat <= 90 &&
-      leg.boardingStop.lng >= -180 && leg.boardingStop.lng <= 180 &&
-      leg.alightingStop.lng >= -180 && leg.alightingStop.lng <= 180 &&
-      (leg.boardingStop.lat !== leg.alightingStop.lat || leg.boardingStop.lng !== leg.alightingStop.lng),
   }));
-  const hasApproximateSegments = routes.some((leg) => leg.approximate);
+  const hasMissingGeometry = routes.some((leg) => !leg.polyline);
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Orivis journey map</title>
+<title>PathPal journey map</title>
 <style>
   html,body,#map { height:100%; width:100%; margin:0; background:#dce5e9; font:13px system-ui,sans-serif; }
   #notice { position:absolute; z-index:2; bottom:10px; left:10px; right:10px; padding:8px 10px;
@@ -95,8 +87,8 @@ export function renderGoogle3DMap(
   #error { display:none; padding:25px; color:#18313b; }
 </style></head><body>
 <div id="map"></div>
-<div id="notice">${hasApproximateSegments
-    ? "3D Google map · some segments are straight-line approximations; exact stops are still shown"
+<div id="notice">${hasMissingGeometry
+    ? "3D Google map · exact geometry is missing for some segments; no straight-line substitutes are shown"
     : "3D Google map · bus shapes from 511 · walks from Google Routes"}</div>
 <div id="error" role="alert">Google 3D map could not load. Use the 2D map option to view the journey.</div>
 <script>
@@ -132,8 +124,7 @@ export function renderGoogle3DMap(
       const {Map3DElement,Polyline3DElement,Marker3DElement,Polygon3DElement} =
         await google.maps.importLibrary('maps3d');
       const points = [
-        ...routeLegs.flatMap(l => l.polyline ? decode(l.polyline) :
-          l.approximate ? [l.boarding, l.alighting] : []),
+        ...routeLegs.flatMap(l => l.polyline ? decode(l.polyline) : []),
         fallback,
         destination,
         ...reportPoints,
@@ -150,15 +141,14 @@ export function renderGoogle3DMap(
       document.getElementById('map').append(map);
       const markerKeys=new Set();
       routeLegs.forEach(leg => {
-        const path=leg.polyline ? decode(leg.polyline) :
-          leg.approximate ? [leg.boarding, leg.alighting] : [];
+        const path=leg.polyline ? decode(leg.polyline) : [];
         if(path.length>1) {
           map.append(new Polyline3DElement({
             path,
-            strokeColor:leg.approximate ? '#71808A' : leg.color,
+            strokeColor:leg.color,
             outerColor:'#ffffff',
-            strokeWidth:leg.approximate ? 3 : leg.type==='bus' ? 8 : 5,
-            outerWidth:leg.approximate ? 0.1 : 0.3,
+            strokeWidth:leg.type==='bus' ? 8 : 5,
+            outerWidth:0.3,
             altitudeMode:'RELATIVE_TO_GROUND',
             drawsOccludedSegments:true,
           }));

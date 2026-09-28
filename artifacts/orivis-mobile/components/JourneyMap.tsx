@@ -119,26 +119,14 @@ function buildMapHtml(
       Number.isFinite(stop.lng) && stop.lng >= -180 && stop.lng <= 180;
     legs.forEach((leg) => {
       const decodedPoints = leg.polyline ? decodePolyline(leg.polyline) : [];
-      const exactGeometry = decodedPoints.length > 1;
-      const canApproximate =
-        !exactGeometry &&
-        validStop(leg.boarding) &&
-        validStop(leg.alighting) &&
-        (Math.abs(leg.boarding.lat - leg.alighting.lat) > 1e-6 ||
-          Math.abs(leg.boarding.lng - leg.alighting.lng) > 1e-6);
-      const points = exactGeometry
-        ? decodedPoints
-        : canApproximate
-          ? [[leg.boarding.lat, leg.boarding.lng], [leg.alighting.lat, leg.alighting.lng]]
-          : [];
-      if (points.length > 1) {
-        L.polyline(points, {
-          color: exactGeometry ? leg.color : '#64748B',
-          weight: exactGeometry ? leg.type === 'bus' ? 5 : 4 : 3,
-          opacity: exactGeometry ? 0.9 : 0.68,
-          dashArray: exactGeometry ? leg.dashed ? '2 8' : null : '7 8',
+      if (decodedPoints.length > 1) {
+        L.polyline(decodedPoints, {
+          color: leg.color,
+          weight: leg.type === 'bus' ? 5 : 4,
+          opacity: 0.9,
+          dashArray: leg.dashed ? '2 8' : null,
         }).addTo(map);
-        points.forEach((p) => allBounds.push(p));
+        decodedPoints.forEach((p) => allBounds.push(p));
       }
       [leg.boarding, leg.alighting].forEach((stop) => {
         if (!validStop(stop)) return;

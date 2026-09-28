@@ -97,12 +97,7 @@ export function JourneyScreen() {
     isValidCoordinate(savedJourney.originLatitude, savedJourney.originLongitude) &&
     isValidCoordinate(savedJourney.destinationLatitude, savedJourney.destinationLongitude),
   );
-  const hasApproximateSegments = Boolean(selectedRoute?.legs.some((leg) =>
-    !leg.polyline &&
-    isValidCoordinate(leg.boardingStop.lat, leg.boardingStop.lng) &&
-    isValidCoordinate(leg.alightingStop.lat, leg.alightingStop.lng) &&
-    !sameCoordinate(leg.boardingStop.lat, leg.boardingStop.lng, leg.alightingStop.lat, leg.alightingStop.lng),
-  ));
+  const hasMissingGeometry = Boolean(selectedRoute?.legs.some((leg) => !leg.polyline));
   const canUseGoogleMap = searchRequested && !!journey.data?.map3dAvailable && !googleMapFailed;
   const geocodedReports = state.reports.filter((report) =>
     report.latitude != null && report.longitude != null &&
@@ -429,9 +424,11 @@ export function JourneyScreen() {
           Google Maps 3D · selected route, stops, destination, reports, and safety heat map.
         </Text>
       ) : null}
-      {searchRequested && mapView === '2d' && hasApproximateSegments ? (
+      {searchRequested && mapView === '2d' && hasMissingGeometry ? (
         <Text style={[styles.caption, { color: colors.warning }]}>
-          Dashed gray segments are approximate straight lines between stops; follow the listed route details.
+          {selectedRoute?.source === 'demo'
+            ? 'This is an illustrative route with no verified path shape. Follow the example steps below.'
+            : 'Some exact route shapes are unavailable. Stops remain visible, and no straight-line substitute is drawn; follow the listed steps.'}
         </Text>
       ) : null}
       {showHeat && !geocodedReports.length ? <Text style={[styles.caption, { color: colors.mutedForeground }]}>No reports with map locations are available to display.</Text> : null}
@@ -541,8 +538,4 @@ const styles = StyleSheet.create({
 
 function isValidCoordinate(lat: number | null | undefined, lng: number | null | undefined): boolean {
   return Number.isFinite(lat) && Number.isFinite(lng) && lat! >= -90 && lat! <= 90 && lng! >= -180 && lng! <= 180;
-}
-
-function sameCoordinate(lat1: number, lng1: number, lat2: number, lng2: number): boolean {
-  return Math.abs(lat1 - lat2) < 1e-6 && Math.abs(lng1 - lng2) < 1e-6;
 }

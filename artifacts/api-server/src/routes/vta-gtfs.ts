@@ -30,7 +30,7 @@ type CsvRow = Record<string, string>;
 type Trip = { routeId: string; shapeId: string; stops: TripStop[] };
 type TripStop = { id: string; arrival: number; departure: number; shapeDistance: number };
 type Event = { tripId: string; index: number; departure: number };
-type ShapePoint = { lat: number; lng: number; distance: number };
+type ShapePoint = { lat: number; lng: number; distance: number; sequence: number };
 export type Feed = {
   stops: Map<string, GtfsStop>;
   routes: Map<string, { number: string; name: string }>;
@@ -121,11 +121,16 @@ function prepareFeed(bytes: Uint8Array, now: Date): Feed {
   for (const row of csv(files, "shapes")) {
     if (!activeShapes.has(row.shape_id)) continue;
     const points = shapes.get(row.shape_id) ?? [];
+    const sequence = Number(row.shape_pt_sequence);
     points.push({
       lat: Number(row.shape_pt_lat), lng: Number(row.shape_pt_lon),
       distance: Number(row.shape_dist_traveled),
+      sequence: Number.isFinite(sequence) ? sequence : points.length,
     });
     shapes.set(row.shape_id, points);
+  }
+  for (const points of shapes.values()) {
+    points.sort((a, b) => a.sequence - b.sequence);
   }
   return { routes, stops, trips, byStop, shapes, ...clock };
 }
@@ -196,6 +201,53 @@ function encodePolyline(points: ShapePoint[]): string | null {
   return encoded;
 }
 
+function shapeSegmentForRide(
+  shape: ShapePoint[],
+  startDistance: number,
+  endDistance: number,
+  boarding: GtfsStop,
+  alighting: GtfsStop,
+): ShapePoint[] {
+  const validShape = shape.filter((point) =>
+    Number.isFinite(point.lat) && point.lat >= -90 && point.lat <= 90 &&
+    Number.isFinite(point.lng) && point.lng >= -180 && point.lng <= 180);
+  if (validShape.length < 2) return [];
+
+  if (Number.isFinite(startDistance) && Number.isFinite(endDistance) && endDistance > startDistance) {
+    const distanceSegment = validShape.filter((point) =>
+      Number.isFinite(point.distance) &&
+      point.distance >= startDistance &&
+      point.distance <= endDistance);
+    if (distanceSegment.length >= 2) return distanceSegment;
+  }
+
+  const nearestShapePoint = (stop: GtfsStop) => {
+    let nearestIndex = -1;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    validShape.forEach((point, index) => {
+      const pointDistance = distance(stop, point);
+      if (pointDistance < nearestDistance) {
+        nearestIndex = index;
+        nearestDistance = pointDistance;
+      }
+    });
+    return { index: nearestIndex, distance: nearestDistance };
+  };
+  const boardPoint = nearestShapePoint(boarding);
+  const alightPoint = nearestShapePoint(alighting);
+  // If a stop is far from this trip's shape, don't invent a connector that
+  // could make the selected bus appear to travel through buildings.
+  if (
+    boardPoint.index < 0 || alightPoint.index < 0 ||
+    boardPoint.distance > 500 || alightPoint.distance > 500 ||
+    boardPoint.index === alightPoint.index
+  ) return [];
+
+  return boardPoint.index < alightPoint.index
+    ? validShape.slice(boardPoint.index, alightPoint.index + 1)
+    : validShape.slice(alightPoint.index, boardPoint.index + 1).reverse();
+}
+
 function makeRide(feed: Feed, tripId: string, from: number, to: number): GtfsRide | undefined {
   const trip = feed.trips.get(tripId);
   if (!trip) return undefined;
@@ -204,15 +256,17 @@ function makeRide(feed: Feed, tripId: string, from: number, to: number): GtfsRid
   const route = feed.routes.get(trip.routeId);
   if (!boarding || !alighting || !route || to <= from) return undefined;
   const shape = feed.shapes.get(trip.shapeId) ?? [];
-  const points = Number.isFinite(start.shapeDistance) && Number.isFinite(end.shapeDistance)
-    ? shape.filter((point) => point.distance >= start.shapeDistance && point.distance <= end.shapeDistance)
-    : [];
+  const points = shapeSegmentForRide(shape, start.shapeDistance, end.shapeDistance, boarding, alighting);
+  const shapeLengthMeters = points.slice(1).reduce((length, point, index) =>
+    length + distance(points[index], point), 0);
   return {
     routeId: trip.routeId, routeNumber: route.number, routeName: route.name,
     boarding, alighting, departure: start.departure, arrival: end.arrival,
-    distanceMeters: Number.isFinite(end.shapeDistance - start.shapeDistance)
-      ? Math.round((end.shapeDistance - start.shapeDistance) * 1000)
-      : distance(boarding, alighting),
+    distanceMeters: shapeLengthMeters > 0
+      ? shapeLengthMeters
+      : Number.isFinite(end.shapeDistance - start.shapeDistance) && end.shapeDistance >= start.shapeDistance
+        ? Math.round((end.shapeDistance - start.shapeDistance) * 1000)
+        : distance(boarding, alighting),
     polyline: encodePolyline(points),
   };
 }

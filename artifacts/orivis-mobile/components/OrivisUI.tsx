@@ -36,7 +36,7 @@ export function ScreenHeader({
   right,
 }: {
   eyebrow?: string;
-  title: string;
+  title?: string;
   subtitle?: string;
   right?: ReactNode;
 }) {
@@ -45,7 +45,7 @@ export function ScreenHeader({
     <View style={styles.header}>
       <View style={styles.headerText}>
         {eyebrow ? <Text style={[styles.eyebrow, { color: colors.primary }]}>{eyebrow.toUpperCase()}</Text> : null}
-        <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text>
+        {title ? <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text> : null}
         {subtitle ? <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
       </View>
       {right}

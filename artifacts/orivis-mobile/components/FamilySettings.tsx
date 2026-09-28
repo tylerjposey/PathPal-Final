@@ -164,7 +164,6 @@ export function FamilySettings() {
         <>
           <ScreenHeader
             eyebrow="Parent account"
-            title="More"
             subtitle={`${state.parentProfile.name} · ${state.familyName}`}
           />
           <Card style={styles.accountCard}>

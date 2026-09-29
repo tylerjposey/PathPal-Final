@@ -8,3 +8,4 @@
 - [Orivis account deletion boundary](orivis-account-deletion-boundary.md) — keep real deletion disabled until account-backed auth can revoke child access.
 - [Expo DevTools startup warning](expo-devtools-startup-warning.md) — missing GLib can block the DevTools subprocess without stopping Metro or the app preview.
 - [Workspace React Query deduplication](workspace-react-query-deduplication.md) — production web builds must share one React Query instance across app and linked generated hooks.
+- [Expo pnpm install recovery](expo-pnpm-install-recovery.md) — when many Expo/RN files go missing together, restore the pnpm workspace tree before changing app dependencies.

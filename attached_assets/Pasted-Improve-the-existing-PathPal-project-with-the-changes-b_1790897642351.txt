@@ -1,0 +1,40 @@
+Improve the existing PathPal project with the changes below. Reuse the current Google Maps integration, database, and notification system to minimize development credits. Preserve working features and focus on these updates.
+
+1. **Google Maps across roles**
+
+Use the existing Google Maps integration wherever maps appear, including Parent, Child, City Case Manager, and City Worker screens. Keep 3D support and the existing 2D fallback.
+
+- Parents and approved children can see their family’s journeys and submitted report locations.
+- City Case Managers can see all community reports, severity indicators, team assignments, and cleanup routes, with their existing editing and delegation permissions.
+- City Workers can see the report locations and routes they are authorized to access, with assigned tasks clearly identified. Workers can update case status only.
+- Preserve the public heat indicators using aggregated, anonymous case data. Parents and children must not be able to open another family’s reports through markers, map popups, or links.
+
+2. **Generate and store unique family codes**
+
+When a parent creates a family account, automatically generate a random invitation code on the server and save it with the family record. Add a database uniqueness constraint so separate families cannot receive the same code; regenerate and retry if a collision occurs. Reuse the stored code instead of generating a new one whenever the parent signs in.
+
+After registration, display the family code only to the owning parent in **More → Family Management**. Children can enter a code during signup but cannot retrieve or view the stored code afterward. City staff must not receive family invitation codes.
+
+3. **Require parent approval for children**
+
+A valid family code should create a pending request to join that family. Notify the parent and show the request in Family Management with **Approve** and **Reject** buttons.
+
+Until approved, the child should see a “Waiting for parent approval” screen and have no access to family profiles, journeys, reports, or other private information. Approval connects the child to the family; rejection denies access. Prevent duplicate requests and allow only the owning parent to approve or reject them.
+
+4. **Remove Citizen and enforce the 48-hour requirement**
+
+Remove Citizen from signup, login, navigation, and role permissions. Retain Parent, Child, City Case Manager, and City Worker.
+
+New parent accounts must have at least one approved child within 48 hours of account creation. Show the deadline clearly during signup and in Family Management. A pending child request does not count as an approved child.
+
+Use a reliable server-side scheduled cleanup process to delete expired parent accounts without an approved child, even when nobody opens the app. Delete their associated personal information, family codes, pending requests, uploaded files, and family-owned records from the application database and storage; revoke active sessions. Do not delete unrelated families or shared city-team records.
+
+Inspect existing Citizen accounts and relationships before changing the database. Provide a migration plan that preserves existing data rather than silently deleting or relabeling accounts.
+
+5. **Keep reports within the family**
+
+Parents and approved children can view reports submitted by anyone in their own family tree, including report history and details. They cannot view another family’s report details, photos, descriptions, or reporter information. Preserve existing editing permissions; family visibility alone must not grant additional editing rights.
+
+Store both the submitting user ID and family ID on each report. Enforce access on the server for lists, individual reports, updates, photos, notifications, and map data—not just by hiding interface elements. City staff should retain their existing authorized access.
+
+Verify the changes with two separate families, a pending child, a manager, and a worker. Check code uniqueness, approval notifications, family privacy, map permissions, and the 48-hour cleanup using a controlled test clock. Summarize what changed and any deployment setup needed for scheduled cleanup.

@@ -1074,6 +1074,7 @@ export const createPhoneReportSessionBodyVerificationCodeRegExp = new RegExp('^[
 
 export const CreatePhoneReportSessionBody = zod.object({
   "phoneNumber": zod.string().min(createPhoneReportSessionBodyPhoneNumberMin).max(createPhoneReportSessionBodyPhoneNumberMax),
+  "role": zod.enum(['parent', 'child', 'manager', 'worker']),
   "verificationCode": zod.string().regex(createPhoneReportSessionBodyVerificationCodeRegExp)
 })
 

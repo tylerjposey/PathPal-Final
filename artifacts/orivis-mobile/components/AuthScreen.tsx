@@ -244,10 +244,10 @@ export function AuthScreen() {
       </View>
       <Text style={[styles.title, { color: colors.foreground }]}>
         {verificationStep
-          ? demoVerification ? 'Verify your demo sign-in.' : 'Check your inbox.'
+          ? demoVerification ? `Verify your ${verificationRoleLabel} demo sign-in.` : 'Check your inbox.'
           : mode === 'signup'
             ? signupPath === 'choose' ? 'Create a PathPal account.' : signupPath === 'parent-phone' ? 'Verify your phone (demo).' : 'Create your PathPal account.'
-            : signInMethod === 'demo' && demoEnabled ? 'Sign in with a username or phone.' : 'Your family’s safe route starts here.'}
+            : signInMethod === 'demo' && demoEnabled ? 'Choose your PathPal role.' : 'Your family’s safe route starts here.'}
       </Text>
       <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
         {verificationStep
@@ -261,7 +261,7 @@ export function AuthScreen() {
               : mode === 'signup' && signupPath === 'child-email'
                 ? 'Real Child accounts use Clerk email verification and a family invitation code. No phone number is collected.'
                 : mode === 'signin' && signInMethod === 'demo' && demoEnabled
-                  ? 'AI4SG opens the Parent preview. Enter a phone number to use the simulated phone flow.'
+                  ? 'Choose Child, Parent, Case Manager, or City Worker, then sign in to that development demo.'
                   : 'A trusted space for family travel, local reports, and the people working to make things better.'}
       </Text>
       <Card style={styles.form}>
@@ -287,11 +287,37 @@ export function AuthScreen() {
             </View>
             {mode === 'signin' && signInMethod === 'demo' && demoEnabled ? (
               <>
+                <Text style={[styles.label, { color: colors.foreground }]}>Sign in to a role</Text>
+                <View style={styles.roleGrid}>
+                  {DEMO_ROLES.map((role) => {
+                    const selected = selectedRole === role.value;
+                    return (
+                      <Pressable
+                        key={role.value}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Sign in to the ${role.label} role`}
+                        accessibilityState={{ selected }}
+                        onPress={() => { setSelectedRole(role.value); setError(''); }}
+                        style={({ pressed }) => [
+                          styles.roleChoice,
+                          {
+                            borderColor: selected ? colors.primary : colors.border,
+                            backgroundColor: selected ? colors.secondary : colors.card,
+                            opacity: pressed ? 0.76 : 1,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.roleChoiceLabel, { color: selected ? colors.primary : colors.foreground }]}>{role.label}</Text>
+                        {selected ? <Feather name="check" size={16} color={colors.primary} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
                 <Input label="Username or phone number" value={identifier} onChangeText={(value) => { setIdentifier(value); setError(''); }} placeholder="AI4SG or 408 887 7754" autoCapitalize="none" />
                 {!phoneInput ? <Input label="Password" value={usernamePassword} onChangeText={setUsernamePassword} placeholder="Demo password" secureTextEntry autoComplete="current-password" /> : null}
                 {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
                 <Button
-                  label={phoneInput ? 'Send demo code' : 'Continue'}
+                  label={phoneInput ? 'Send demo code' : `Continue as ${selectedRoleLabel}`}
                   icon="arrow-right"
                   loading={demoBusy}
                   disabled={!identifier.trim() || (!phoneInput && !usernamePassword) || busy}
@@ -468,6 +494,9 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', gap: 8 },
   methodRow: { flexDirection: 'row', gap: 8 },
   methodButton: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  roleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  roleChoice: { width: '48%', minHeight: 48, borderWidth: 1, borderRadius: 13, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  roleChoiceLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   signupChoices: { gap: 10 },
   signupChoice: { minHeight: 76, borderWidth: 1, borderRadius: 15, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   choiceIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },

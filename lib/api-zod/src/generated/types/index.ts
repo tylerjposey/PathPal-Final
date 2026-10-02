@@ -71,6 +71,7 @@ export * from './parentAccountInput';
 export * from './pathPalNotification';
 export * from './pathPalNotificationType';
 export * from './phoneReportSessionInput';
+export * from './phoneReportSessionInputRole';
 export * from './placesPlaceIdParameter';
 export * from './placesSessionTokenParameter';
 export * from './publicHeatCell';

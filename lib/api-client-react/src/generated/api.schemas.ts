@@ -624,12 +624,23 @@ export interface ReportSessionInput {
   verificationCode: string;
 }
 
+export type PhoneReportSessionInputRole = typeof PhoneReportSessionInputRole[keyof typeof PhoneReportSessionInputRole];
+
+
+export const PhoneReportSessionInputRole = {
+  parent: 'parent',
+  child: 'child',
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
 export interface PhoneReportSessionInput {
   /**
      * @minLength 7
      * @maxLength 32
      */
   phoneNumber: string;
+  role: PhoneReportSessionInputRole;
   /** @pattern ^[0-9]{4}$ */
   verificationCode: string;
 }

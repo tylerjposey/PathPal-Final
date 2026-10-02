@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PhoneReportSessionInputRole } from './phoneReportSessionInputRole';
 
 export interface PhoneReportSessionInput {
   /**
@@ -12,6 +13,7 @@ export interface PhoneReportSessionInput {
      * @maxLength 32
      */
   phoneNumber: string;
+  role: PhoneReportSessionInputRole;
   /** @pattern ^[0-9]{4}$ */
   verificationCode: string;
 }

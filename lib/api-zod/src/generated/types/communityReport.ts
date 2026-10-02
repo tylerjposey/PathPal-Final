@@ -39,6 +39,10 @@ export interface CommunityReport {
   /** @nullable */
   familyAccountId: string | null;
   /** @nullable */
+  reporterUserId: string | null;
+  /** @nullable */
+  familyId: string | null;
+  /** @nullable */
   selectedCategory: CommunityReportSelectedCategory;
   /**
      * @minimum 37

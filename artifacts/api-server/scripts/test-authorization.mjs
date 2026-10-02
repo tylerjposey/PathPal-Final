@@ -14,7 +14,7 @@ const outputDir = path.join(artifactDir, ".authorization-test-build");
 
 try {
   const buildResult = await build({
-    entryPoints: [path.join(artifactDir, "tests", "reports.authorization.test.ts")],
+    entryPoints: [path.join(artifactDir, "tests", "pathpal-auth.test.ts")],
     platform: "node",
     bundle: true,
     format: "esm",
@@ -41,7 +41,7 @@ globalThis.require = __bannerCrReq(import.meta.url);`,
     },
   });
   const testOutput = Object.entries(buildResult.metafile.outputs)
-    .find(([, output]) => output.entryPoint?.endsWith("reports.authorization.test.ts"))?.[0];
+    .find(([, output]) => output.entryPoint?.endsWith("pathpal-auth.test.ts"))?.[0];
   if (!testOutput) throw new Error("Could not locate the bundled authorization test entry point.");
   const testOutputPath = path.isAbsolute(testOutput) ? testOutput : path.resolve(process.cwd(), testOutput);
   const spawnResult = spawnSync(process.execPath, ["--test", testOutputPath], {

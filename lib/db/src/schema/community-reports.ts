@@ -1,6 +1,7 @@
 import { boolean, doublePrecision, integer, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { accountProfilesTable, familyGroupsTable } from "./accounts-families";
 
 export const communityReportsTable = pgTable("community_reports", {
   id: varchar("id", { length: 80 }).primaryKey(),
@@ -22,6 +23,13 @@ export const communityReportsTable = pgTable("community_reports", {
   awardedPoints: boolean("awarded_points").notNull().default(false),
   reporterAccountId: varchar("reporter_account_id", { length: 120 }),
   familyAccountId: varchar("family_account_id", { length: 120 }),
+  reporterUserId: varchar("reporter_user_id", { length: 128 }).references(
+    () => accountProfilesTable.userId,
+    { onDelete: "set null" },
+  ),
+  familyId: varchar("family_id", { length: 36 }).references(() => familyGroupsTable.id, {
+    onDelete: "set null",
+  }),
   selectedCategory: varchar("selected_category", { length: 40 }),
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),

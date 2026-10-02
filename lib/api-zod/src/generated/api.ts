@@ -382,6 +382,655 @@ export const GetJourneyPlaceDetailsResponse = zod.object({
 
 
 /**
+ * @summary Get the signed-in user's PathPal account and approval status
+ */
+export const GetAccountStatusResponse = zod.object({
+  "status": zod.enum(['needs_setup', 'parent', 'child_pending', 'child_approved', 'child_rejected', 'manager', 'worker']),
+  "userId": zod.string(),
+  "displayName": zod.string(),
+  "familyId": zod.string().nullable(),
+  "familyName": zod.string().nullable(),
+  "approvalDeadline": zod.coerce.date().nullable(),
+  "teamName": zod.string().nullable()
+})
+
+
+/**
+ * @summary Create the initial manager only for the maintainer-configured Clerk user
+ */
+export const BootstrapInitialManagerResponse = zod.object({
+  "status": zod.enum(['needs_setup', 'parent', 'child_pending', 'child_approved', 'child_rejected', 'manager', 'worker']),
+  "userId": zod.string(),
+  "displayName": zod.string(),
+  "familyId": zod.string().nullable(),
+  "familyName": zod.string().nullable(),
+  "approvalDeadline": zod.coerce.date().nullable(),
+  "teamName": zod.string().nullable()
+})
+
+
+/**
+ * @summary Create the signed-in user's parent account and family
+ */
+export const createParentAccountBodyDisplayNameMax = 80;
+
+export const createParentAccountBodyFamilyNameMax = 100;
+
+
+
+export const CreateParentAccountBody = zod.object({
+  "displayName": zod.string().min(1).max(createParentAccountBodyDisplayNameMax),
+  "familyName": zod.string().min(1).max(createParentAccountBodyFamilyNameMax)
+})
+
+export const CreateParentAccountResponse = zod.object({
+  "status": zod.enum(['needs_setup', 'parent', 'child_pending', 'child_approved', 'child_rejected', 'manager', 'worker']),
+  "userId": zod.string(),
+  "displayName": zod.string(),
+  "familyId": zod.string().nullable(),
+  "familyName": zod.string().nullable(),
+  "approvalDeadline": zod.coerce.date().nullable(),
+  "teamName": zod.string().nullable()
+})
+
+
+/**
+ * @summary Request to join a family using its invitation code
+ */
+export const createChildAccountBodyDisplayNameMax = 80;
+
+export const createChildAccountBodyInvitationCodeMin = 6;
+export const createChildAccountBodyInvitationCodeMax = 24;
+
+
+
+export const CreateChildAccountBody = zod.object({
+  "displayName": zod.string().min(1).max(createChildAccountBodyDisplayNameMax),
+  "invitationCode": zod.string().min(createChildAccountBodyInvitationCodeMin).max(createChildAccountBodyInvitationCodeMax)
+})
+
+export const CreateChildAccountResponse = zod.object({
+  "status": zod.enum(['needs_setup', 'parent', 'child_pending', 'child_approved', 'child_rejected', 'manager', 'worker']),
+  "userId": zod.string(),
+  "displayName": zod.string(),
+  "familyId": zod.string().nullable(),
+  "familyName": zod.string().nullable(),
+  "approvalDeadline": zod.coerce.date().nullable(),
+  "teamName": zod.string().nullable()
+})
+
+
+/**
+ * @summary Accept a City Manager or City Worker invitation
+ */
+export const acceptStaffInvitationBodyDisplayNameMax = 80;
+
+export const acceptStaffInvitationBodyInvitationCodeMin = 12;
+export const acceptStaffInvitationBodyInvitationCodeMax = 80;
+
+
+
+export const AcceptStaffInvitationBody = zod.object({
+  "displayName": zod.string().min(1).max(acceptStaffInvitationBodyDisplayNameMax),
+  "invitationCode": zod.string().min(acceptStaffInvitationBodyInvitationCodeMin).max(acceptStaffInvitationBodyInvitationCodeMax)
+})
+
+export const AcceptStaffInvitationResponse = zod.object({
+  "status": zod.enum(['needs_setup', 'parent', 'child_pending', 'child_approved', 'child_rejected', 'manager', 'worker']),
+  "userId": zod.string(),
+  "displayName": zod.string(),
+  "familyId": zod.string().nullable(),
+  "familyName": zod.string().nullable(),
+  "approvalDeadline": zod.coerce.date().nullable(),
+  "teamName": zod.string().nullable()
+})
+
+
+/**
+ * @summary Get family information visible to the signed-in member
+ */
+export const GetMyFamilyResponse = zod.object({
+  "state": zod.enum(['parent', 'child_pending', 'child_approved', 'child_rejected']),
+  "familyName": zod.string().nullable(),
+  "invitationCode": zod.string().nullable().describe('Only returned to the owning parent'),
+  "approvalDeadline": zod.coerce.date().nullable(),
+  "members": zod.array(zod.object({
+  "membershipId": zod.number().int(),
+  "displayName": zod.string(),
+  "role": zod.enum(['parent', 'child']),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requestedAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable()
+})),
+  "pendingRequests": zod.array(zod.object({
+  "membershipId": zod.number().int(),
+  "displayName": zod.string(),
+  "role": zod.enum(['parent', 'child']),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requestedAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable()
+}))
+})
+
+
+/**
+ * @summary Get the family's currently shared journey
+ */
+export const getFamilyJourneyResponseJourneyOneRouteDurationMinutesMin = 0;
+
+export const getFamilyJourneyResponseJourneyOneRouteWalkingMetersMin = 0;
+
+export const getFamilyJourneyResponseJourneyOneRouteTransfersMin = 0;
+
+export const getFamilyJourneyResponseJourneyOneRouteDelayMinutesMin = 0;
+
+export const getFamilyJourneyResponseJourneyOneRouteLegsItemDistanceMetersMin = 0;
+
+export const getFamilyJourneyResponseJourneyOneRouteLegsItemDurationMinutesMin = 0;
+
+export const getFamilyJourneyResponseJourneyOneOriginNameMax = 200;
+
+export const getFamilyJourneyResponseJourneyOneOriginLatitudeMin = -90;
+export const getFamilyJourneyResponseJourneyOneOriginLatitudeMax = 90;
+
+export const getFamilyJourneyResponseJourneyOneOriginLongitudeMin = -180;
+export const getFamilyJourneyResponseJourneyOneOriginLongitudeMax = 180;
+
+export const getFamilyJourneyResponseJourneyOneDestinationNameMax = 200;
+
+export const getFamilyJourneyResponseJourneyOneDestinationLatitudeMin = -90;
+export const getFamilyJourneyResponseJourneyOneDestinationLatitudeMax = 90;
+
+export const getFamilyJourneyResponseJourneyOneDestinationLongitudeMin = -180;
+export const getFamilyJourneyResponseJourneyOneDestinationLongitudeMax = 180;
+
+export const getFamilyJourneyResponseJourneyOneMilestoneIndexMin = -1;
+export const getFamilyJourneyResponseJourneyOneMilestoneIndexMax = 100;
+
+
+
+export const GetFamilyJourneyResponse = zod.object({
+  "journey": zod.union([zod.object({
+  "id": zod.string().uuid(),
+  "route": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "startStop": zod.string(),
+  "destinationStop": zod.string(),
+  "durationMinutes": zod.number().int().min(getFamilyJourneyResponseJourneyOneRouteDurationMinutesMin),
+  "walkingMeters": zod.number().int().min(getFamilyJourneyResponseJourneyOneRouteWalkingMetersMin),
+  "transfers": zod.number().int().min(getFamilyJourneyResponseJourneyOneRouteTransfersMin),
+  "delayMinutes": zod.number().int().min(getFamilyJourneyResponseJourneyOneRouteDelayMinutesMin),
+  "alerts": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "recommended": zod.boolean(),
+  "source": zod.enum(['live', 'demo']),
+  "polyline": zod.string().nullish(),
+  "mode": zod.enum(['walking', 'transit']),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().nullable().describe('Public VTA route code (e.g. "22"), null for walking legs.'),
+  "routeName": zod.string().nullable(),
+  "boardingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "alightingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "distanceMeters": zod.number().int().min(getFamilyJourneyResponseJourneyOneRouteLegsItemDistanceMetersMin),
+  "durationMinutes": zod.number().int().min(getFamilyJourneyResponseJourneyOneRouteLegsItemDurationMinutesMin),
+  "delayMinutes": zod.number().int().nullable(),
+  "predictedArrival": zod.coerce.date().nullable(),
+  "transferGuidance": zod.string().nullable(),
+  "polyline": zod.string().nullable()
+}).describe('One ordered segment of a journey - either a walk or a single VTA bus ride.'))
+}),
+  "origin": zod.object({
+  "name": zod.string().min(1).max(getFamilyJourneyResponseJourneyOneOriginNameMax),
+  "latitude": zod.number().min(getFamilyJourneyResponseJourneyOneOriginLatitudeMin).max(getFamilyJourneyResponseJourneyOneOriginLatitudeMax),
+  "longitude": zod.number().min(getFamilyJourneyResponseJourneyOneOriginLongitudeMin).max(getFamilyJourneyResponseJourneyOneOriginLongitudeMax)
+}),
+  "destination": zod.object({
+  "name": zod.string().min(1).max(getFamilyJourneyResponseJourneyOneDestinationNameMax),
+  "latitude": zod.number().min(getFamilyJourneyResponseJourneyOneDestinationLatitudeMin).max(getFamilyJourneyResponseJourneyOneDestinationLatitudeMax),
+  "longitude": zod.number().min(getFamilyJourneyResponseJourneyOneDestinationLongitudeMin).max(getFamilyJourneyResponseJourneyOneDestinationLongitudeMax)
+}),
+  "milestoneIndex": zod.number().int().min(getFamilyJourneyResponseJourneyOneMilestoneIndexMin).max(getFamilyJourneyResponseJourneyOneMilestoneIndexMax),
+  "tripUpdatedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Save or replace the family's shared journey
+ */
+export const saveFamilyJourneyBodyRouteDurationMinutesMin = 0;
+
+export const saveFamilyJourneyBodyRouteWalkingMetersMin = 0;
+
+export const saveFamilyJourneyBodyRouteTransfersMin = 0;
+
+export const saveFamilyJourneyBodyRouteDelayMinutesMin = 0;
+
+export const saveFamilyJourneyBodyRouteLegsItemDistanceMetersMin = 0;
+
+export const saveFamilyJourneyBodyRouteLegsItemDurationMinutesMin = 0;
+
+export const saveFamilyJourneyBodyOriginNameMax = 200;
+
+export const saveFamilyJourneyBodyOriginLatitudeMin = -90;
+export const saveFamilyJourneyBodyOriginLatitudeMax = 90;
+
+export const saveFamilyJourneyBodyOriginLongitudeMin = -180;
+export const saveFamilyJourneyBodyOriginLongitudeMax = 180;
+
+export const saveFamilyJourneyBodyDestinationNameMax = 200;
+
+export const saveFamilyJourneyBodyDestinationLatitudeMin = -90;
+export const saveFamilyJourneyBodyDestinationLatitudeMax = 90;
+
+export const saveFamilyJourneyBodyDestinationLongitudeMin = -180;
+export const saveFamilyJourneyBodyDestinationLongitudeMax = 180;
+
+
+
+export const SaveFamilyJourneyBody = zod.object({
+  "route": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "startStop": zod.string(),
+  "destinationStop": zod.string(),
+  "durationMinutes": zod.number().int().min(saveFamilyJourneyBodyRouteDurationMinutesMin),
+  "walkingMeters": zod.number().int().min(saveFamilyJourneyBodyRouteWalkingMetersMin),
+  "transfers": zod.number().int().min(saveFamilyJourneyBodyRouteTransfersMin),
+  "delayMinutes": zod.number().int().min(saveFamilyJourneyBodyRouteDelayMinutesMin),
+  "alerts": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "recommended": zod.boolean(),
+  "source": zod.enum(['live', 'demo']),
+  "polyline": zod.string().nullish(),
+  "mode": zod.enum(['walking', 'transit']),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().nullable().describe('Public VTA route code (e.g. "22"), null for walking legs.'),
+  "routeName": zod.string().nullable(),
+  "boardingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "alightingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "distanceMeters": zod.number().int().min(saveFamilyJourneyBodyRouteLegsItemDistanceMetersMin),
+  "durationMinutes": zod.number().int().min(saveFamilyJourneyBodyRouteLegsItemDurationMinutesMin),
+  "delayMinutes": zod.number().int().nullable(),
+  "predictedArrival": zod.coerce.date().nullable(),
+  "transferGuidance": zod.string().nullable(),
+  "polyline": zod.string().nullable()
+}).describe('One ordered segment of a journey - either a walk or a single VTA bus ride.'))
+}),
+  "origin": zod.object({
+  "name": zod.string().min(1).max(saveFamilyJourneyBodyOriginNameMax),
+  "latitude": zod.number().min(saveFamilyJourneyBodyOriginLatitudeMin).max(saveFamilyJourneyBodyOriginLatitudeMax),
+  "longitude": zod.number().min(saveFamilyJourneyBodyOriginLongitudeMin).max(saveFamilyJourneyBodyOriginLongitudeMax)
+}),
+  "destination": zod.object({
+  "name": zod.string().min(1).max(saveFamilyJourneyBodyDestinationNameMax),
+  "latitude": zod.number().min(saveFamilyJourneyBodyDestinationLatitudeMin).max(saveFamilyJourneyBodyDestinationLatitudeMax),
+  "longitude": zod.number().min(saveFamilyJourneyBodyDestinationLongitudeMin).max(saveFamilyJourneyBodyDestinationLongitudeMax)
+})
+})
+
+export const saveFamilyJourneyResponseJourneyOneRouteDurationMinutesMin = 0;
+
+export const saveFamilyJourneyResponseJourneyOneRouteWalkingMetersMin = 0;
+
+export const saveFamilyJourneyResponseJourneyOneRouteTransfersMin = 0;
+
+export const saveFamilyJourneyResponseJourneyOneRouteDelayMinutesMin = 0;
+
+export const saveFamilyJourneyResponseJourneyOneRouteLegsItemDistanceMetersMin = 0;
+
+export const saveFamilyJourneyResponseJourneyOneRouteLegsItemDurationMinutesMin = 0;
+
+export const saveFamilyJourneyResponseJourneyOneOriginNameMax = 200;
+
+export const saveFamilyJourneyResponseJourneyOneOriginLatitudeMin = -90;
+export const saveFamilyJourneyResponseJourneyOneOriginLatitudeMax = 90;
+
+export const saveFamilyJourneyResponseJourneyOneOriginLongitudeMin = -180;
+export const saveFamilyJourneyResponseJourneyOneOriginLongitudeMax = 180;
+
+export const saveFamilyJourneyResponseJourneyOneDestinationNameMax = 200;
+
+export const saveFamilyJourneyResponseJourneyOneDestinationLatitudeMin = -90;
+export const saveFamilyJourneyResponseJourneyOneDestinationLatitudeMax = 90;
+
+export const saveFamilyJourneyResponseJourneyOneDestinationLongitudeMin = -180;
+export const saveFamilyJourneyResponseJourneyOneDestinationLongitudeMax = 180;
+
+export const saveFamilyJourneyResponseJourneyOneMilestoneIndexMin = -1;
+export const saveFamilyJourneyResponseJourneyOneMilestoneIndexMax = 100;
+
+
+
+export const SaveFamilyJourneyResponse = zod.object({
+  "journey": zod.union([zod.object({
+  "id": zod.string().uuid(),
+  "route": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "startStop": zod.string(),
+  "destinationStop": zod.string(),
+  "durationMinutes": zod.number().int().min(saveFamilyJourneyResponseJourneyOneRouteDurationMinutesMin),
+  "walkingMeters": zod.number().int().min(saveFamilyJourneyResponseJourneyOneRouteWalkingMetersMin),
+  "transfers": zod.number().int().min(saveFamilyJourneyResponseJourneyOneRouteTransfersMin),
+  "delayMinutes": zod.number().int().min(saveFamilyJourneyResponseJourneyOneRouteDelayMinutesMin),
+  "alerts": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "recommended": zod.boolean(),
+  "source": zod.enum(['live', 'demo']),
+  "polyline": zod.string().nullish(),
+  "mode": zod.enum(['walking', 'transit']),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().nullable().describe('Public VTA route code (e.g. "22"), null for walking legs.'),
+  "routeName": zod.string().nullable(),
+  "boardingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "alightingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "distanceMeters": zod.number().int().min(saveFamilyJourneyResponseJourneyOneRouteLegsItemDistanceMetersMin),
+  "durationMinutes": zod.number().int().min(saveFamilyJourneyResponseJourneyOneRouteLegsItemDurationMinutesMin),
+  "delayMinutes": zod.number().int().nullable(),
+  "predictedArrival": zod.coerce.date().nullable(),
+  "transferGuidance": zod.string().nullable(),
+  "polyline": zod.string().nullable()
+}).describe('One ordered segment of a journey - either a walk or a single VTA bus ride.'))
+}),
+  "origin": zod.object({
+  "name": zod.string().min(1).max(saveFamilyJourneyResponseJourneyOneOriginNameMax),
+  "latitude": zod.number().min(saveFamilyJourneyResponseJourneyOneOriginLatitudeMin).max(saveFamilyJourneyResponseJourneyOneOriginLatitudeMax),
+  "longitude": zod.number().min(saveFamilyJourneyResponseJourneyOneOriginLongitudeMin).max(saveFamilyJourneyResponseJourneyOneOriginLongitudeMax)
+}),
+  "destination": zod.object({
+  "name": zod.string().min(1).max(saveFamilyJourneyResponseJourneyOneDestinationNameMax),
+  "latitude": zod.number().min(saveFamilyJourneyResponseJourneyOneDestinationLatitudeMin).max(saveFamilyJourneyResponseJourneyOneDestinationLatitudeMax),
+  "longitude": zod.number().min(saveFamilyJourneyResponseJourneyOneDestinationLongitudeMin).max(saveFamilyJourneyResponseJourneyOneDestinationLongitudeMax)
+}),
+  "milestoneIndex": zod.number().int().min(saveFamilyJourneyResponseJourneyOneMilestoneIndexMin).max(saveFamilyJourneyResponseJourneyOneMilestoneIndexMax),
+  "tripUpdatedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Record the next child journey check-in for the family
+ */
+export const confirmFamilyJourneyMilestoneBodyMilestoneIndexMin = 0;
+export const confirmFamilyJourneyMilestoneBodyMilestoneIndexMax = 100;
+
+
+
+export const ConfirmFamilyJourneyMilestoneBody = zod.object({
+  "milestoneIndex": zod.number().int().min(confirmFamilyJourneyMilestoneBodyMilestoneIndexMin).max(confirmFamilyJourneyMilestoneBodyMilestoneIndexMax)
+})
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneRouteDurationMinutesMin = 0;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneRouteWalkingMetersMin = 0;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneRouteTransfersMin = 0;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneRouteDelayMinutesMin = 0;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneRouteLegsItemDistanceMetersMin = 0;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneRouteLegsItemDurationMinutesMin = 0;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneOriginNameMax = 200;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneOriginLatitudeMin = -90;
+export const confirmFamilyJourneyMilestoneResponseJourneyOneOriginLatitudeMax = 90;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneOriginLongitudeMin = -180;
+export const confirmFamilyJourneyMilestoneResponseJourneyOneOriginLongitudeMax = 180;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneDestinationNameMax = 200;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneDestinationLatitudeMin = -90;
+export const confirmFamilyJourneyMilestoneResponseJourneyOneDestinationLatitudeMax = 90;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneDestinationLongitudeMin = -180;
+export const confirmFamilyJourneyMilestoneResponseJourneyOneDestinationLongitudeMax = 180;
+
+export const confirmFamilyJourneyMilestoneResponseJourneyOneMilestoneIndexMin = -1;
+export const confirmFamilyJourneyMilestoneResponseJourneyOneMilestoneIndexMax = 100;
+
+
+
+export const ConfirmFamilyJourneyMilestoneResponse = zod.object({
+  "journey": zod.union([zod.object({
+  "id": zod.string().uuid(),
+  "route": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "startStop": zod.string(),
+  "destinationStop": zod.string(),
+  "durationMinutes": zod.number().int().min(confirmFamilyJourneyMilestoneResponseJourneyOneRouteDurationMinutesMin),
+  "walkingMeters": zod.number().int().min(confirmFamilyJourneyMilestoneResponseJourneyOneRouteWalkingMetersMin),
+  "transfers": zod.number().int().min(confirmFamilyJourneyMilestoneResponseJourneyOneRouteTransfersMin),
+  "delayMinutes": zod.number().int().min(confirmFamilyJourneyMilestoneResponseJourneyOneRouteDelayMinutesMin),
+  "alerts": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "recommended": zod.boolean(),
+  "source": zod.enum(['live', 'demo']),
+  "polyline": zod.string().nullish(),
+  "mode": zod.enum(['walking', 'transit']),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().nullable().describe('Public VTA route code (e.g. "22"), null for walking legs.'),
+  "routeName": zod.string().nullable(),
+  "boardingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "alightingStop": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number().int().nullish()
+}),
+  "distanceMeters": zod.number().int().min(confirmFamilyJourneyMilestoneResponseJourneyOneRouteLegsItemDistanceMetersMin),
+  "durationMinutes": zod.number().int().min(confirmFamilyJourneyMilestoneResponseJourneyOneRouteLegsItemDurationMinutesMin),
+  "delayMinutes": zod.number().int().nullable(),
+  "predictedArrival": zod.coerce.date().nullable(),
+  "transferGuidance": zod.string().nullable(),
+  "polyline": zod.string().nullable()
+}).describe('One ordered segment of a journey - either a walk or a single VTA bus ride.'))
+}),
+  "origin": zod.object({
+  "name": zod.string().min(1).max(confirmFamilyJourneyMilestoneResponseJourneyOneOriginNameMax),
+  "latitude": zod.number().min(confirmFamilyJourneyMilestoneResponseJourneyOneOriginLatitudeMin).max(confirmFamilyJourneyMilestoneResponseJourneyOneOriginLatitudeMax),
+  "longitude": zod.number().min(confirmFamilyJourneyMilestoneResponseJourneyOneOriginLongitudeMin).max(confirmFamilyJourneyMilestoneResponseJourneyOneOriginLongitudeMax)
+}),
+  "destination": zod.object({
+  "name": zod.string().min(1).max(confirmFamilyJourneyMilestoneResponseJourneyOneDestinationNameMax),
+  "latitude": zod.number().min(confirmFamilyJourneyMilestoneResponseJourneyOneDestinationLatitudeMin).max(confirmFamilyJourneyMilestoneResponseJourneyOneDestinationLatitudeMax),
+  "longitude": zod.number().min(confirmFamilyJourneyMilestoneResponseJourneyOneDestinationLongitudeMin).max(confirmFamilyJourneyMilestoneResponseJourneyOneDestinationLongitudeMax)
+}),
+  "milestoneIndex": zod.number().int().min(confirmFamilyJourneyMilestoneResponseJourneyOneMilestoneIndexMin).max(confirmFamilyJourneyMilestoneResponseJourneyOneMilestoneIndexMax),
+  "tripUpdatedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Approve a pending child request as the owning parent
+ */
+
+
+
+export const ApproveFamilyJoinRequestParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const ApproveFamilyJoinRequestResponse = zod.object({
+  "membershipId": zod.number().int(),
+  "status": zod.enum(['approved', 'rejected'])
+})
+
+
+/**
+ * @summary Reject a pending child request as the owning parent
+ */
+
+
+
+export const RejectFamilyJoinRequestParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const RejectFamilyJoinRequestResponse = zod.object({
+  "membershipId": zod.number().int(),
+  "status": zod.enum(['approved', 'rejected'])
+})
+
+
+/**
+ * @summary List notifications for the signed-in account
+ */
+export const ListNotificationsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "type": zod.enum(['child_join_request', 'child_approved', 'child_rejected']),
+  "title": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "readAt": zod.coerce.date().nullable()
+})
+export const ListNotificationsResponse = zod.array(ListNotificationsResponseItem)
+
+
+/**
+ * @summary Mark one of the signed-in user's notifications as read
+ */
+
+
+
+export const MarkNotificationReadParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const MarkNotificationReadResponse = zod.object({
+  "id": zod.number().int(),
+  "type": zod.enum(['child_join_request', 'child_approved', 'child_rejected']),
+  "title": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "readAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Issue a one-time City Manager or City Worker invitation
+ */
+export const createStaffInvitationBodyTeamNameMax = 120;
+
+
+
+export const CreateStaffInvitationBody = zod.object({
+  "role": zod.enum(['manager', 'worker']),
+  "teamName": zod.string().max(createStaffInvitationBodyTeamNameMax).nullish()
+})
+
+export const CreateStaffInvitationResponse = zod.object({
+  "invitationCode": zod.string(),
+  "role": zod.enum(['manager', 'worker']),
+  "teamName": zod.string().nullable(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get authorized report markers and anonymous aggregate heat cells
+ */
+export const getReportMapDataResponseMarkersItemSeverityMax = 10;
+
+export const getReportMapDataResponsePublicHeatItemIntensityMin = 0;
+export const getReportMapDataResponsePublicHeatItemIntensityMax = 1;
+
+
+
+export const GetReportMapDataResponse = zod.object({
+  "markers": zod.array(zod.object({
+  "id": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "severity": zod.number().int().min(1).max(getReportMapDataResponseMarkersItemSeverityMax).nullable(),
+  "status": zod.enum(['Submitted', 'Under Review', 'Assigned', 'Resolved']),
+  "assignedTeam": zod.string().nullable(),
+  "routeAssignment": zod.string().nullable()
+})),
+  "publicHeat": zod.array(zod.object({
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "intensity": zod.number().min(getReportMapDataResponsePublicHeatItemIntensityMin).max(getReportMapDataResponsePublicHeatItemIntensityMax)
+}))
+})
+
+
+/**
+ * @summary Get anonymized report-density cells without report identifiers
+ */
+export const getPublicReportHeatResponseIntensityMin = 0;
+export const getPublicReportHeatResponseIntensityMax = 1;
+
+
+
+export const GetPublicReportHeatResponseItem = zod.object({
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "intensity": zod.number().min(getPublicReportHeatResponseIntensityMin).max(getPublicReportHeatResponseIntensityMax)
+})
+export const GetPublicReportHeatResponse = zod.array(GetPublicReportHeatResponseItem)
+
+
+/**
  * @summary List reports visible to the signed demo role
  */
 export const listReportsResponseSeverityMax = 10;
@@ -413,6 +1062,8 @@ export const ListReportsResponseItem = zod.object({
   "awardedPoints": zod.boolean(),
   "reporterAccountId": zod.string().nullable(),
   "familyAccountId": zod.string().nullable(),
+  "reporterUserId": zod.string().nullable(),
+  "familyId": zod.string().nullable(),
   "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
   "latitude": zod.number().min(listReportsResponseLatitudeMin).max(listReportsResponseLatitudeMax).nullable(),
   "longitude": zod.number().min(listReportsResponseLongitudeMin).max(listReportsResponseLongitudeMax).nullable(),
@@ -480,6 +1131,8 @@ export const CreateReportResponse = zod.object({
   "awardedPoints": zod.boolean(),
   "reporterAccountId": zod.string().nullable(),
   "familyAccountId": zod.string().nullable(),
+  "reporterUserId": zod.string().nullable(),
+  "familyId": zod.string().nullable(),
   "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
   "latitude": zod.number().min(createReportResponseLatitudeMin).max(createReportResponseLatitudeMax).nullable(),
   "longitude": zod.number().min(createReportResponseLongitudeMin).max(createReportResponseLongitudeMax).nullable(),
@@ -488,30 +1141,6 @@ export const CreateReportResponse = zod.object({
   "updatedAt": zod.coerce.date(),
   "assignedAt": zod.coerce.date().nullable(),
   "resolvedAt": zod.coerce.date().nullable()
-})
-
-
-/**
- * @summary Create a prototype-only signed demo session; these roles are not secure real accounts
- */
-export const createReportSessionBodyUsernameMax = 100;
-
-export const createReportSessionBodyPasswordMax = 200;
-
-
-
-export const CreateReportSessionBody = zod.object({
-  "username": zod.string().min(1).max(createReportSessionBodyUsernameMax),
-  "password": zod.string().min(1).max(createReportSessionBodyPasswordMax),
-  "role": zod.enum(['parent', 'child', 'citizen', 'manager', 'worker'])
-})
-
-export const CreateReportSessionResponse = zod.object({
-  "accessToken": zod.string(),
-  "tokenType": zod.enum(['Bearer']),
-  "expiresAt": zod.coerce.date(),
-  "role": zod.enum(['parent', 'child', 'citizen', 'manager', 'worker']),
-  "prototypeOnly": zod.literal(true)
 })
 
 
@@ -555,6 +1184,8 @@ export const GetReportResponse = zod.object({
   "awardedPoints": zod.boolean(),
   "reporterAccountId": zod.string().nullable(),
   "familyAccountId": zod.string().nullable(),
+  "reporterUserId": zod.string().nullable(),
+  "familyId": zod.string().nullable(),
   "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
   "latitude": zod.number().min(getReportResponseOneLatitudeMin).max(getReportResponseOneLatitudeMax).nullable(),
   "longitude": zod.number().min(getReportResponseOneLongitudeMin).max(getReportResponseOneLongitudeMax).nullable(),
@@ -646,6 +1277,8 @@ export const UpdateReportResponse = zod.object({
   "awardedPoints": zod.boolean(),
   "reporterAccountId": zod.string().nullable(),
   "familyAccountId": zod.string().nullable(),
+  "reporterUserId": zod.string().nullable(),
+  "familyId": zod.string().nullable(),
   "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
   "latitude": zod.number().min(updateReportResponseReportLatitudeMin).max(updateReportResponseReportLatitudeMax).nullable(),
   "longitude": zod.number().min(updateReportResponseReportLongitudeMin).max(updateReportResponseReportLongitudeMax).nullable(),
@@ -705,6 +1338,8 @@ export const ResetDemoReportsResponseItem = zod.object({
   "awardedPoints": zod.boolean(),
   "reporterAccountId": zod.string().nullable(),
   "familyAccountId": zod.string().nullable(),
+  "reporterUserId": zod.string().nullable(),
+  "familyId": zod.string().nullable(),
   "selectedCategory": zod.union([zod.literal('Blight'),zod.literal('Illegal dumping'),zod.literal('Unsafe bus stops'),zod.literal('Damaged sidewalks'),zod.literal('Poor lighting'),zod.literal('Suspicious activity'),zod.literal('Other concerns'),zod.literal(null)]).nullable(),
   "latitude": zod.number().min(resetDemoReportsResponseLatitudeMin).max(resetDemoReportsResponseLatitudeMax).nullable(),
   "longitude": zod.number().min(resetDemoReportsResponseLongitudeMin).max(resetDemoReportsResponseLongitudeMax).nullable(),

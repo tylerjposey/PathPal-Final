@@ -1,16 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useAuth } from '@clerk/expo';
 import { AuthScreen } from '@/components/AuthScreen';
-import { MainScreen } from '@/components/MainScreen';
-import { type DemoUser, useDemo } from '@/context/DemoContext';
+import { SecureWorkspace } from '@/components/SecureWorkspace';
 import { useColors } from '@/hooks/useColors';
 
 export default function IndexScreen() {
   const colors = useColors();
-  const { state, hydrated } = useDemo();
-  const [pendingAccount, setPendingAccount] = useState<DemoUser | null>(null);
+  const { isLoaded, isSignedIn } = useAuth();
 
-  if (!hydrated) {
+  if (!isLoaded) {
     return (
       <View style={[styles.loading, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -18,16 +17,7 @@ export default function IndexScreen() {
     );
   }
 
-  if (!state.account && !pendingAccount) {
-    return <AuthScreen onVerified={setPendingAccount} />;
-  }
-
-  return (
-    <MainScreen
-      verificationAccount={pendingAccount}
-      onVerified={() => setPendingAccount(null)}
-    />
-  );
+  return isSignedIn ? <SecureWorkspace /> : <AuthScreen />;
 }
 
 const styles = StyleSheet.create({

@@ -45,8 +45,8 @@
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@types/node": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
+    "@types/react": "~19.2.2",
+    "@types/react-dom": "~19.2.2",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
     "class-variance-authority": "catalog:",
@@ -58,9 +58,9 @@
     "input-otp": "^1.4.2",
     "lucide-react": "catalog:",
     "next-themes": "^0.4.6",
-    "react": "catalog:",
+    "react": "19.2.3",
     "react-day-picker": "^9.11.1",
-    "react-dom": "catalog:",
+    "react-dom": "19.2.3",
     "react-hook-form": "^7.55.0",
     "react-icons": "^5.4.0",
     "react-resizable-panels": "^2.1.7",
@@ -73,5 +73,9 @@
     "vite": "catalog:",
     "wouter": "^3.3.5",
     "zod": "catalog:"
+  },
+  "dependencies": {
+    "@clerk/react": "^6.17.4",
+    "@clerk/themes": "^2.4.57"
   }
 }

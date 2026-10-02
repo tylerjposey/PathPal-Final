@@ -1,5 +1,4 @@
-import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
-import { Storage } from "@google-cloud/storage";
+import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { and, asc, desc, eq } from "drizzle-orm";
 import {
@@ -11,8 +10,6 @@ import {
 import {
   CreateReportBody,
   CreateReportResponse,
-  CreateReportSessionBody,
-  CreateReportSessionResponse,
   GetReportParams,
   GetReportResponse,
   GetReportPhotoParams,
@@ -22,6 +19,15 @@ import {
   UpdateReportParams,
   UpdateReportResponse,
 } from "@workspace/api-zod";
+import {
+  authenticateAccount,
+  assertCanUpdateReport,
+  canViewReport,
+  HttpError,
+  requireApprovedFamilyMember,
+  type PathPalPrincipal,
+} from "../lib/pathpal-auth";
+import { reportObjectStorage, resolveReportStorageLocation } from "../lib/report-storage";
 
 const router: IRouter = Router();
 const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
@@ -39,23 +45,8 @@ const locations = [
 const westCleanTeam = "San Jose – West Clean Team";
 const demoFamilyId = "demo-family-ai4sg";
 const demoCitizenId = "demo-citizen-ai4sg";
-const storage = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: "http://127.0.0.1:1106/token",
-    type: "external_account",
-    credential_source: {
-      url: "http://127.0.0.1:1106/credential",
-      format: { type: "json", subject_token_field_name: "access_token" },
-    },
-    universe_domain: "googleapis.com",
-  },
-  projectId: "",
-});
+const storage = reportObjectStorage;
 
-type Role = "parent" | "child" | "citizen" | "manager" | "worker";
-type Claims = { role: Role; sub: string; familyId: string | null; exp: number };
 type SeedRow = {
   id: string;
   category: string;
@@ -70,12 +61,6 @@ type SeedRow = {
   hoursAgo: number;
   assignedTeam: string | null;
 };
-
-class HttpError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message);
-  }
-}
 
 const seed: SeedRow[] = [
   { id: "OR-2481", category: "Illegal dumping", description: "Several bags and loose debris beside the trail entrance.", severity: 9, status: "Assigned", location: "Downtown San Jose", x: 49, y: 42, latitude: 37.3391, longitude: -121.8871, hoursAgo: 7, assignedTeam: westCleanTeam },
@@ -107,6 +92,8 @@ function reportResponse(row: CommunityReportRow) {
     awardedPoints: row.awardedPoints,
     reporterAccountId: row.reporterAccountId,
     familyAccountId: row.familyAccountId,
+    reporterUserId: row.reporterUserId,
+    familyId: row.familyId,
     selectedCategory: row.selectedCategory,
     latitude: row.latitude,
     longitude: row.longitude,
@@ -283,53 +270,18 @@ async function restoreDemoReports(): Promise<CommunityReportRow[]> {
   return restored;
 }
 
-function createToken(claims: Claims, secret: string): string {
-  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
-  return `${payload}.${signature}`;
-}
-
-function authenticate(req: Request): Claims {
-  const auth = req.get("authorization") ?? "";
-  const match = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(auth);
-  const secret = process.env.SESSION_SECRET;
-  if (!match || !secret) throw new HttpError(401, "A valid bearer session is required.");
-  const [payload, signature, extra] = match[1].split(".");
-  if (!payload || !signature || extra) throw new HttpError(401, "A valid bearer session is required.");
-  const expected = createHmac("sha256", secret).update(payload).digest();
-  const received = Buffer.from(signature, "base64url");
-  if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
-    throw new HttpError(401, "A valid bearer session is required.");
+function requireView(principal: PathPalPrincipal, row: CommunityReportRow): void {
+  if (!canViewReport(principal, row)) {
+    throw new HttpError(403, "You are not authorized to view this report.");
   }
-  try {
-    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Claims;
-    const roles: Role[] = ["parent", "child", "citizen", "manager", "worker"];
-    if (!roles.includes(claims.role) || !claims.sub || claims.exp <= Math.floor(Date.now() / 1000)) throw new Error("invalid");
-    return claims;
-  } catch {
-    throw new HttpError(401, "A valid bearer session is required.");
-  }
-}
-
-function canView(claims: Claims, row: CommunityReportRow): boolean {
-  if (claims.role === "manager") return true;
-  if (claims.role === "worker") return row.assignedTeam === westCleanTeam;
-  if (claims.role === "citizen") return row.reporterAccountId === claims.sub;
-  if (claims.role === "parent" || claims.role === "child") return row.familyAccountId === claims.familyId;
-  return false;
-}
-
-function requireView(claims: Claims, row: CommunityReportRow): void {
-  if (!canView(claims, row)) throw new HttpError(403, "You are not authorized to view this report.");
 }
 
 function storageLocation(): { bucket: string; prefix: string } {
-  const bucket = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-  const rawPrivateDir = process.env.PRIVATE_OBJECT_DIR;
-  if (!bucket || !rawPrivateDir) throw new HttpError(503, "Private photo storage is not configured.");
-  const parts = rawPrivateDir.split("/").filter(Boolean);
-  if (parts[0] === bucket) parts.shift();
-  return { bucket, prefix: parts.join("/") };
+  try {
+    return resolveReportStorageLocation();
+  } catch {
+    throw new HttpError(503, "Private photo storage is not configured.");
+  }
 }
 
 function decodePhoto(encoded: string, contentType: string): Buffer {
@@ -382,10 +334,13 @@ function errorResponse(error: unknown, res: Response): void {
 
 router.get("/reports", async (req, res): Promise<void> => {
   try {
-    const claims = authenticate(req);
+    const principal = await authenticateAccount(req);
+    if (principal.role === "parent" || principal.role === "child") {
+      requireApprovedFamilyMember(principal);
+    }
     await seedInitialReportsIdempotently();
     const rows = await db.select().from(communityReportsTable).orderBy(desc(communityReportsTable.submittedAt));
-    res.json(ListReportsResponse.parse(rows.filter((row) => canView(claims, row)).map(reportResponse)));
+    res.json(ListReportsResponse.parse(rows.filter((row) => canViewReport(principal, row)).map(reportResponse)));
   } catch (error) {
     req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "Community reports list failed");
     errorResponse(error, res);
@@ -395,8 +350,11 @@ router.get("/reports", async (req, res): Promise<void> => {
 router.post("/reports", async (req, res): Promise<void> => {
   let uploadedKey: string | undefined;
   try {
-    const claims = authenticate(req);
-    if (!["parent", "child", "citizen"].includes(claims.role)) throw new HttpError(403, "Only parent, child, or citizen demo roles may submit reports.");
+    const principal = await authenticateAccount(req);
+    if (principal.role !== "parent" && principal.role !== "child") {
+      throw new HttpError(403, "Only a parent or approved child may submit a family report.");
+    }
+    const familyId = requireApprovedFamilyMember(principal);
     if (process.env.NODE_ENV !== "development") {
       enforceCreateRateLimit(req.ip || req.socket.remoteAddress || "unknown");
     }
@@ -429,7 +387,6 @@ router.post("/reports", async (req, res): Promise<void> => {
     }
     const analysis = analyze(description, category);
     const submittedAt = new Date();
-    const familyAccountId = claims.role === "parent" || claims.role === "child" ? claims.familyId : null;
     const created = await db.transaction(async (tx) => {
       const [inserted] = await tx.insert(communityReportsTable).values({
         id,
@@ -451,14 +408,16 @@ router.post("/reports", async (req, res): Promise<void> => {
         updatedAt: submittedAt,
         recommendedDepartment: analysis.recommendedDepartment,
         priority: analysis.priority,
-        reporterAccountId: claims.sub,
-        familyAccountId,
+        reporterAccountId: null,
+        familyAccountId: null,
+        reporterUserId: principal.userId,
+        familyId,
         assignedAt: null,
         resolvedAt: null,
       }).returning();
       if (!inserted) throw new Error("Report insert returned no row.");
       await tx.insert(communityReportStatusEventsTable).values({
-        reportId: id, fromStatus: null, toStatus: "Submitted", changedBy: claims.sub, changedAt: submittedAt,
+        reportId: id, fromStatus: null, toStatus: "Submitted", changedBy: principal.userId, changedAt: submittedAt,
       });
       return inserted;
     });
@@ -491,41 +450,18 @@ router.post("/reports", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/reports/session", (req, res): void => {
-  const parsed = CreateReportSessionBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid session input." });
-    return;
-  }
-  if (parsed.data.username.trim().toLowerCase() !== "ai4sg" || parsed.data.password !== "1234") {
-    res.status(401).json({ error: "Invalid demo credentials." });
-    return;
-  }
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    res.status(503).json({ error: "Demo session signing is not configured." });
-    return;
-  }
-  const role = parsed.data.role;
-  const sub = role === "parent" ? "demo-family-parent-ai4sg"
-    : role === "child" ? "demo-family-child-ai4sg"
-      : role === "citizen" ? demoCitizenId
-        : role === "manager" ? "Avery Patel" : "Luis Rivera";
-  const familyId = role === "parent" || role === "child" ? demoFamilyId : null;
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
-  const accessToken = createToken({ role, sub, familyId, exp: Math.floor(expiresAt.getTime() / 1000) }, secret);
-  res.json(CreateReportSessionResponse.parse({ accessToken, tokenType: "Bearer", expiresAt, role, prototypeOnly: true }));
-});
-
 router.get("/reports/:id", async (req, res): Promise<void> => {
   try {
     const params = GetReportParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
-    const claims = authenticate(req);
+    const principal = await authenticateAccount(req);
+    if (principal.role === "parent" || principal.role === "child") {
+      requireApprovedFamilyMember(principal);
+    }
     const [row] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!row) throw new HttpError(404, "Report not found.");
-    requireView(claims, row);
+    requireView(principal, row);
     const history = await db.select({
       fromStatus: communityReportStatusEventsTable.fromStatus,
       toStatus: communityReportStatusEventsTable.toStatus,
@@ -544,8 +480,7 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
   try {
     const params = UpdateReportParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
-    const claims = authenticate(req);
-    if (claims.role !== "manager" && claims.role !== "worker") throw new HttpError(403, "This role may not edit reports.");
+    const principal = await authenticateAccount(req);
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) throw new HttpError(400, "Provide a valid report update.");
     const allowedKeys = new Set(["description", "category", "severity", "location", "status", "assignedTeam", "managerNotes", "routeAssignment", "latitude", "longitude"]);
     if (Object.keys(req.body).some((key) => !allowedKeys.has(key))) throw new HttpError(400, "Report update contains unsupported fields.");
@@ -553,15 +488,10 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
     if (!parsed.success || Object.keys(parsed.data).length === 0) throw new HttpError(400, "Provide at least one valid report update.");
     const update = parsed.data;
     if ((update.latitude === undefined) !== (update.longitude === undefined)) throw new HttpError(400, "Provide both latitude and longitude when moving the map pin.");
-    if (claims.role === "worker" && (Object.keys(update).some((key) => key !== "status") || !update.status)) {
-      throw new HttpError(403, "Workers may update only report status.");
-    }
     const [current] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!current) throw new HttpError(404, "Report not found.");
-    if (claims.role === "worker" && current.assignedTeam !== westCleanTeam) {
-      throw new HttpError(403, "Workers may update reports assigned to the West Clean Team.");
-    }
+    assertCanUpdateReport(principal, current, Object.keys(update));
     const changes: Partial<typeof communityReportsTable.$inferInsert> = { updatedAt: new Date() };
     if (update.description !== undefined) {
       changes.description = update.description.trim();
@@ -618,7 +548,7 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
         reportId: current.id,
         fromStatus: current.status,
         toStatus: update.status,
-        changedBy: claims.sub,
+        changedBy: principal.userId,
         changedAt: latest.updatedAt,
       });
     }
@@ -638,8 +568,10 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
 
 router.post("/reports/demo/reset", async (req, res): Promise<void> => {
   try {
-    const claims = authenticate(req);
-    if (claims.role !== "manager") throw new HttpError(403, "Only the manager demo role may reset demonstration reports.");
+    const principal = await authenticateAccount(req);
+    if (principal.role !== "manager") {
+      throw new HttpError(403, "Only a City Case Manager may reset demonstration reports.");
+    }
     const rows = await restoreDemoReports();
     res.json(ResetDemoReportsResponse.parse(rows.map(reportResponse)));
   } catch (error) {
@@ -651,11 +583,14 @@ router.get("/reports/:id/photo", async (req, res): Promise<void> => {
   try {
     const params = GetReportPhotoParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
-    const claims = authenticate(req);
+    const principal = await authenticateAccount(req);
+    if (principal.role === "parent" || principal.role === "child") {
+      requireApprovedFamilyMember(principal);
+    }
     const [report] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!report) throw new HttpError(404, "Report not found.");
-    requireView(claims, report);
+    requireView(principal, report);
     if (!report.photoObjectKey || !report.photoContentType || !["image/jpeg", "image/png", "image/webp"].includes(report.photoContentType)) {
       throw new HttpError(404, "Report photo not found.");
     }

@@ -1,13 +1,29 @@
 import { Feather } from '@expo/vector-icons';
+import { useAuth } from '@clerk/expo';
+import { useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
-import { getGetJourneyMapQueryKey, useGetJourneyMap, type JourneyRoute, type TravelModeParameter } from '@workspace/api-client-react';
-import React, { useState } from 'react';
+import {
+  getGetAccountStatusQueryKey,
+  getGetFamilyJourneyQueryKey,
+  getGetJourneyMapQueryKey,
+  getGetReportMapDataQueryKey,
+  useConfirmFamilyJourneyMilestone,
+  useGetAccountStatus,
+  useGetFamilyJourney,
+  useGetJourneyMap,
+  useGetReportMapData,
+  useSaveFamilyJourney,
+  type FamilyJourney,
+  type JourneyRoute,
+  type TravelModeParameter,
+} from '@workspace/api-client-react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Chip, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
 import { GoogleJourneyMap } from '@/components/GoogleJourneyMap';
 import { JourneyMap } from '@/components/JourneyMap';
 import { LocationAutocompleteField, type SelectedPlace } from '@/components/LocationAutocompleteField';
-import { heatScore, useDemo } from '@/context/DemoContext';
+import { buildJourneyMilestones, type SelectedJourney, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
 
 const MODE_OPTIONS: { value: TravelModeParameter; label: string }[] = [
@@ -16,10 +32,78 @@ const MODE_OPTIONS: { value: TravelModeParameter; label: string }[] = [
   { value: 'walking', label: 'Walking only' },
 ];
 
+function toSelectedJourney(shared: FamilyJourney): SelectedJourney {
+  const route = shared.route;
+  return {
+    id: route.id,
+    name: route.name,
+    startStop: route.startStop,
+    destinationStop: route.destinationStop,
+    destination: shared.destination.name,
+    startingLocation: shared.origin.name,
+    originLatitude: shared.origin.latitude,
+    originLongitude: shared.origin.longitude,
+    destinationLatitude: shared.destination.latitude,
+    destinationLongitude: shared.destination.longitude,
+    durationMinutes: route.durationMinutes,
+    walkingMeters: route.walkingMeters,
+    transfers: route.transfers,
+    delayMinutes: route.delayMinutes,
+    alerts: route.alerts,
+    source: route.source,
+    mode: route.mode,
+    legs: route.legs.map((leg) => ({
+      type: leg.type,
+      routeNumber: leg.routeNumber,
+      routeName: leg.routeName,
+      boardingStop: { name: leg.boardingStop.name },
+      alightingStop: { name: leg.alightingStop.name },
+      durationMinutes: leg.durationMinutes,
+      delayMinutes: leg.delayMinutes,
+      transferGuidance: leg.transferGuidance,
+    })),
+  };
+}
+
 export function JourneyScreen() {
   const colors = useColors();
-  const { state, selectJourney } = useDemo();
+  const { userId } = useAuth();
+  const queryClient = useQueryClient();
+  const { state, syncSharedJourney } = useDemo();
   const [permission, requestPermission] = Location.useForegroundPermissions();
+  const accountQuery = useGetAccountStatus({
+    query: { queryKey: getGetAccountStatusQueryKey(), enabled: !!userId, retry: false },
+  });
+  const account = accountQuery.data;
+  const familyAllowed = account?.status === 'parent' || account?.status === 'child_approved';
+  const canCheckIn = account?.status === 'child_approved';
+  const userScope = [userId ?? '', account?.status ?? '', account?.familyId ?? '', account?.teamName ?? ''];
+  const familyJourneyQueryKey = [...getGetFamilyJourneyQueryKey(), ...userScope];
+  const reportMapQueryKey = [...getGetReportMapDataQueryKey(), ...userScope];
+  const familyJourneyQuery = useGetFamilyJourney({
+    query: {
+      queryKey: familyJourneyQueryKey,
+      enabled: !!userId && familyAllowed,
+      staleTime: 5_000,
+      refetchInterval: 15_000,
+    },
+  });
+  const reportMapQuery = useGetReportMapData({
+    query: { queryKey: reportMapQueryKey, enabled: !!userId && familyAllowed, staleTime: 12_000 },
+  });
+  const saveFamilyJourney = useSaveFamilyJourney({
+    mutation: {
+      onSuccess: (data) => queryClient.setQueryData(familyJourneyQueryKey, data),
+    },
+  });
+  const confirmFamilyJourneyMilestone = useConfirmFamilyJourneyMilestone({
+    mutation: {
+      onSuccess: (data) => queryClient.setQueryData(familyJourneyQueryKey, data),
+    },
+  });
+  const syncedJourneyKey = useRef('');
+  const [saveError, setSaveError] = useState('');
+  const [checkInError, setCheckInError] = useState('');
   const savedJourney = state.selectedJourney;
   const [origin, setOrigin] = useState<SelectedPlace | null>(() => {
     return savedJourney?.originLatitude != null && savedJourney.originLongitude != null
@@ -59,6 +143,53 @@ export function JourneyScreen() {
   const [googleMapFailed, setGoogleMapFailed] = useState(false);
   const [mapNotice, setMapNotice] = useState('');
   const [mapLinkError, setMapLinkError] = useState('');
+  const serverJourney = familyJourneyQuery.data?.journey ?? null;
+  const familyId = account?.familyId ?? '';
+  const serverJourneySyncKey = `${JSON.stringify(userScope)}:${serverJourney?.id ?? 'empty'}:${serverJourney?.updatedAt ?? ''}:${serverJourney?.milestoneIndex ?? -1}`;
+
+  useEffect(() => {
+    if (!familyId || !familyJourneyQuery.isSuccess || syncedJourneyKey.current === serverJourneySyncKey) return;
+    syncedJourneyKey.current = serverJourneySyncKey;
+    if (!serverJourney) {
+      syncSharedJourney(null, -1, null);
+      setOrigin(null);
+      setOriginText('');
+      setUsingDeviceLocation(false);
+      setDestination('');
+      setDestinationCoordinates(null);
+      setSearchRequested(false);
+      setSelectedRouteId(null);
+      return;
+    }
+    syncSharedJourney(toSelectedJourney(serverJourney), serverJourney.milestoneIndex, serverJourney.tripUpdatedAt);
+    setOrigin({
+      placeId: 'saved-origin',
+      name: serverJourney.origin.name,
+      lat: serverJourney.origin.latitude,
+      lng: serverJourney.origin.longitude,
+    });
+    setOriginText(serverJourney.origin.name);
+    setUsingDeviceLocation(serverJourney.origin.name === 'Your current location');
+    setDestination(serverJourney.destination.name);
+    setDestinationCoordinates({
+      placeId: 'saved-destination',
+      name: serverJourney.destination.name,
+      lat: serverJourney.destination.latitude,
+      lng: serverJourney.destination.longitude,
+    });
+    setSelectedRouteId(serverJourney.route.id);
+    setTravelMode(serverJourney.route.mode);
+    setSearchRequested(true);
+    setMapView('2d');
+    setGoogleMapFailed(false);
+  }, [
+    familyId,
+    familyJourneyQuery.isSuccess,
+    serverJourney,
+    serverJourneySyncKey,
+    syncSharedJourney,
+  ]);
+
   const searchedDestination = destinationCoordinates?.name ?? '';
   const endpointsSelected = !!origin && !!destinationCoordinates;
   const journeyParams = {
@@ -74,7 +205,10 @@ export function JourneyScreen() {
     { query: { queryKey: getGetJourneyMapQueryKey(journeyParams), enabled: searchRequested && endpointsSelected, staleTime: 60_000, retry: 2 } },
   );
   const routes = searchRequested ? journey.data?.routes ?? [] : [];
-  const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? routes.find((route) => route.recommended) ?? routes[0];
+  const selectedRoute = routes.find((route) => route.id === selectedRouteId)
+    ?? (serverJourney?.route.id === selectedRouteId ? serverJourney.route : null)
+    ?? routes.find((route) => route.recommended)
+    ?? routes[0];
   const savedJourneyMatchesRoute = Boolean(
     selectedRoute &&
     savedJourney?.id === selectedRoute.id &&
@@ -99,16 +233,17 @@ export function JourneyScreen() {
   );
   const hasMissingGeometry = Boolean(selectedRoute?.legs.some((leg) => !leg.polyline));
   const canUseGoogleMap = searchRequested && !!journey.data?.map3dAvailable && !googleMapFailed;
-  const geocodedReports = state.reports.filter((report) =>
-    report.latitude != null && report.longitude != null &&
-    Number.isFinite(report.latitude) && Number.isFinite(report.longitude));
+  const geocodedReports = reportMapQuery.data?.markers ?? [];
   const reportPoints = geocodedReports.slice(0, 80).map((report) => ({
-    lat: report.latitude!, lng: report.longitude!,
+    lat: report.latitude, lng: report.longitude,
   }));
-  const heatPoints = showHeat ? geocodedReports.map((report) => ({
-    lat: report.latitude!, lng: report.longitude!,
-    intensity: Math.min(1, Math.max(0.2, heatScore(report, geocodedReports) / 12)),
+  const heatPoints = showHeat ? (reportMapQuery.data?.publicHeat ?? []).map((cell) => ({
+    lat: cell.latitude, lng: cell.longitude, intensity: cell.intensity,
   })) : [];
+  const milestones = savedJourney ? buildJourneyMilestones(savedJourney) : [];
+  const progressIndex = serverJourney?.milestoneIndex ?? -1;
+  const nextMilestoneIndex = progressIndex + 1;
+  const nextMilestone = milestones[nextMilestoneIndex];
 
   const openSavedJourneyInMaps = async (provider: 'google' | 'apple') => {
     if (!savedJourney || !canOpenSavedJourney) {
@@ -169,40 +304,59 @@ export function JourneyScreen() {
     }
   };
 
-  const chooseRoute = (route: JourneyRoute) => {
-    selectJourney({
-      id: route.id,
-      name: route.name,
-      startStop: route.startStop,
-      destinationStop: route.destinationStop,
-      destination: searchedDestination,
-      startingLocation: origin?.name ?? '',
-      originLatitude: origin?.lat ?? 0,
-      originLongitude: origin?.lng ?? 0,
-      ...(destinationCoordinates
-        ? {
-          destinationLatitude: destinationCoordinates.lat,
-          destinationLongitude: destinationCoordinates.lng,
-        }
-        : {}),
-      durationMinutes: route.durationMinutes,
-      walkingMeters: route.walkingMeters,
-      transfers: route.transfers,
-      delayMinutes: route.delayMinutes,
-      alerts: route.alerts,
-      source: route.source,
-      mode: route.mode,
-      legs: route.legs.map((leg) => ({
-        type: leg.type,
-        routeNumber: leg.routeNumber,
-        routeName: leg.routeName,
-        boardingStop: { name: leg.boardingStop.name },
-        alightingStop: { name: leg.alightingStop.name },
-        durationMinutes: leg.durationMinutes,
-        delayMinutes: leg.delayMinutes,
-        transferGuidance: leg.transferGuidance,
-      })),
-    });
+  const chooseRoute = async (route: JourneyRoute) => {
+    if (!origin || !destinationCoordinates) {
+      setSaveError('Select both trip endpoints before saving this route.');
+      return;
+    }
+    setSaveError('');
+    try {
+      const response = await saveFamilyJourney.mutateAsync({
+        data: {
+          route,
+          origin: {
+            name: origin.name,
+            latitude: origin.lat,
+            longitude: origin.lng,
+          },
+          destination: {
+            name: destinationCoordinates.name,
+            latitude: destinationCoordinates.lat,
+            longitude: destinationCoordinates.lng,
+          },
+        },
+      });
+      if (!response.journey) throw new Error('The saved journey was not returned by the server.');
+      queryClient.setQueryData(familyJourneyQueryKey, response);
+      syncSharedJourney(
+        toSelectedJourney(response.journey),
+        response.journey.milestoneIndex,
+        response.journey.tripUpdatedAt,
+      );
+      setSelectedRouteId(route.id);
+      setMapLinkError('');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'The shared family route could not be saved.');
+    }
+  };
+
+  const confirmNextMilestone = async () => {
+    if (!serverJourney || !nextMilestone) return;
+    setCheckInError('');
+    try {
+      const response = await confirmFamilyJourneyMilestone.mutateAsync({
+        data: { milestoneIndex: nextMilestoneIndex },
+      });
+      if (!response.journey) throw new Error('The updated journey was not returned by the server.');
+      queryClient.setQueryData(familyJourneyQueryKey, response);
+      syncSharedJourney(
+        toSelectedJourney(response.journey),
+        response.journey.milestoneIndex,
+        response.journey.tripUpdatedAt,
+      );
+    } catch (error) {
+      setCheckInError(error instanceof Error ? error.message : 'The trip check-in could not be saved.');
+    }
   };
 
   return (
@@ -431,7 +585,9 @@ export function JourneyScreen() {
             : 'Some exact route shapes are unavailable. Stops remain visible, and no straight-line substitute is drawn; follow the listed steps.'}
         </Text>
       ) : null}
-      {showHeat && !geocodedReports.length ? <Text style={[styles.caption, { color: colors.mutedForeground }]}>No reports with map locations are available to display.</Text> : null}
+      {showHeat && !geocodedReports.length && !(reportMapQuery.data?.publicHeat.length) ? <Text style={[styles.caption, { color: colors.mutedForeground }]}>No authorized report locations or anonymous heat cells are available to display.</Text> : null}
+      {reportMapQuery.isError ? <Text style={[styles.caption, { color: colors.warning }]}>Safety map data is unavailable right now.</Text> : null}
+      {familyJourneyQuery.isError ? <Text style={[styles.caption, { color: colors.warning }]}>Your family's saved trip could not be loaded. You can still search routes and retry saving.</Text> : null}
       {searchRequested && journey.isError ? <Text style={[styles.small, { color: colors.destructive }]}>Live route data is unavailable. Tap Refresh to retry.</Text> : null}
       {searchRequested && journey.data?.message ? <Text style={[styles.small, { color: colors.mutedForeground }]}>{journey.data.message}</Text> : null}
       {searchRequested && travelMode !== 'walking' ? (
@@ -481,7 +637,53 @@ export function JourneyScreen() {
           {route.alerts.map((alert, index) => <Text key={`${index}-${alert}`} style={[styles.small, { color: colors.warning }]}>Service alert: {alert}</Text>)}
         </Pressable>
       ))}
-      {selectedRoute ? <Button label={savedJourneyMatchesRoute ? 'Selected journey' : 'Choose this route'} icon="check" onPress={() => { chooseRoute(selectedRoute); setMapLinkError(''); }} disabled={!selectedRoute.available} testID="choose-route" /> : null}
+      {selectedRoute ? (
+        <Button
+          label={savedJourneyMatchesRoute ? 'Shared with your family' : 'Save route for your family'}
+          icon={savedJourneyMatchesRoute ? 'check-circle' : 'check'}
+          onPress={() => { void chooseRoute(selectedRoute); setMapLinkError(''); }}
+          disabled={!selectedRoute.available || saveFamilyJourney.isPending || savedJourneyMatchesRoute}
+          testID="choose-route"
+        />
+      ) : null}
+      {saveFamilyJourney.isPending ? <ActivityIndicator color={colors.primary} /> : null}
+      {saveError ? <Text accessibilityRole="alert" style={[styles.small, { color: colors.destructive }]}>{saveError}</Text> : null}
+      {serverJourney && savedJourney ? (
+        <Card style={styles.savedRouteCard}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Shared family trip</Text>
+          <Text style={[styles.small, { color: colors.mutedForeground }]}>
+            {serverJourney.origin.name} → {serverJourney.destination.name} · {serverJourney.route.name}
+          </Text>
+          <Text style={[styles.caption, { color: colors.mutedForeground }]}>
+            {progressIndex >= 0 ? `${progressIndex + 1} of ${milestones.length} steps confirmed` : 'No check-ins yet'}
+            {serverJourney.tripUpdatedAt ? ` · Updated ${new Date(serverJourney.tripUpdatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
+          </Text>
+          {milestones.map((milestone, index) => {
+            const completed = index <= progressIndex;
+            return (
+              <View key={milestone.key} style={styles.milestoneRow}>
+                <Feather name={completed ? 'check-circle' : 'circle'} size={18} color={completed ? colors.primary : colors.mutedForeground} />
+                <View style={styles.flex}>
+                  <Text style={[styles.small, { color: colors.foreground }]}>{milestone.title}</Text>
+                  <Text style={[styles.caption, { color: colors.mutedForeground }]}>{milestone.subtitle}</Text>
+                </View>
+              </View>
+            );
+          })}
+          {canCheckIn && nextMilestone ? (
+            <Button
+              label={`Confirm next step: ${nextMilestone.title}`}
+              icon="check"
+              onPress={() => { void confirmNextMilestone(); }}
+              disabled={confirmFamilyJourneyMilestone.isPending}
+              testID="confirm-family-journey-check-in"
+            />
+          ) : null}
+          {canCheckIn && !nextMilestone ? <Text style={[styles.small, { color: colors.primary }]}>All trip steps are confirmed.</Text> : null}
+          {confirmFamilyJourneyMilestone.isPending ? <ActivityIndicator color={colors.primary} /> : null}
+          {checkInError ? <Text accessibilityRole="alert" style={[styles.small, { color: colors.destructive }]}>{checkInError}</Text> : null}
+        </Card>
+      ) : null}
       {savedJourneyMatchesRoute && canOpenSavedJourney ? (
         <>
           <Button label="Open in Google Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('google'); }} testID="open-route-google-maps" />
@@ -526,6 +728,7 @@ const styles = StyleSheet.create({
   mapModeText: { fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 0.3 },
   mapModeSubtext: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 },
   savedRouteCard: { gap: 10 },
+  milestoneRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 3 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 15, lineHeight: 22 },
   small: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 4 },
   caption: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },

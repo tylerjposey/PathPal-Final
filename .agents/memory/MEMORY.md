@@ -2,7 +2,7 @@
 - [Bus route geometry](bus-route-geometry.md) — map bus paths only from provider geometry; omit the line when a real route shape cannot be established.
 - [Orivis demo account scope](orivis-demo-account-scope.md) — keep shared demo sign-in for report workflows unless the user explicitly opts into verified accounts.
 - [Expo web map taps](expo-web-map-taps.md) — React Native Web press events may lack locationX/Y; map pins need a finite web-compatible coordinate path.
-- [Role-scoped report views](role-scoped-report-views.md) — server authorization alone is insufficient when a mobile demo retains report state across role switches.
+- [Role-scoped mobile state](role-scoped-report-views.md) — protect local report views and rehydrate family-shared data after account switches.
 - [Google Maps API availability](google-maps-key-legacy-apis-disabled.md) — Places, Routes, live VTA transit, and browser-keyed 3D maps work; keep Google-only suggestions and coordinate-gated routing.
 - [React Native Alert.alert is a no-op on web](react-native-web-alert-noop.md) — confirmation dialogs via Alert.alert silently do nothing in Expo web preview; not a Playwright artifact.
 - [Orivis account deletion boundary](orivis-account-deletion-boundary.md) — keep real deletion disabled until account-backed auth can revoke child access.

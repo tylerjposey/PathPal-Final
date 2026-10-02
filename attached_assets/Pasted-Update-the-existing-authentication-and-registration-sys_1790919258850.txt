@@ -1,0 +1,183 @@
+Update the existing authentication and registration system with the following requirements. Do not change unrelated parts of the application.
+
+## 1. Sign-in methods
+
+The sign-in screen should provide only two sign-in methods:
+
+- Username and password
+- Phone number with a verification code
+
+Remove email as a sign-in option entirely.
+
+The primary sign-in field should be labeled:
+
+**Username or phone number**
+
+The system should automatically detect whether the user entered a username or phone number.
+
+### Username sign-in
+
+If the user enters a username:
+
+1. Automatically display the password field.
+2. Allow the user to enter their password.
+3. After they press **Sign In**, display the two-factor authentication screen.
+4. Request a 4-digit verification code.
+
+Demo credentials:
+
+- Username: `AI4SG`
+- Password: `1234`
+- Two-factor code: `1234`
+
+### Phone number sign-in
+
+If the user enters a phone number:
+
+1. Detect that the input is a phone number.
+2. Hide the password field.
+3. Allow the user to press **Sign In** using only the phone number.
+4. Simulate sending a 4-digit code by text message.
+5. Display a code-entry screen.
+
+Demo credentials:
+
+- Phone number: `4088877754`
+- Verification code: `1234`
+
+A real SMS service is not required. This only needs to simulate the phone verification process.
+
+## 2. Modern registration experience
+
+When the user presses **Sign Up**, display a modern selection menu or modal with two separate options:
+
+- **Sign up with Email**
+- **Sign up with Phone Number**
+
+Use clean cards or buttons with simple icons, short descriptions, rounded corners, and a modern layout.
+
+Do not combine both registration methods into one form.
+
+## 3. Email registration flow
+
+When the user selects **Sign up with Email**, display a registration form that includes:
+
+- Username
+- Email address
+- Password
+- Any other existing required account information
+
+The user must create a username during email registration. That username will be used to sign in later with a password.
+
+Important requirements:
+
+- The email is used only during registration.
+- Email must not be used as a sign-in identifier.
+- Do not include a phone number field in the email registration form.
+- After registration, the user signs in using the username and password they created.
+
+This email-based registration flow is intended primarily for the Parent role. Preserve the existing Parent account functionality.
+
+## 4. Phone registration flow
+
+When the user selects **Sign up with Phone Number**, display a separate phone-based registration flow.
+
+The phone registration form should include:
+
+- Phone number
+
+The user does not need to provide an email address when registering by phone number.
+
+The phone registration flow should:
+
+1. Ask the user to enter their phone number.
+2. Simulate sending a 4-digit verification code.
+3. Display a code-entry screen.
+4. Allow the user to enter the verification code.
+5. Continue to the appropriate Parent account setup screen after successful verification.
+
+For the demo:
+
+- Phone number: `4088877754`
+- Verification code: `1234`
+
+A real SMS service is not required at this stage.
+
+## 5. Child registration
+
+Children should have a separate registration flow and should not register using email or phone number.
+
+Children should register using:
+
+- Username
+- First name
+- Last name
+- Password
+- Family code provided by the Parent
+
+Preserve the existing family-code functionality and Parent/Child relationship logic.
+
+## 6. Remove the Role Demo button
+
+Remove the **Role Demo** button from the sign-in screen.
+
+Instead, display the demo credentials in one clearly labeled area, such as a small **Demo Credentials** section or development-only panel.
+
+Include:
+
+### Username demo
+
+- Username: `AI4SG`
+- Password: `1234`
+- Two-factor code: `1234`
+
+### Phone demo
+
+- Phone number: `4088877754`
+- Verification code: `1234`
+
+The Demo Credentials section must not bypass the normal sign-in or verification process.
+
+## 7. User interface requirements
+
+- Make the sign-in and registration screens modern, clean, and easy to understand.
+- Present email registration and phone registration as separate choices.
+- Do not display email as a sign-in option.
+- Do not show a phone number field in the email registration form.
+- Do not require an email address in the phone registration form.
+- Show the password field only when the sign-in input is detected as a username.
+- Hide the password field when the sign-in input is detected as a phone number.
+- Add clear labels, placeholder text, and validation messages.
+- Make the layouts responsive for desktop and mobile.
+- Preserve existing roles, permissions, Parent functionality, Child functionality, family-code logic, and database structure unless changes are necessary.
+- Do not break unrelated application features.
+
+## 8. Testing requirements
+
+Test all of the following flows:
+
+### Username sign-in
+
+`AI4SG` → password `1234` → two-factor code `1234` → successful sign-in
+
+### Phone sign-in
+
+`4088877754` → simulated code `1234` → successful sign-in
+
+### Email registration
+
+Sign Up → Sign up with Email → create username, email, and password → successful account creation → sign in using the new username and password
+
+Verify that the email address is not accepted as a sign-in identifier and that no phone number field appears in this form.
+
+### Phone registration
+
+Sign Up → Sign up with Phone Number → enter phone number → simulated code `1234` → successful Parent account setup
+
+Verify that an email address is not required in this flow.
+
+### Child registration
+
+Child registration → username, first name, last name, password, and valid family code → successful Child account creation
+
+Verify that email sign-in and the Role Demo button have been removed.

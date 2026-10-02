@@ -25,7 +25,9 @@ import type {
   CommunityReportInput,
   CommunityReportUpdate,
   CommunityReportUpdateResult,
+  CreateFamilyInput,
   ErrorResponse,
+  FamilyAccountResponse,
   GetJourneyCatalogParams,
   GetJourneyMap3dParams,
   GetJourneyMapImageParams,
@@ -34,6 +36,7 @@ import type {
   GetJourneyPlaceAutocompleteParams,
   GetJourneyPlaceDetailsParams,
   HealthStatus,
+  JoinFamilyInput,
   JourneyCatalogResponse,
   JourneyMapResponse,
   JourneyOptionsResponse,
@@ -987,6 +990,259 @@ export const useCreateReportSession = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreateReportSessionMutationOptions(options));
+    }
+
+export const getGetMyFamilyUrl = () => {
+
+
+
+
+  return `/api/families/me`
+}
+
+/**
+ * @summary Get the family associated with the shared demo parent session
+ */
+export const getMyFamily = async ( options?: Parameters<typeof customFetch>[1]): Promise<FamilyAccountResponse> => {
+
+  return customFetch<FamilyAccountResponse>(getGetMyFamilyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyFamilyQueryKey = () => {
+    return [
+    `/api/families/me`
+    ] as const;
+    }
+
+
+export const getGetMyFamilyQueryOptions = <TData = Awaited<ReturnType<typeof getMyFamily>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyFamily>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyFamilyQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyFamily>>> = ({ signal }) => getMyFamily({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyFamily>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyFamilyQueryResult = NonNullable<Awaited<ReturnType<typeof getMyFamily>>>
+export type GetMyFamilyQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the family associated with the shared demo parent session
+ */
+
+export function useGetMyFamily<TData = Awaited<ReturnType<typeof getMyFamily>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyFamily>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyFamilyQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateFamilyUrl = () => {
+
+
+
+
+  return `/api/families`
+}
+
+/**
+ * @summary Create or retrieve the family for the shared demo parent
+ */
+export const createFamily = async (createFamilyInput: CreateFamilyInput, options?: Parameters<typeof customFetch>[1]): Promise<FamilyAccountResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FamilyAccountResponse>(getCreateFamilyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createFamilyInput)
+  }
+);}
+
+
+
+
+
+export const getCreateFamilyMutationKey = () => ['createFamily'] as const;
+
+export const getCreateFamilyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFamily>>, TError,CreateFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createFamily>>, TError,CreateFamilyMutationVariables, TContext> => {
+
+const mutationKey = getCreateFamilyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createFamily>>, CreateFamilyMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createFamily(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateFamilyMutationResult = NonNullable<Awaited<ReturnType<typeof createFamily>>>
+    export type CreateFamilyMutationBody = BodyType<CreateFamilyInput>
+    export type CreateFamilyMutationError = ErrorType<ErrorResponse>
+    export type CreateFamilyMutationVariables = {data: BodyType<CreateFamilyInput>}
+
+    /**
+ * @summary Create or retrieve the family for the shared demo parent
+ */
+export const useCreateFamily = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFamily>>, TError,CreateFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createFamily>>,
+        TError,
+        CreateFamilyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateFamilyMutationOptions(options));
+    }
+
+export const getJoinFamilyUrl = () => {
+
+
+
+
+  return `/api/families/join`
+}
+
+/**
+ * @summary Join a family using its server-generated invitation code
+ */
+export const joinFamily = async (joinFamilyInput: JoinFamilyInput, options?: Parameters<typeof customFetch>[1]): Promise<FamilyAccountResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<FamilyAccountResponse>(getJoinFamilyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(joinFamilyInput)
+  }
+);}
+
+
+
+
+
+export const getJoinFamilyMutationKey = () => ['joinFamily'] as const;
+
+export const getJoinFamilyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinFamily>>, TError,JoinFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinFamily>>, TError,JoinFamilyMutationVariables, TContext> => {
+
+const mutationKey = getJoinFamilyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinFamily>>, JoinFamilyMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  joinFamily(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinFamilyMutationResult = NonNullable<Awaited<ReturnType<typeof joinFamily>>>
+    export type JoinFamilyMutationBody = BodyType<JoinFamilyInput>
+    export type JoinFamilyMutationError = ErrorType<ErrorResponse>
+    export type JoinFamilyMutationVariables = {data: BodyType<JoinFamilyInput>}
+
+    /**
+ * @summary Join a family using its server-generated invitation code
+ */
+export const useJoinFamily = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinFamily>>, TError,JoinFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinFamily>>,
+        TError,
+        JoinFamilyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getJoinFamilyMutationOptions(options));
     }
 
 export const getGetReportUrl = (id: string,) => {

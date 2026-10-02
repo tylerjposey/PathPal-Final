@@ -14,6 +14,8 @@ tags:
     description: Live transit journey operations
   - name: reports
     description: Community safety report operations
+  - name: families
+    description: Shared demo family invitations
 paths:
   /healthz:
     get:
@@ -322,6 +324,118 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /families/me:
+    get:
+      operationId: getMyFamily
+      tags: [families]
+      summary: Get the family associated with the shared demo parent session
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Family account and joined children
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FamilyAccountResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The session is not a parent session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No family has been created for this demo parent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /families:
+    post:
+      operationId: createFamily
+      tags: [families]
+      summary: Create or retrieve the family for the shared demo parent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFamilyInput"
+      responses:
+        "200":
+          description: Family account with a server-generated unique invitation code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FamilyAccountResponse"
+        "400":
+          description: Invalid family details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The session is not a parent session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: A unique family code could not be generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /families/join:
+    post:
+      operationId: joinFamily
+      tags: [families]
+      summary: Join a family using its server-generated invitation code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinFamilyInput"
+      responses:
+        "200":
+          description: Family account after adding or retrieving the child
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FamilyAccountResponse"
+        "400":
+          description: Invalid child or invitation code details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Invitation code was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The username is already assigned to another child in this family
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /reports/{id}:
     get:
       operationId: getReport
@@ -568,6 +682,36 @@ components:
         minLength: 1
         maxLength: 80
   schemas:
+    FamilyChild:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        username: { type: ["string", "null"] }
+      required: [id, name, username]
+    FamilyAccountResponse:
+      type: object
+      properties:
+        familyId: { type: string, format: uuid }
+        familyName: { type: string }
+        invitationCode: { type: string, pattern: "^[0-9]{10}$" }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/FamilyChild" }
+      required: [familyId, familyName, invitationCode, children]
+    CreateFamilyInput:
+      type: object
+      properties:
+        familyName: { type: string, minLength: 1, maxLength: 120 }
+        childName: { type: string, minLength: 1, maxLength: 120 }
+      required: [familyName, childName]
+    JoinFamilyInput:
+      type: object
+      properties:
+        invitationCode: { type: string, pattern: "^[0-9]{10}$" }
+        childName: { type: string, minLength: 1, maxLength: 120 }
+        username: { type: string, minLength: 3, maxLength: 60 }
+      required: [invitationCode, childName, username]
     HealthStatus:
       type: object
       properties:

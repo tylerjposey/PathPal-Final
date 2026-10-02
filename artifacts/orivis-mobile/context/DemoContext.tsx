@@ -208,6 +208,8 @@ export interface DemoUser {
   role: Role;
   reportServiceUnavailable?: boolean;
   reportServiceError?: string;
+  familyServiceUnavailable?: boolean;
+  familyServiceError?: string;
 }
 
 export interface ChildProfile {
@@ -217,6 +219,13 @@ export interface ChildProfile {
 
 export interface FamilyChildProfile extends ChildProfile {
   id: string;
+}
+
+export interface FamilyAccountSnapshot {
+  familyId: string;
+  familyName: string;
+  invitationCode: string;
+  children: Array<{ id: string; name: string; username: string | null }>;
 }
 
 export interface ParentProfile {
@@ -358,7 +367,7 @@ export function createInitialDemoState(): DemoState {
     parentProfile: { name: 'Jordan Chen', email: '', phone: '' },
     child: { name: 'Maya Chen', school: 'River Glen Elementary' },
     familyChildren: [{ id: 'child-1', name: 'Maya Chen', school: 'River Glen Elementary' }],
-    invitationCode: '1234',
+    invitationCode: '',
     childLogin: null,
     notificationPreferences: {
       journeyUpdates: true,
@@ -572,12 +581,10 @@ interface DemoContextValue {
   reportsError: boolean;
   reportsLoading: boolean;
   authenticate: (username: string, password: string, role: Role) => DemoUser | null;
-  verifyFamilyInvite: (code: string) => boolean;
-  createFamily: (familyName: string, childName: string, inviteCode: string) => void;
-  joinFamily: (code: string, childName: string, username: string, password: string) => boolean;
+  syncFamilyFromServer: (family: FamilyAccountSnapshot) => Promise<void>;
+  joinFamily: (family: FamilyAccountSnapshot, childName: string, username: string, password: string) => Promise<void>;
   saveParentProfile: (profile: ParentProfile) => Promise<void>;
   saveChildProfile: (id: string, profile: ChildProfile) => Promise<void>;
-  saveFamilySettings: (settings: { familyName: string; invitationCode: string }) => Promise<void>;
   saveNotificationPreferences: (preferences: NotificationPreferences) => Promise<void>;
   setAccount: (account: DemoUser | null) => void;
   signOut: () => void;
@@ -763,38 +770,49 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     return null;
   }, [state.child.name, state.childLogin, state.parentProfile.name]);
 
-  const verifyFamilyInvite = useCallback(
-    (code: string) => code.trim() === state.invitationCode && code.trim().length > 0,
-    [state.invitationCode],
-  );
-
-  const createFamily = useCallback((familyName: string, childName: string, inviteCode: string) => {
-    update((current) => ({
+  const syncFamilyFromServer = useCallback((family: FamilyAccountSnapshot) => persistUpdate((current) => {
+    const familyChildren = family.children.map((member) => {
+      const existing = current.familyChildren.find((child) => child.id === member.id || child.name === member.name);
+      return {
+        id: member.id,
+        name: member.name,
+        school: existing?.school ?? current.child.school,
+      };
+    });
+    const firstChild = familyChildren[0];
+    return {
       ...current,
-      familyName: familyName.trim() || 'The PathPal family',
-      child: { ...current.child, name: childName.trim() || 'New family member' },
-      familyChildren: current.familyChildren.length
-        ? [{ ...current.familyChildren[0], name: childName.trim() || 'New family member' }, ...current.familyChildren.slice(1)]
-        : [{ id: 'child-1', name: childName.trim() || 'New family member', school: current.child.school }],
-      invitationCode: inviteCode.trim() || '1234',
-      childLogin: null,
-    }));
-  }, [update]);
+      familyName: family.familyName,
+      invitationCode: family.invitationCode,
+      familyChildren: familyChildren.length ? familyChildren : current.familyChildren,
+      child: firstChild ? { name: firstChild.name, school: firstChild.school } : current.child,
+    };
+  }), [persistUpdate]);
 
-  const joinFamily = useCallback((code: string, childName: string, username: string, password: string) => {
-    if (!verifyFamilyInvite(code) || username.trim().length < 3 || password.length < 4 || !childName.trim()) {
-      return false;
-    }
-    update((current) => ({
+  const joinFamily = useCallback((
+    family: FamilyAccountSnapshot,
+    childName: string,
+    username: string,
+    password: string,
+  ) => persistUpdate((current) => {
+    const joinedName = childName.trim();
+    const familyChildren = family.children.map((member) => {
+      const existing = current.familyChildren.find((child) => child.id === member.id || child.name === member.name);
+      return {
+        id: member.id,
+        name: member.name,
+        school: existing?.school ?? current.child.school,
+      };
+    });
+    return {
       ...current,
-      child: { ...current.child, name: childName.trim() },
-      familyChildren: current.familyChildren.length
-        ? [{ ...current.familyChildren[0], name: childName.trim() }, ...current.familyChildren.slice(1)]
-        : [{ id: 'child-1', name: childName.trim(), school: current.child.school }],
+      familyName: family.familyName,
+      invitationCode: family.invitationCode,
+      familyChildren: familyChildren.length ? familyChildren : current.familyChildren,
+      child: { ...current.child, name: joinedName },
       childLogin: { username: username.trim(), password },
-    }));
-    return true;
-  }, [update, verifyFamilyInvite]);
+    };
+  }), [persistUpdate]);
 
   const saveParentProfile = useCallback((profile: ParentProfile) => persistUpdate((current) => {
     const parentProfile = {
@@ -830,14 +848,6 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         : current.account,
     };
   }), [persistUpdate]);
-
-  const saveFamilySettings = useCallback((settings: { familyName: string; invitationCode: string }) =>
-    persistUpdate((current) => ({
-      ...current,
-      familyName: settings.familyName.trim(),
-      invitationCode: settings.invitationCode.trim(),
-    })),
-  [persistUpdate]);
 
   const saveNotificationPreferences = useCallback((preferences: NotificationPreferences) =>
     persistUpdate((current) => ({
@@ -1194,12 +1204,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     reportsError: Boolean(currentQueryMatchesScope && reportsQuery.isError && !state.account?.reportServiceUnavailable),
     reportsLoading: Boolean(currentQueryMatchesScope && state.account && !state.account.reportServiceUnavailable && (reportsQuery.isPending || reportsQuery.isFetching)),
     authenticate,
-    verifyFamilyInvite,
-    createFamily,
+    syncFamilyFromServer,
     joinFamily,
     saveParentProfile,
     saveChildProfile,
-    saveFamilySettings,
     saveNotificationPreferences,
     setAccount,
     signOut,
@@ -1227,12 +1235,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     reportsQuery.isFetching,
     currentQueryMatchesScope,
     authenticate,
-    verifyFamilyInvite,
-    createFamily,
+    syncFamilyFromServer,
     joinFamily,
     saveParentProfile,
     saveChildProfile,
-    saveFamilySettings,
     saveNotificationPreferences,
     setAccount,
     signOut,

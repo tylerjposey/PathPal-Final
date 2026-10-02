@@ -5,6 +5,49 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface FamilyChild {
+  id: string;
+  name: string;
+  /** @nullable */
+  username: string | null;
+}
+
+export interface FamilyAccountResponse {
+  familyId: string;
+  familyName: string;
+  /** @pattern ^[0-9]{10}$ */
+  invitationCode: string;
+  children: FamilyChild[];
+}
+
+export interface CreateFamilyInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  familyName: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  childName: string;
+}
+
+export interface JoinFamilyInput {
+  /** @pattern ^[0-9]{10}$ */
+  invitationCode: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  childName: string;
+  /**
+     * @minLength 3
+     * @maxLength 60
+     */
+  username: string;
+}
+
 export interface HealthStatus {
   status: string;
 }

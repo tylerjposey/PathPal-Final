@@ -5,17 +5,30 @@ import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { BrandMark, Button, Card, Chip, Field } from '@/components/OrivisUI';
-import { ROLE_LABELS, type DemoUser, type Role, useDemo } from '@/context/DemoContext';
+import { ROLE_LABELS, type DemoUser, type Role, type FamilyAccountSnapshot, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
-import { createReportSession } from '@workspace/api-client-react';
+import {
+  createFamily as createFamilyRequest,
+  createReportSession,
+  getMyFamily,
+  joinFamily as joinFamilyRequest,
+} from '@workspace/api-client-react';
 import { clearReportSession, reportError, saveReportSession } from '@/lib/reportApi';
 
 type AuthMode = 'signin' | 'family' | 'join';
 
+function responseStatus(error: unknown): number | null {
+  if (error && typeof error === 'object' && 'status' in error) {
+    const status = (error as { status?: unknown }).status;
+    if (typeof status === 'number') return status;
+  }
+  return null;
+}
+
 export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { authenticate, createFamily, joinFamily } = useDemo();
+  const { state, authenticate, syncFamilyFromServer, joinFamily } = useDemo();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [role, setRole] = useState<Role | null>(null);
   const [rolePickerVisible, setRolePickerVisible] = useState(false);
@@ -23,7 +36,7 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
   const [password, setPassword] = useState('1234');
   const [familyName, setFamilyName] = useState('The Chen family');
   const [childName, setChildName] = useState('Maya Chen');
-  const [invite, setInvite] = useState('1234');
+  const [invite, setInvite] = useState('');
   const [newUsername, setNewUsername] = useState('maya');
   const [newPassword, setNewPassword] = useState('1234');
   const [error, setError] = useState('');
@@ -42,51 +55,111 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
     }
     setSigningIn(true);
     try {
-      const session = await createReportSession({
-        username: role === 'parent' || role === 'child' || role === 'citizen' ? 'AI4SG' : username,
-        password: role === 'parent' || role === 'child' || role === 'citizen' ? '1234' : password,
-        role,
-      });
-      await saveReportSession(session);
+      try {
+        const session = await createReportSession({
+          username: role === 'parent' || role === 'child' || role === 'citizen' ? 'AI4SG' : username,
+          password: role === 'parent' || role === 'child' || role === 'citizen' ? '1234' : password,
+          role,
+        });
+        await saveReportSession(session);
+      } catch (error) {
+        const detail = reportError(error);
+        if (role === 'parent' || role === 'child') {
+          await clearReportSession().catch(() => undefined);
+          const serviceMessage = `Report service unavailable: ${detail}. You can continue using the local family journey, check-ins, and simulated SOS; reports require a server connection.`;
+          setError(serviceMessage);
+          onVerified({ ...account, reportServiceUnavailable: true, reportServiceError: serviceMessage });
+        } else {
+          setError(detail);
+        }
+        return;
+      }
+
+      if (role === 'parent') {
+        try {
+          let family: FamilyAccountSnapshot;
+          try {
+            family = await getMyFamily();
+          } catch (error) {
+            if (responseStatus(error) !== 404) throw error;
+            family = await createFamilyRequest({
+              familyName: state.familyName.trim() || 'The PathPal family',
+              childName: state.child.name.trim() || 'New family member',
+            });
+          }
+          await syncFamilyFromServer(family);
+        } catch (error) {
+          const familyMessage = `Family code unavailable: ${reportError(error)}. Sign in again when the service is available.`;
+          setError(familyMessage);
+          onVerified({
+            ...account,
+            familyServiceUnavailable: true,
+            familyServiceError: familyMessage,
+          });
+          return;
+        }
+      }
+
       setError('');
       onVerified(account);
-    } catch (error) {
-      const detail = reportError(error);
-      if (role === 'parent' || role === 'child') {
-        await clearReportSession().catch(() => undefined);
-        const serviceMessage = `Report service unavailable: ${detail}. You can continue using the local family journey, check-ins, and simulated SOS; reports require a server connection.`;
-        setError(serviceMessage);
-        onVerified({ ...account, reportServiceUnavailable: true, reportServiceError: serviceMessage });
-      } else {
-        setError(detail);
-      }
     } finally {
       setSigningIn(false);
     }
   };
 
-  const registerFamily = () => {
-    if (!familyName.trim() || !childName.trim() || !invite.trim()) {
-      setError('Complete each family field.');
+  const registerFamily = async () => {
+    if (signingIn) return;
+    if (!familyName.trim() || !childName.trim()) {
+      setError('Enter a family name and child’s name.');
       return;
     }
-    createFamily(familyName, childName, invite);
-    setMode('signin');
-    setRole('parent');
-    setError('');
+    setSigningIn(true);
+    try {
+      const session = await createReportSession({ username: 'AI4SG', password: '1234', role: 'parent' });
+      await saveReportSession(session);
+      const family = await createFamilyRequest({
+        familyName: familyName.trim(),
+        childName: childName.trim(),
+      });
+      await syncFamilyFromServer(family);
+      const account = authenticate('AI4SG', '1234', 'parent');
+      if (!account) throw new Error('The parent demo sign-in is unavailable.');
+      setRole('parent');
+      setMode('signin');
+      setError('');
+      onVerified(account);
+    } catch (error) {
+      await clearReportSession().catch(() => undefined);
+      setError(reportError(error));
+    } finally {
+      setSigningIn(false);
+    }
   };
 
-  const join = () => {
-    const joined = joinFamily(invite, childName, newUsername, newPassword);
-    if (!joined) {
-      setError('Use invitation code 1234 and complete every field.');
+  const join = async () => {
+    if (signingIn) return;
+    if (!invite.trim() || !childName.trim() || newUsername.trim().length < 3 || newPassword.length < 4) {
+      setError('Enter a valid family code, name, username, and password.');
       return;
     }
-    setUsername(newUsername);
-    setPassword(newPassword);
-    setRole('child');
-    setMode('signin');
-    setError('');
+    setSigningIn(true);
+    try {
+      const family = await joinFamilyRequest({
+        invitationCode: invite.trim(),
+        childName: childName.trim(),
+        username: newUsername.trim(),
+      });
+      await joinFamily(family, childName, newUsername, newPassword);
+      setUsername(newUsername.trim());
+      setPassword(newPassword);
+      setRole('child');
+      setMode('signin');
+      setError('');
+    } catch (error) {
+      setError(reportError(error));
+    } finally {
+      setSigningIn(false);
+    }
   };
 
   return (
@@ -197,9 +270,8 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
             <Text style={[styles.formTitle, { color: colors.foreground }]}>Parent registration</Text>
             <Field label="Family name" value={familyName} onChangeText={setFamilyName} />
             <Field label="Child’s name" value={childName} onChangeText={setChildName} />
-            <Field label="Child invitation code" value={invite} onChangeText={setInvite} keyboardType="number-pad" />
             {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-            <Button label="Create family account" icon="users" onPress={registerFamily} />
+            <Button label="Create family account" icon="users" loading={signingIn} onPress={() => { void registerFamily(); }} />
           </>
         ) : (
           <>
@@ -209,7 +281,7 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
             <Field label="Create username" value={newUsername} onChangeText={setNewUsername} autoCapitalize="none" />
             <Field label="Create password" value={newPassword} onChangeText={setNewPassword} secureTextEntry />
             {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-            <Button label="Join family" icon="user-check" onPress={join} />
+            <Button label="Join family" icon="user-check" loading={signingIn} onPress={() => { void join(); }} />
           </>
         )}
       </Card>

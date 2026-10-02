@@ -516,6 +516,85 @@ export const CreateReportSessionResponse = zod.object({
 
 
 /**
+ * @summary Get the family associated with the shared demo parent session
+ */
+export const getMyFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+
+
+export const GetMyFamilyResponse = zod.object({
+  "familyId": zod.string().uuid(),
+  "familyName": zod.string(),
+  "invitationCode": zod.string().regex(getMyFamilyResponseInvitationCodeRegExp),
+  "children": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "name": zod.string(),
+  "username": zod.string().nullable()
+}))
+})
+
+
+/**
+ * @summary Create or retrieve the family for the shared demo parent
+ */
+export const createFamilyBodyFamilyNameMax = 120;
+
+export const createFamilyBodyChildNameMax = 120;
+
+
+
+export const CreateFamilyBody = zod.object({
+  "familyName": zod.string().min(1).max(createFamilyBodyFamilyNameMax),
+  "childName": zod.string().min(1).max(createFamilyBodyChildNameMax)
+})
+
+export const createFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+
+
+export const CreateFamilyResponse = zod.object({
+  "familyId": zod.string().uuid(),
+  "familyName": zod.string(),
+  "invitationCode": zod.string().regex(createFamilyResponseInvitationCodeRegExp),
+  "children": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "name": zod.string(),
+  "username": zod.string().nullable()
+}))
+})
+
+
+/**
+ * @summary Join a family using its server-generated invitation code
+ */
+export const joinFamilyBodyInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+export const joinFamilyBodyChildNameMax = 120;
+
+export const joinFamilyBodyUsernameMin = 3;
+export const joinFamilyBodyUsernameMax = 60;
+
+
+
+export const JoinFamilyBody = zod.object({
+  "invitationCode": zod.string().regex(joinFamilyBodyInvitationCodeRegExp),
+  "childName": zod.string().min(1).max(joinFamilyBodyChildNameMax),
+  "username": zod.string().min(joinFamilyBodyUsernameMin).max(joinFamilyBodyUsernameMax)
+})
+
+export const joinFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+
+
+export const JoinFamilyResponse = zod.object({
+  "familyId": zod.string().uuid(),
+  "familyName": zod.string(),
+  "invitationCode": zod.string().regex(joinFamilyResponseInvitationCodeRegExp),
+  "children": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "name": zod.string(),
+  "username": zod.string().nullable()
+}))
+})
+
+
+/**
  * @summary Get complete report details and status history
  */
 export const getReportPathIdMax = 80;

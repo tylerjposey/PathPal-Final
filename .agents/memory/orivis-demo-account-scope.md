@@ -5,6 +5,8 @@ description: The product decision behind role-scoped report access in a shared-c
 
 For Orivis report workflows, retain the existing shared demo sign-in rather than silently switching to verified accounts. Demo role scoping is for prototype behavior only; it does not identify individual people or provide secure per-person ownership.
 
-**Why:** When offered a choice between verified accounts and preserving demo sign-in for the web and mobile report-history update, the user explicitly chose demo sign-in after being told that shared credentials cannot provide real user isolation.
+For family invitations, store family records, globally unique invitation codes, and child membership centrally so a child can join from another device. Keep the shared demo sign-in; do not represent it as private per-person ownership.
 
-**How to apply:** Continue to label report access as prototype-only and do not represent shared demo identities as secure accounts. If a future request needs real cross-account privacy, raise the identity change explicitly rather than treating the demo session as sufficient.
+**Why:** The user chose shared backend codes rather than device-local codes, while explicitly retaining shared demo sign-ins. Shared credentials still cannot provide real user isolation.
+
+**How to apply:** Keep report access and family ownership labeled as prototype behavior. If a future request needs real cross-account privacy or secure child accounts, raise the identity change explicitly rather than treating the demo session as sufficient.

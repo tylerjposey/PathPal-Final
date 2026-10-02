@@ -5,6 +5,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -22,6 +23,7 @@ import {
   type ParentProfile,
   useDemo,
 } from '@/context/DemoContext';
+import { useThemePreference } from '@/context/ThemeContext';
 import { useColors } from '@/hooks/useColors';
 
 type MoreSection = 'home' | 'hierarchy' | 'profiles' | 'family' | 'notifications' | 'delete';
@@ -34,8 +36,14 @@ const preferenceRows: { key: PreferenceKey; title: string; detail: string }[] = 
   { key: 'rewardUpdates', title: 'Rewards', detail: 'Points and reward activity' },
 ];
 
+function formatFamilyDisplayName(familyName: string) {
+  const normalized = familyName.trim().replace(/^the\s+/i, '').replace(/\s+family$/i, '').trim();
+  return normalized ? `${normalized} Family` : familyName;
+}
+
 export function FamilySettings() {
   const colors = useColors();
+  const { isDarkMode, setDarkModeEnabled } = useThemePreference();
   const {
     state,
     signOut,
@@ -140,6 +148,19 @@ export function FamilySettings() {
     }
   };
 
+  const toggleDarkMode = async (enabled: boolean) => {
+    clearFeedback();
+    setSaving(true);
+    try {
+      await setDarkModeEnabled(enabled);
+    } catch {
+      setFeedback('');
+      setError('Appearance changed for this session but could not be saved. It may reset next time.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const backToMore = () => {
     setSection('home');
     clearFeedback();
@@ -166,11 +187,9 @@ export function FamilySettings() {
           <ScreenHeader
             eyebrow="Parent account"
             title="Elena"
-            subtitle={state.familyName}
-            subtitleStyle={[
-              styles.accountScreenSubtitle,
-              { color: colors.familySubtitleForeground },
-            ]}
+            subtitle={formatFamilyDisplayName(state.familyName)}
+            subtitleStyle={styles.accountScreenSubtitle}
+            containerStyle={styles.moreScreenHeader}
           />
           <Text
             testID="family-member-count"
@@ -203,6 +222,32 @@ export function FamilySettings() {
           />
 
           <SectionTitle title="Preferences" titleStyle={styles.familySectionTitle} />
+          <View
+            style={[
+              styles.menuRow,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: colors.secondary }]}>
+              <Feather name="moon" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.accountCopy}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Dark mode</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+                Use dark colors throughout PathPal
+              </Text>
+            </View>
+            <Switch
+              testID="dark-mode-toggle"
+              accessibilityLabel="Dark mode"
+              value={isDarkMode}
+              disabled={saving}
+              onValueChange={(enabled) => { void toggleDarkMode(enabled); }}
+              trackColor={{ false: colors.muted, true: colors.primary }}
+              thumbColor={isDarkMode ? colors.primaryForeground : colors.card}
+              ios_backgroundColor={colors.muted}
+            />
+          </View>
           <SettingsRow
             title="Notification Preferences"
             detail="Choose which in-app demo alerts appear"
@@ -618,6 +663,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 22, gap: 11 },
   accountCopy: { flex: 1, gap: 4 },
+  moreScreenHeader: { marginBottom: 0 },
   accountScreenSubtitle: { fontFamily: 'Inter_600SemiBold', fontSize: 19 },
   familyMemberSummary: { fontFamily: 'Inter_600SemiBold', fontSize: 14, lineHeight: 20 },
   familySectionTitle: { fontSize: 24 },

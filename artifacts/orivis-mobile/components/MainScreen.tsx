@@ -475,7 +475,7 @@ function Home({
              <Text style={[styles.heroEyebrow, { color: colors.primaryForeground }]}>{routeName.toUpperCase()} · {journey.source === 'live' ? 'LIVE ROUTE' : 'DEMO ROUTE'}</Text>
           </View>
            {delay > 0 ? (
-            <View style={styles.delayBadge}>
+            <View style={[styles.delayBadge, { backgroundColor: colors.destructive }]}>
                <Text style={[styles.delayText, { color: colors.destructiveForeground }]}>{delay} min delay</Text>
             </View>
           ) : null}
@@ -1750,7 +1750,7 @@ const styles = StyleSheet.create({
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   routeBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroEyebrow: { fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.8 },
-  delayBadge: { backgroundColor: '#D94F53', borderRadius: 11, paddingHorizontal: 9, paddingVertical: 5 },
+  delayBadge: { borderRadius: 11, paddingHorizontal: 9, paddingVertical: 5 },
   delayText: { fontFamily: 'Inter_700Bold', fontSize: 9 },
   heroTitle: { fontFamily: 'Inter_700Bold', fontSize: 24, letterSpacing: -0.5, marginTop: 25 },
   journeyProgressTrack: { height: 52, marginVertical: 10, position: 'relative', overflow: 'visible' },

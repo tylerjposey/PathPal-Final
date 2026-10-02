@@ -36,17 +36,19 @@ export function ScreenHeader({
   title,
   subtitle,
   subtitleStyle,
+  containerStyle,
   right,
 }: {
   eyebrow?: string;
   title?: string;
   subtitle?: string;
   subtitleStyle?: StyleProp<TextStyle>;
+  containerStyle?: StyleProp<ViewStyle>;
   right?: ReactNode;
 }) {
   const colors = useColors();
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, containerStyle]}>
       <View style={styles.headerText}>
         {eyebrow ? <Text style={[styles.eyebrow, { color: colors.primary }]}>{eyebrow.toUpperCase()}</Text> : null}
         {title ? <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text> : null}

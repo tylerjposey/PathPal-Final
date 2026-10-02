@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createPhoneReportSession, createReportSession } from '@workspace/api-client-react';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { BrandMark, Button, Card } from '@/components/OrivisUI';
-import { useDemo } from '@/context/DemoContext';
+import { useDemo, type Role } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -19,6 +19,12 @@ type SignUpPath = 'choose' | 'parent-email' | 'parent-phone' | 'child-email';
 type VerificationStep = 'demo-username' | 'demo-phone-signin' | 'demo-phone-signup' | 'email-signin' | 'email-signup' | null;
 
 const DEMO_PHONE_NUMBER = '4088877754';
+const DEMO_ROLES: { value: Role; label: string }[] = [
+  { value: 'parent', label: 'Parent' },
+  { value: 'child', label: 'Child' },
+  { value: 'manager', label: 'Case Manager' },
+  { value: 'worker', label: 'City Worker' },
+];
 
 function normalizePhoneNumber(value: string): string {
   const digits = value.replace(/\D/g, '');
@@ -39,6 +45,8 @@ export function AuthScreen() {
   const { startSSOFlow } = useSSO();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [signInMethod, setSignInMethod] = useState<SignInMethod>(__DEV__ ? 'demo' : 'email');
+  const [selectedRole, setSelectedRole] = useState<Role>('parent');
+  const [verificationRole, setVerificationRole] = useState<Role>('parent');
   const [identifier, setIdentifier] = useState('AI4SG');
   const [usernamePassword, setUsernamePassword] = useState('1234');
   const [phoneNumber, setPhoneNumber] = useState(DEMO_PHONE_NUMBER);
@@ -66,6 +74,8 @@ export function AuthScreen() {
 
   const demoEnabled = __DEV__;
   const busy = signInFetchStatus === 'fetching' || signUpFetchStatus === 'fetching' || busyGoogle || demoBusy;
+  const selectedRoleLabel = DEMO_ROLES.find(({ value }) => value === selectedRole)?.label ?? 'Parent';
+  const verificationRoleLabel = DEMO_ROLES.find(({ value }) => value === verificationRole)?.label ?? 'Parent';
   const clerkError = mode === 'signin'
     ? signInErrors.fields.identifier?.message ?? signInErrors.fields.password?.message
     : signUpErrors.fields.emailAddress?.message ?? signUpErrors.fields.password?.message ?? signUpErrors.fields.code?.message;
@@ -78,6 +88,7 @@ export function AuthScreen() {
         return;
       }
       setPhoneNumber(identifier.trim());
+      setVerificationRole(selectedRole);
       setCode('1234');
       setVerificationStep('demo-phone-signin');
       return;
@@ -90,6 +101,7 @@ export function AuthScreen() {
       setError('Enter the demo password to continue.');
       return;
     }
+    setVerificationRole(selectedRole);
     setCode('1234');
     setVerificationStep('demo-username');
   };
@@ -100,6 +112,7 @@ export function AuthScreen() {
       setError('Phone registration is a preview flow. Use the demo number shown below.');
       return;
     }
+    setVerificationRole('parent');
     setCode('1234');
     setVerificationStep('demo-phone-signup');
   };
@@ -158,10 +171,10 @@ export function AuthScreen() {
         ? await createReportSession({
           username: identifier.trim(),
           password: usernamePassword,
-          role: 'parent',
+          role: verificationRole,
           verificationCode: code.trim(),
         })
-        : await createPhoneReportSession({ phoneNumber: phoneNumber.trim(), verificationCode: code.trim() });
+        : await createPhoneReportSession({ phoneNumber: phoneNumber.trim(), role: verificationRole, verificationCode: code.trim() });
       demo.setDemoSession(session);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Demo verification could not be completed.');

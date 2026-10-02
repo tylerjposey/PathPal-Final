@@ -150,12 +150,12 @@ router.post("/reports/phone-session", async (req, res): Promise<void> => {
   try {
     await ensurePathPalDemoAccounts();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
-    const user = getPathPalDemoUser("parent");
+    const user = getPathPalDemoUser(parsed.data.role);
     res.json(CreateReportSessionResponse.parse({
-      accessToken: createPathPalDemoToken("parent", expiresAt, secret),
+      accessToken: createPathPalDemoToken(parsed.data.role, expiresAt, secret),
       tokenType: "Bearer",
       expiresAt: expiresAt.toISOString(),
-      role: "parent",
+      role: parsed.data.role,
       userId: user.userId,
       displayName: user.displayName,
       prototypeOnly: true,

@@ -690,7 +690,7 @@ paths:
               $ref: "#/components/schemas/PhoneReportSessionInput"
       responses:
         "200":
-          description: Signed Parent demonstration session
+          description: Signed role-specific demonstration session
           content:
             application/json:
               schema:
@@ -1484,8 +1484,11 @@ components:
       type: object
       properties:
         phoneNumber: { type: string, minLength: 7, maxLength: 32 }
+        role:
+          type: string
+          enum: [parent, child, manager, worker]
         verificationCode: { type: string, pattern: "^[0-9]{4}$" }
-      required: [phoneNumber, verificationCode]
+      required: [phoneNumber, role, verificationCode]
     ReportSession:
       type: object
       properties:

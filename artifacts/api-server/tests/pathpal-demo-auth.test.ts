@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Request } from "express";
-import { CreateReportSessionBody } from "@workspace/api-zod";
+import { CreatePhoneReportSessionBody, CreateReportSessionBody } from "@workspace/api-zod";
 import {
   createPathPalDemoToken,
   getPathPalDemoClaims,
@@ -38,6 +38,11 @@ test("demo login accepts only four roles and signed sessions only in development
 
     for (const role of PATHPAL_DEMO_ROLES) {
       assert.equal(CreateReportSessionBody.safeParse({ ...credentials, role }).success, true);
+      assert.equal(CreatePhoneReportSessionBody.safeParse({
+        phoneNumber: "4088877754",
+        role,
+        verificationCode: "1234",
+      }).success, true);
       const expiresAt = new Date(Date.now() + 60_000);
       const token = createPathPalDemoToken(role, expiresAt, secret);
       const claims = getPathPalDemoClaims(authorizationRequest(token));

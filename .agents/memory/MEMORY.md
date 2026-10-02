@@ -9,3 +9,4 @@
 - [Expo DevTools startup warning](expo-devtools-startup-warning.md) — missing GLib can block the DevTools subprocess without stopping Metro or the app preview.
 - [Workspace React Query deduplication](workspace-react-query-deduplication.md) — production web builds must share one React Query instance across app and linked generated hooks.
 - [Expo pnpm install recovery](expo-pnpm-install-recovery.md) — when many Expo/RN files go missing together, restore the pnpm workspace tree before changing app dependencies.
+- [Orivis Vite optimized dependency cache](orivis-vite-optimized-deps.md) — clear stale optimized React bundles when dev version warnings disagree with pnpm resolution.

@@ -53,3 +53,4 @@ defaultBucketID = "replit-objstore-00b83fdf-2f2b-4edf-8da4-b041ec9b901d"
 [[ports]]
 localPort = 8081
 externalPort = 80
+exposeLocalhost = true

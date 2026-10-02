@@ -34,11 +34,6 @@ const preferenceRows: { key: PreferenceKey; title: string; detail: string }[] = 
   { key: 'rewardUpdates', title: 'Rewards', detail: 'Points and reward activity' },
 ];
 
-function formatFamilyCardName(familyName: string) {
-  const match = familyName.trim().match(/^(?:the\s+)?(.+?)\s+family$/i);
-  return match ? `${match[1]} Family` : familyName;
-}
-
 export function FamilySettings() {
   const colors = useColors();
   const {
@@ -176,18 +171,6 @@ export function FamilySettings() {
               { color: colors.familySubtitleForeground },
             ]}
           />
-          <Card style={styles.accountCard}>
-            <View style={[styles.accountIcon, { backgroundColor: colors.secondary }]}>
-              <Feather name="users" size={21} color={colors.primary} />
-            </View>
-            <View style={styles.accountCopy}>
-              <Text style={[styles.cardTitle, styles.accountCardText, { color: colors.foreground }]}>{formatFamilyCardName(state.familyName)}</Text>
-              <Text style={[styles.cardBody, styles.accountCardText, { color: colors.mutedForeground }]}>
-                Parent profile and {familyChildren.length} {familyChildren.length === 1 ? 'child' : 'children'}
-              </Text>
-            </View>
-          </Card>
-
           <SectionTitle title="Family" titleStyle={styles.familySectionTitle} />
           <SettingsRow
             title="Family Hierarchy"
@@ -626,19 +609,7 @@ function Feedback({ message, isError }: { message: string; isError: boolean }) {
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 22, gap: 11 },
-  accountCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 13,
-    marginLeft: 0,
-    marginRight: 0,
-    paddingLeft: 18,
-    paddingRight: 18,
-  },
-  accountIcon: { width: 42, height: 42, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   accountCopy: { flex: 1, gap: 4 },
-  accountCardText: { textAlign: 'left' },
   accountScreenSubtitle: { fontFamily: 'Inter_600SemiBold', fontSize: 19 },
   familySectionTitle: { fontSize: 24 },
   cardTitle: { fontFamily: 'Inter_700Bold', fontSize: 15, lineHeight: 20 },

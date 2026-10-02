@@ -67,6 +67,12 @@ export function verifyPathPalDemoCredentials(input: {
     safeEqual(input.verificationCode.trim(), "1234");
 }
 
+export function verifyPathPalDemoPhoneCode(phoneNumber: string, verificationCode: string): boolean {
+  const digits = phoneNumber.replace(/\D/g, "");
+  const normalized = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return normalized === "4088877754" && safeEqual(verificationCode.trim(), "1234");
+}
+
 export function getPathPalDemoUser(role: PathPalDemoRole) {
   return demoUsers[role];
 }

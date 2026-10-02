@@ -1,6 +1,6 @@
 - [511 live feed shapes](511-live-feed-shapes.md) — the live operator and alert JSON wrappers differ from the older 511 transit specification examples.
 - [Bus route geometry](bus-route-geometry.md) — map bus paths only from provider geometry; omit the line when a real route shape cannot be established.
-- [Orivis demo account scope](orivis-demo-account-scope.md) — keep shared demo sign-in for report workflows unless the user explicitly opts into verified accounts.
+- [Orivis demo auth scope](orivis-demo-account-scope.md) — keep Clerk for real email/Google accounts; username and simulated phone flows are dev-only demos, with no Child phone collection.
 - [Expo web map taps](expo-web-map-taps.md) — React Native Web press events may lack locationX/Y; map pins need a finite web-compatible coordinate path.
 - [Role-scoped mobile state](role-scoped-report-views.md) — protect local report views and rehydrate family-shared data after account switches.
 - [Google Maps API availability](google-maps-key-legacy-apis-disabled.md) — Places, Routes, live VTA transit, and browser-keyed 3D maps work; keep Google-only suggestions and coordinate-gated routing.

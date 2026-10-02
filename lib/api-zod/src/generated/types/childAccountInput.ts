@@ -17,9 +17,4 @@ export interface ChildAccountInput {
      * @maxLength 24
      */
   invitationCode: string;
-  /**
-     * @minLength 7
-     * @maxLength 24
-     */
-  phoneNumber: string;
 }

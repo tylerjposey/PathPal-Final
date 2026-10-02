@@ -10,6 +10,7 @@ import {
   PATHPAL_DEMO_ROLES,
   PATHPAL_DEMO_TEAM,
   verifyPathPalDemoCredentials,
+  verifyPathPalDemoPhoneCode,
 } from "../src/lib/pathpal-demo-auth";
 
 const secret = "unit-test-demo-session-secret-with-more-than-32-characters";
@@ -30,6 +31,10 @@ test("demo login accepts only four roles and signed sessions only in development
     assert.equal(verifyPathPalDemoCredentials(credentials), true);
     assert.equal(verifyPathPalDemoCredentials({ ...credentials, password: "wrong" }), false);
     assert.equal(verifyPathPalDemoCredentials({ ...credentials, verificationCode: "0000" }), false);
+    assert.equal(verifyPathPalDemoPhoneCode("4088877754", "1234"), true);
+    assert.equal(verifyPathPalDemoPhoneCode("+1 (408) 887-7754", "1234"), true);
+    assert.equal(verifyPathPalDemoPhoneCode("5551234567", "1234"), false);
+    assert.equal(verifyPathPalDemoPhoneCode("4088877754", "0000"), false);
 
     for (const role of PATHPAL_DEMO_ROLES) {
       assert.equal(CreateReportSessionBody.safeParse({ ...credentials, role }).success, true);

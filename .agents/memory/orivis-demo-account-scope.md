@@ -1,10 +1,10 @@
 ---
-name: Orivis demo account scope
-description: The product decision behind role-scoped report access in a shared-credential prototype.
+name: Orivis demo auth scope
+description: The boundary between real Clerk accounts and development-only PathPal demo sign-in.
 ---
 
-For Orivis report workflows, retain the shared AI4SG demo sign-in rather than silently switching to verified accounts. Keep demo access development-only and separate from real Clerk accounts. Demo role scoping is for prototype behavior only; it does not identify individual people or provide secure per-person ownership. Phone numbers may be collected as private contact details, but must not be presented as verified sign-in credentials unless the user explicitly chooses a phone-capable identity provider.
+Keep Clerk email/Google for real PathPal accounts. Username and phone sign-in are shared demo flows available only in development; phone verification is simulated and must never imply that an SMS was sent. Demo sign-in opens the Parent preview without a role selector. Do not collect phone numbers during Child signup or account setup; real Child accounts continue through Clerk email verification and a family invitation code.
 
-**Why:** The user asked to restore the shared demo while keeping real Clerk accounts separate and did not request an identity-provider change. Managed Clerk does not support SMS/phone sign-in, and shared demo credentials cannot provide real user isolation.
+**Why:** The user chose to keep Clerk for real accounts and accepted that username/phone behavior is demo-only. Managed Clerk does not support SMS/phone sign-in, and shared demo credentials cannot provide real user isolation.
 
-**How to apply:** Continue to label report access as prototype-only and do not represent shared demo identities as secure accounts. Preserve the four demo roles (Parent, Child, Case Manager, Worker) without adding Citizen. Keep real accounts on Clerk email/Google sign-in; evaluate an alternate identity provider only after the user asks for verified phone sign-in.
+**How to apply:** Keep demo endpoints disabled outside development, label verification as simulated, and preserve real email/Google sign-in. Do not migrate auth providers or add real SMS delivery unless the user changes this scope.

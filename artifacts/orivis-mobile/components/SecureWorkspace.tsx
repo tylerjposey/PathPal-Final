@@ -421,7 +421,6 @@ function AccountSetup({ displayName, onComplete, onSignOut }: { displayName: str
     ? `${pendingSignUp.lastName} Family`
     : '');
   const [code, setCode] = useState(() => pendingSignUp?.familyCode ?? '');
-  const [phoneNumber, setPhoneNumber] = useState(() => pendingSignUp?.phoneNumber ?? '');
   const [error, setError] = useState('');
   const queryClient = useQueryClient();
   const afterSetup = async () => {
@@ -444,7 +443,7 @@ function AccountSetup({ displayName, onComplete, onSignOut }: { displayName: str
       <View style={styles.setupTop}><BrandMark size={38} /><Pressable onPress={onSignOut} accessibilityRole="button"><Text style={[styles.signOutText, { color: colors.primary }]}>Sign out</Text></Pressable></View>
       <Text style={[styles.kicker, { color: colors.primary }]}>ACCOUNT SETUP</Text>
       <Text style={[styles.setupTitle, { color: colors.foreground }]}>{flow === 'choose' ? `Welcome, ${displayName}.` : colorsForFlow}</Text>
-      <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>{pendingSignUp ? 'Finish setting up your account. Your email is used to sign in; any phone number is saved only as contact information.' : 'Choose the invitation or family path that applies to you. Access is set by your verified account and server permissions.'}</Text>
+      <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>{pendingSignUp ? 'Finish setting up your account with your verified Clerk email.' : 'Choose the invitation or family path that applies to you. Access is set by your verified account and server permissions.'}</Text>
       {flow === 'choose' ? (
         <View style={styles.setupOptions}>
           <SetupOption icon="users" title="Create a family" detail="Parent or guardian account" onPress={() => { setError(''); setFlow('parent'); }} />
@@ -461,18 +460,17 @@ function AccountSetup({ displayName, onComplete, onSignOut }: { displayName: str
         <Card style={styles.setupForm}>
           <Field label="Your name" value={name} onChangeText={setName} autoCapitalize="words" />
           {flow === 'parent' ? <Field label="Family name" value={familyName} onChangeText={setFamilyName} autoCapitalize="words" /> : null}
-          {flow === 'child' ? <Field label="Phone number" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" autoComplete="tel" /> : null}
           {flow !== 'parent' ? <Field label={flow === 'child' ? 'Family invitation code' : 'City invitation code'} value={code} onChangeText={setCode} autoCapitalize="none" /> : null}
           {error ? <Text accessibilityRole="alert" style={[styles.errorText, { color: colors.destructive }]}>{error}</Text> : null}
           <Button
             label={flow === 'parent' ? 'Create family' : flow === 'child' ? 'Request to join' : 'Accept invitation'}
             icon="arrow-right"
             loading={busy}
-            disabled={busy || !name.trim() || (flow === 'parent' ? !familyName.trim() : !code.trim()) || (flow === 'child' && !phoneNumber.trim())}
+            disabled={busy || !name.trim() || (flow === 'parent' ? !familyName.trim() : !code.trim())}
             onPress={() => {
               setError('');
               if (flow === 'parent') parent.mutate({ data: { displayName: name.trim(), familyName: familyName.trim() } });
-              if (flow === 'child') child.mutate({ data: { displayName: name.trim(), invitationCode: code.trim(), phoneNumber: phoneNumber.trim() } });
+              if (flow === 'child') child.mutate({ data: { displayName: name.trim(), invitationCode: code.trim() } });
               if (flow === 'staff') staff.mutate({ data: { displayName: name.trim(), invitationCode: code.trim() } });
             }}
           />

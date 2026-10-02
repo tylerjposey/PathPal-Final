@@ -327,18 +327,6 @@ router.post("/accounts/child", async (req, res): Promise<void> => {
     if (!/^[A-Z0-9]{6,24}$/.test(normalizedCode)) {
       throw new HttpError(400, "Family invitation code is invalid.");
     }
-    const phoneNumber = parsed.data.phoneNumber.trim();
-    const phoneDigits = phoneNumber.replace(/\D/g, "");
-    if (phoneDigits.length < 7 || phoneDigits.length > 15) {
-      throw new HttpError(400, "Enter a phone number with 7 to 15 digits.");
-    }
-    const clerkUser = await clerkClient.users.getUser(clerkUserId);
-    await clerkClient.users.updateUserMetadata(clerkUserId, {
-      privateMetadata: {
-        ...clerkUser.privateMetadata,
-        pathpalContactPhoneNumber: phoneNumber,
-      },
-    });
     const now = new Date();
     await db.transaction(async (tx) => {
       const [family] = await tx.select().from(familyGroupsTable)

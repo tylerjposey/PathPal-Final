@@ -64,11 +64,6 @@ export interface ChildAccountInput {
      * @maxLength 24
      */
   invitationCode: string;
-  /**
-     * @minLength 7
-     * @maxLength 24
-     */
-  phoneNumber: string;
 }
 
 export interface StaffInvitationAcceptance {
@@ -626,6 +621,16 @@ export interface ReportSessionInput {
      * @minLength 4
      * @maxLength 8
      */
+  verificationCode: string;
+}
+
+export interface PhoneReportSessionInput {
+  /**
+     * @minLength 7
+     * @maxLength 32
+     */
+  phoneNumber: string;
+  /** @pattern ^[0-9]{4}$ */
   verificationCode: string;
 }
 

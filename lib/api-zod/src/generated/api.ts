@@ -442,15 +442,11 @@ export const createChildAccountBodyDisplayNameMax = 80;
 export const createChildAccountBodyInvitationCodeMin = 6;
 export const createChildAccountBodyInvitationCodeMax = 24;
 
-export const createChildAccountBodyPhoneNumberMin = 7;
-export const createChildAccountBodyPhoneNumberMax = 24;
-
 
 
 export const CreateChildAccountBody = zod.object({
   "displayName": zod.string().min(1).max(createChildAccountBodyDisplayNameMax),
-  "invitationCode": zod.string().min(createChildAccountBodyInvitationCodeMin).max(createChildAccountBodyInvitationCodeMax),
-  "phoneNumber": zod.string().min(createChildAccountBodyPhoneNumberMin).max(createChildAccountBodyPhoneNumberMax)
+  "invitationCode": zod.string().min(createChildAccountBodyInvitationCodeMin).max(createChildAccountBodyInvitationCodeMax)
 })
 
 export const CreateChildAccountResponse = zod.object({
@@ -1057,6 +1053,34 @@ export const CreateReportSessionBody = zod.object({
 
 
 export const CreateReportSessionResponse = zod.object({
+  "accessToken": zod.string().min(1),
+  "tokenType": zod.enum(['Bearer']),
+  "expiresAt": zod.coerce.date(),
+  "role": zod.enum(['parent', 'child', 'manager', 'worker']),
+  "userId": zod.string(),
+  "displayName": zod.string(),
+  "prototypeOnly": zod.literal(true)
+})
+
+
+/**
+ * @summary Start the simulated phone demonstration session in development
+ */
+export const createPhoneReportSessionBodyPhoneNumberMin = 7;
+export const createPhoneReportSessionBodyPhoneNumberMax = 32;
+
+export const createPhoneReportSessionBodyVerificationCodeRegExp = new RegExp('^[0-9]{4}$');
+
+
+export const CreatePhoneReportSessionBody = zod.object({
+  "phoneNumber": zod.string().min(createPhoneReportSessionBodyPhoneNumberMin).max(createPhoneReportSessionBodyPhoneNumberMax),
+  "verificationCode": zod.string().regex(createPhoneReportSessionBodyVerificationCodeRegExp)
+})
+
+
+
+
+export const CreatePhoneReportSessionResponse = zod.object({
   "accessToken": zod.string().min(1),
   "tokenType": zod.enum(['Bearer']),
   "expiresAt": zod.coerce.date(),

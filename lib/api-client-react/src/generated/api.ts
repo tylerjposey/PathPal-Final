@@ -48,6 +48,7 @@ import type {
   JourneyPlaceDetailsResponse,
   ParentAccountInput,
   PathPalNotification,
+  PhoneReportSessionInput,
   PublicHeatCell,
   ReportMapData,
   ReportSession,
@@ -2122,6 +2123,94 @@ export const useCreateReportSession = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreateReportSessionMutationOptions(options));
+    }
+
+export const getCreatePhoneReportSessionUrl = () => {
+
+
+
+
+  return `/api/reports/phone-session`
+}
+
+/**
+ * @summary Start the simulated phone demonstration session in development
+ */
+export const createPhoneReportSession = async (phoneReportSessionInput: PhoneReportSessionInput, options?: Parameters<typeof customFetch>[1]): Promise<ReportSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ReportSession>(getCreatePhoneReportSessionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(phoneReportSessionInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePhoneReportSessionMutationKey = () => ['createPhoneReportSession'] as const;
+
+export const getCreatePhoneReportSessionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPhoneReportSession>>, TError,CreatePhoneReportSessionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPhoneReportSession>>, TError,CreatePhoneReportSessionMutationVariables, TContext> => {
+
+const mutationKey = getCreatePhoneReportSessionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPhoneReportSession>>, CreatePhoneReportSessionMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPhoneReportSession(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePhoneReportSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createPhoneReportSession>>>
+    export type CreatePhoneReportSessionMutationBody = BodyType<PhoneReportSessionInput>
+    export type CreatePhoneReportSessionMutationError = ErrorType<ErrorResponse>
+    export type CreatePhoneReportSessionMutationVariables = {data: BodyType<PhoneReportSessionInput>}
+
+    /**
+ * @summary Start the simulated phone demonstration session in development
+ */
+export const useCreatePhoneReportSession = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPhoneReportSession>>, TError,CreatePhoneReportSessionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPhoneReportSession>>,
+        TError,
+        CreatePhoneReportSessionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreatePhoneReportSessionMutationOptions(options));
     }
 
 export const getListReportsUrl = () => {

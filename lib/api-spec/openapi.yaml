@@ -676,6 +676,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /reports/phone-session:
+    post:
+      operationId: createPhoneReportSession
+      tags: [reports]
+      summary: Start the simulated phone demonstration session in development
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhoneReportSessionInput"
+      responses:
+        "200":
+          description: Signed Parent demonstration session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSession"
+        "400":
+          description: Invalid phone session input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Demonstration phone credentials were rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Demonstration sessions are disabled outside development
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Demonstration session signing is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /reports:
     get:
       operationId: listReports
@@ -1038,8 +1081,7 @@ components:
       properties:
         displayName: { type: string, minLength: 1, maxLength: 80 }
         invitationCode: { type: string, minLength: 6, maxLength: 24 }
-        phoneNumber: { type: string, minLength: 7, maxLength: 24 }
-      required: [displayName, invitationCode, phoneNumber]
+      required: [displayName, invitationCode]
     StaffInvitationAcceptance:
       type: object
       properties:
@@ -1438,6 +1480,12 @@ components:
           enum: [parent, child, manager, worker]
         verificationCode: { type: string, minLength: 4, maxLength: 8 }
       required: [username, password, role, verificationCode]
+    PhoneReportSessionInput:
+      type: object
+      properties:
+        phoneNumber: { type: string, minLength: 7, maxLength: 32 }
+        verificationCode: { type: string, pattern: "^[0-9]{4}$" }
+      required: [phoneNumber, verificationCode]
     ReportSession:
       type: object
       properties:

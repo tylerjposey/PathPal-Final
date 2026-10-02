@@ -211,7 +211,6 @@ export interface PendingSignUp {
   firstName: string;
   lastName: string;
   email: string;
-  phoneNumber: string;
   familyCode: string;
 }
 

@@ -5,24 +5,30 @@ import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createReportSession } from '@workspace/api-client-react';
+import { createPhoneReportSession, createReportSession } from '@workspace/api-client-react';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { BrandMark, Button, Card } from '@/components/OrivisUI';
-import { useDemo, type Role } from '@/context/DemoContext';
+import { useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
 
 WebBrowser.maybeCompleteAuthSession();
 
 type AuthMode = 'signin' | 'signup';
 type SignInMethod = 'demo' | 'email';
-type SignUpRole = 'parent' | 'child';
+type SignUpPath = 'choose' | 'parent-email' | 'parent-phone' | 'child-email';
+type VerificationStep = 'demo-username' | 'demo-phone-signin' | 'demo-phone-signup' | 'email-signin' | 'email-signup' | null;
 
-const DEMO_ROLES: { value: Role; label: string }[] = [
-  { value: 'parent', label: 'Parent' },
-  { value: 'child', label: 'Child' },
-  { value: 'manager', label: 'Case Manager' },
-  { value: 'worker', label: 'Worker' },
-];
+const DEMO_PHONE_NUMBER = '4088877754';
+
+function normalizePhoneNumber(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+}
+
+function looksLikePhoneNumber(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 7 && /^[+\d\s().-]+$/.test(value);
+}
 
 export function AuthScreen() {
   const colors = useColors();
@@ -33,23 +39,24 @@ export function AuthScreen() {
   const { startSSOFlow } = useSSO();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [signInMethod, setSignInMethod] = useState<SignInMethod>(__DEV__ ? 'demo' : 'email');
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
-  const [demoUsername, setDemoUsername] = useState('AI4SG');
-  const [demoPassword, setDemoPassword] = useState('1234');
-  const [demoCode, setDemoCode] = useState('1234');
+  const [identifier, setIdentifier] = useState('AI4SG');
+  const [usernamePassword, setUsernamePassword] = useState('1234');
+  const [phoneNumber, setPhoneNumber] = useState(DEMO_PHONE_NUMBER);
   const [demoBusy, setDemoBusy] = useState(false);
-  const [signupRole, setSignupRole] = useState<SignUpRole>('parent');
+  const [signupPath, setSignupPath] = useState<SignUpPath>('choose');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [familyCode, setFamilyCode] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
-  const [verificationPending, setVerificationPending] = useState(false);
+  const [verificationStep, setVerificationStep] = useState<VerificationStep>(null);
   const [busyGoogle, setBusyGoogle] = useState(false);
   const [error, setError] = useState('');
+  const phoneInput = mode === 'signin' && signInMethod === 'demo'
+    ? looksLikePhoneNumber(identifier)
+    : signupPath === 'parent-phone';
+  const demoVerification = verificationStep !== null && verificationStep.startsWith('demo-');
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -59,11 +66,43 @@ export function AuthScreen() {
 
   const demoEnabled = __DEV__;
   const busy = signInFetchStatus === 'fetching' || signUpFetchStatus === 'fetching' || busyGoogle || demoBusy;
-  const clerkError = mode === 'signin' && signInMethod === 'demo'
-    ? ''
-    : mode === 'signin'
-      ? signInErrors.fields.identifier?.message ?? signInErrors.fields.password?.message
-      : signUpErrors.fields.emailAddress?.message ?? signUpErrors.fields.password?.message ?? signUpErrors.fields.code?.message;
+  const clerkError = mode === 'signin'
+    ? signInErrors.fields.identifier?.message ?? signInErrors.fields.password?.message
+    : signUpErrors.fields.emailAddress?.message ?? signUpErrors.fields.password?.message ?? signUpErrors.fields.code?.message;
+
+  const startDemoSignIn = () => {
+    setError('');
+    if (looksLikePhoneNumber(identifier)) {
+      if (normalizePhoneNumber(identifier) !== DEMO_PHONE_NUMBER) {
+        setError('Phone sign-in is a preview flow. Use the demo number shown below.');
+        return;
+      }
+      setPhoneNumber(identifier.trim());
+      setCode('1234');
+      setVerificationStep('demo-phone-signin');
+      return;
+    }
+    if (identifier.trim().toLowerCase() !== 'ai4sg') {
+      setError('Only the AI4SG demo supports username sign-in. Real accounts use Clerk email or Google.');
+      return;
+    }
+    if (!usernamePassword) {
+      setError('Enter the demo password to continue.');
+      return;
+    }
+    setCode('1234');
+    setVerificationStep('demo-username');
+  };
+
+  const startPhoneSignup = () => {
+    setError('');
+    if (normalizePhoneNumber(phoneNumber) !== DEMO_PHONE_NUMBER) {
+      setError('Phone registration is a preview flow. Use the demo number shown below.');
+      return;
+    }
+    setCode('1234');
+    setVerificationStep('demo-phone-signup');
+  };
 
   const submitEmail = async () => {
     setError('');
@@ -76,13 +115,14 @@ export function AuthScreen() {
         } else if (signIn.status === 'needs_client_trust') {
           const factor = signIn.supportedSecondFactors.find((item) => item.strategy === 'email_code');
           if (factor) await signIn.mfa.sendEmailCode();
-          setVerificationPending(true);
+          setVerificationStep('email-signin');
         } else if (signIn.status === 'needs_second_factor') {
           setError('This account needs another verification method. Contact your administrator for access.');
         } else {
           setError('Sign-in needs another step. Please try again or use Google sign-in.');
         }
       } else {
+        const role = signupPath === 'child-email' ? 'child' : 'parent';
         const result = await signUp.password({
           emailAddress: email.trim(),
           password,
@@ -91,48 +131,49 @@ export function AuthScreen() {
         });
         if (result.error) { setError(result.error.message); return; }
         demo.setPendingSignUp({
-          role: signupRole,
+          role,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           email: email.trim(),
-          phoneNumber: signupRole === 'child' ? phoneNumber.trim() : '',
-          familyCode: signupRole === 'child' ? familyCode.trim().toUpperCase() : '',
+          familyCode: role === 'child' ? familyCode.trim().toUpperCase() : '',
         });
         const sent = await signUp.verifications.sendEmailCode();
         if (sent.error) { setError(sent.error.message); return; }
-        setVerificationPending(true);
+        setVerificationStep('email-signup');
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Authentication could not be completed.');
     }
   };
 
-  const submitDemo = async () => {
+  const verifyDemoCode = async () => {
     setError('');
-    if (!selectedRole) {
-      setError('Choose a role to continue.');
+    if (!/^\d{4}$/.test(code.trim())) {
+      setError('Enter the four-digit verification code.');
       return;
     }
     setDemoBusy(true);
     try {
-      const session = await createReportSession({
-        username: demoUsername.trim(),
-        password: demoPassword,
-        role: selectedRole,
-        verificationCode: demoCode.trim(),
-      });
+      const session = verificationStep === 'demo-username'
+        ? await createReportSession({
+          username: identifier.trim(),
+          password: usernamePassword,
+          role: 'parent',
+          verificationCode: code.trim(),
+        })
+        : await createPhoneReportSession({ phoneNumber: phoneNumber.trim(), verificationCode: code.trim() });
       demo.setDemoSession(session);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Demo sign-in could not be completed.');
+      setError(caught instanceof Error ? caught.message : 'Demo verification could not be completed.');
     } finally {
       setDemoBusy(false);
     }
   };
 
-  const verify = async () => {
+  const verifyEmailCode = async () => {
     setError('');
     try {
-      if (mode === 'signin') {
+      if (verificationStep === 'email-signin') {
         const result = await signIn.mfa.verifyEmailCode({ code: code.trim() });
         if (result.error) { setError(result.error.message); return; }
         if (signIn.status === 'complete') await signIn.finalize({ navigate: () => undefined });
@@ -168,8 +209,6 @@ export function AuthScreen() {
     }
   };
 
-  const selectedRoleLabel = DEMO_ROLES.find((option) => option.value === selectedRole)?.label ?? 'Select a role';
-
   return (
     <KeyboardAwareScrollViewCompat
       style={[styles.screen, { backgroundColor: colors.background }]}
@@ -191,112 +230,71 @@ export function AuthScreen() {
         </View>
       </View>
       <Text style={[styles.title, { color: colors.foreground }]}>
-        {verificationPending ? 'Check your inbox.' : mode === 'signup' ? 'Create your PathPal account.' : signInMethod === 'demo' && demoEnabled ? 'Choose your PathPal role.' : 'Your family’s safe route starts here.'}
+        {verificationStep
+          ? demoVerification ? 'Verify your demo sign-in.' : 'Check your inbox.'
+          : mode === 'signup'
+            ? signupPath === 'choose' ? 'Create a PathPal account.' : signupPath === 'parent-phone' ? 'Verify your phone (demo).' : 'Create your PathPal account.'
+            : signInMethod === 'demo' && demoEnabled ? 'Sign in with a username or phone.' : 'Your family’s safe route starts here.'}
       </Text>
       <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-        {verificationPending
-          ? `Enter the verification code sent to ${email}.`
-          : mode === 'signin' && signInMethod === 'demo' && demoEnabled
-            ? 'Use the shared preview account to open the Parent, Child, Case Manager, or Worker workspace.'
-            : 'A trusted space for family travel, local reports, and the people working to make things better.'}
+        {verificationStep
+          ? demoVerification
+            ? 'Enter the simulated four-digit code. No SMS is sent; the demo code is 1234.'
+            : `Enter the email verification code sent to ${email}.`
+          : mode === 'signup' && signupPath === 'choose'
+            ? 'Choose email for a real Clerk account, or phone for the shared Parent demo.'
+            : mode === 'signup' && signupPath === 'parent-phone'
+              ? 'This simulated phone flow opens the shared Parent demo; it does not create a real account.'
+              : mode === 'signup' && signupPath === 'child-email'
+                ? 'Real Child accounts use Clerk email verification and a family invitation code. No phone number is collected.'
+                : mode === 'signin' && signInMethod === 'demo' && demoEnabled
+                  ? 'AI4SG opens the Parent preview. Enter a phone number to use the simulated phone flow.'
+                  : 'A trusted space for family travel, local reports, and the people working to make things better.'}
       </Text>
       <Card style={styles.form}>
-        {!verificationPending ? (
+        {!verificationStep ? (
           <>
             <View style={styles.switchRow}>
               {(['signin', 'signup'] as AuthMode[]).map((item) => (
-                <Pressable key={item} accessibilityRole="button" accessibilityState={{ selected: mode === item }} onPress={() => { setMode(item); setError(''); setRoleMenuOpen(false); }} style={[styles.modeButton, { backgroundColor: mode === item ? colors.primary : colors.muted }]}>
+                <Pressable
+                  key={item}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: mode === item }}
+                  onPress={() => {
+                    setMode(item);
+                    setError('');
+                    setVerificationStep(null);
+                    if (item === 'signup') setSignupPath('choose');
+                  }}
+                  style={[styles.modeButton, { backgroundColor: mode === item ? colors.primary : colors.muted }]}
+                >
                   <Text style={[styles.modeText, { color: mode === item ? colors.primaryForeground : colors.mutedForeground }]}>{item === 'signin' ? 'Sign in' : 'Create account'}</Text>
                 </Pressable>
               ))}
             </View>
-            {mode === 'signin' && demoEnabled ? (
-              <View style={styles.methodRow}>
-                {(['demo', 'email'] as SignInMethod[]).map((method) => (
-                  <Pressable
-                    key={method}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: signInMethod === method }}
-                    onPress={() => { setSignInMethod(method); setError(''); setRoleMenuOpen(false); }}
-                    style={[styles.methodButton, { backgroundColor: signInMethod === method ? colors.secondary : colors.card, borderColor: colors.border }]}
-                  >
-                    <Text style={[styles.modeText, { color: signInMethod === method ? colors.primary : colors.mutedForeground }]}>{method === 'demo' ? 'Role demo' : 'Email account'}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
             {mode === 'signin' && signInMethod === 'demo' && demoEnabled ? (
               <>
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.label, { color: colors.foreground }]}>Sign in as</Text>
-                  <Pressable
-                    testID="select-demo-role"
-                    accessibilityRole="button"
-                    accessibilityLabel={`Role: ${selectedRoleLabel}`}
-                    accessibilityState={{ expanded: roleMenuOpen }}
-                    onPress={() => setRoleMenuOpen((open) => !open)}
-                    style={({ pressed }) => [styles.roleSelect, { borderColor: colors.border, backgroundColor: colors.card, opacity: pressed ? 0.78 : 1 }]}
-                  >
-                    <Text style={[styles.roleSelectText, { color: selectedRole ? colors.foreground : colors.mutedForeground }]}>{selectedRoleLabel}</Text>
-                    <Feather name={roleMenuOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.mutedForeground} />
-                  </Pressable>
-                  {roleMenuOpen ? (
-                    <View style={[styles.roleMenu, { borderColor: colors.border, backgroundColor: colors.card }]}>
-                      {DEMO_ROLES.map((option) => (
-                        <Pressable
-                          key={option.value}
-                          testID={`demo-role-${option.value}`}
-                          accessibilityRole="radio"
-                          accessibilityState={{ selected: selectedRole === option.value }}
-                          onPress={() => { setSelectedRole(option.value); setRoleMenuOpen(false); setError(''); }}
-                          style={({ pressed }) => [styles.roleOption, { backgroundColor: selectedRole === option.value ? colors.secondary : 'transparent', opacity: pressed ? 0.72 : 1 }]}
-                        >
-                          <Text style={[styles.roleOptionText, { color: colors.foreground }]}>{option.label}</Text>
-                          {selectedRole === option.value ? <Feather name="check" size={17} color={colors.primary} /> : null}
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-                <Input label="Demo username" value={demoUsername} onChangeText={setDemoUsername} placeholder="Username" autoCapitalize="none" />
-                <Input label="Password" value={demoPassword} onChangeText={setDemoPassword} placeholder="Password" secureTextEntry autoComplete="current-password" />
-                <Input label="Two-step verification code" value={demoCode} onChangeText={setDemoCode} placeholder="Enter code" keyboardType="number-pad" autoComplete="one-time-code" />
-                <Text style={[styles.helperText, { color: colors.mutedForeground }]}>This is shared preview data, separate from private email accounts.</Text>
+                <Input label="Username or phone number" value={identifier} onChangeText={(value) => { setIdentifier(value); setError(''); }} placeholder="AI4SG or 408 887 7754" autoCapitalize="none" />
+                {!phoneInput ? <Input label="Password" value={usernamePassword} onChangeText={setUsernamePassword} placeholder="Demo password" secureTextEntry autoComplete="current-password" /> : null}
                 {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-                <Button label={selectedRole ? `Sign in as ${selectedRoleLabel}` : 'Choose a role'} icon="log-in" loading={demoBusy} disabled={!selectedRole || !demoUsername.trim() || !demoPassword || !demoCode.trim() || demoBusy} onPress={() => { void submitDemo(); }} testID="demo-auth-submit" />
-              </>
-            ) : mode === 'signup' ? (
-              <>
-                <Text style={[styles.label, { color: colors.foreground }]}>Create a</Text>
-                <View style={styles.methodRow}>
-                  {(['parent', 'child'] as SignUpRole[]).map((role) => (
-                    <Pressable
-                      key={role}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: signupRole === role }}
-                      onPress={() => { setSignupRole(role); setError(''); }}
-                      style={[styles.methodButton, { backgroundColor: signupRole === role ? colors.secondary : colors.card, borderColor: colors.border }]}
-                    >
-                      <Text style={[styles.modeText, { color: signupRole === role ? colors.primary : colors.mutedForeground }]}>{role === 'parent' ? 'Parent account' : 'Child account'}</Text>
-                    </Pressable>
-                  ))}
+                <Button
+                  label={phoneInput ? 'Send demo code' : 'Continue'}
+                  icon="arrow-right"
+                  loading={demoBusy}
+                  disabled={!identifier.trim() || (!phoneInput && !usernamePassword) || busy}
+                  onPress={startDemoSignIn}
+                  testID="demo-auth-submit"
+                />
+                <View style={[styles.demoCredentials, { backgroundColor: colors.secondary }]}>
+                  <Text style={[styles.demoCredentialsTitle, { color: colors.foreground }]}>Development demo</Text>
+                  <Text style={[styles.helperText, { color: colors.mutedForeground }]}>Username: AI4SG · Password: 1234 · Code: 1234</Text>
+                  <Text style={[styles.helperText, { color: colors.mutedForeground }]}>Phone: 4088877754 · Code: 1234. This is simulated; no SMS is sent.</Text>
                 </View>
-                <Input label="First name" value={firstName} onChangeText={setFirstName} placeholder="First name" autoCapitalize="words" autoComplete="given-name" />
-                <Input label="Last name" value={lastName} onChangeText={setLastName} placeholder="Last name" autoCapitalize="words" autoComplete="family-name" />
-                {signupRole === 'child' ? (
-                  <>
-                    <Input label="Phone number" value={phoneNumber} onChangeText={setPhoneNumber} placeholder="Phone number" keyboardType="phone-pad" autoComplete="tel" />
-                    <Input label="Family code" value={familyCode} onChangeText={setFamilyCode} placeholder="Enter your parent's family code" autoCapitalize="none" />
-                    <Text style={[styles.helperText, { color: colors.mutedForeground }]}>The phone number is contact information; sign-in uses your email.</Text>
-                  </>
-                ) : null}
-                <Input label="Email address" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
-                <Input label="Password" value={password} onChangeText={setPassword} placeholder="Create a password" secureTextEntry autoComplete="new-password" />
-                {clerkError ? <Text style={[styles.error, { color: colors.destructive }]}>{clerkError}</Text> : null}
-                {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-                <Button label="Create account" icon="arrow-right" loading={busy} disabled={!firstName.trim() || !lastName.trim() || !email.trim() || !password || (signupRole === 'child' && (!phoneNumber.trim() || !familyCode.trim())) || busy} onPress={() => { void submitEmail(); }} testID="email-auth-submit" />
+                <Pressable onPress={() => { setSignInMethod('email'); setError(''); }} style={styles.backLink}>
+                  <Text style={[styles.backText, { color: colors.primary }]}>Use an existing email or Google account</Text>
+                </Pressable>
               </>
-            ) : (
+            ) : mode === 'signin' ? (
               <>
                 <Input label="Email address" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
                 <Input label="Password" value={password} onChangeText={setPassword} placeholder="Enter your password" secureTextEntry autoComplete="current-password" />
@@ -312,16 +310,104 @@ export function AuthScreen() {
                   <Feather name="globe" size={18} color={colors.foreground} />
                   <Text style={[styles.googleText, { color: colors.foreground }]}>Continue with Google</Text>
                 </Pressable>
+                {demoEnabled ? (
+                  <Pressable onPress={() => { setSignInMethod('demo'); setError(''); }} style={styles.backLink}>
+                    <Text style={[styles.backText, { color: colors.primary }]}>Use demo username or phone</Text>
+                  </Pressable>
+                ) : null}
+              </>
+            ) : signupPath === 'choose' ? (
+              <View style={styles.signupChoices}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => { setSignupPath('parent-email'); setError(''); }}
+                  style={({ pressed }) => [styles.signupChoice, { borderColor: colors.border, backgroundColor: colors.card, opacity: pressed ? 0.8 : 1 }]}
+                >
+                  <View style={[styles.choiceIcon, { backgroundColor: colors.secondary }]}><Feather name="mail" size={18} color={colors.primary} /></View>
+                  <View style={styles.choiceCopy}>
+                    <Text style={[styles.choiceTitle, { color: colors.foreground }]}>Sign up with Email</Text>
+                    <Text style={[styles.choiceDescription, { color: colors.mutedForeground }]}>Create a real Parent account with Clerk.</Text>
+                  </View>
+                  <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+                </Pressable>
+                {demoEnabled ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => { setSignupPath('parent-phone'); setError(''); }}
+                    style={({ pressed }) => [styles.signupChoice, { borderColor: colors.border, backgroundColor: colors.card, opacity: pressed ? 0.8 : 1 }]}
+                  >
+                    <View style={[styles.choiceIcon, { backgroundColor: colors.secondary }]}><Feather name="smartphone" size={18} color={colors.primary} /></View>
+                    <View style={styles.choiceCopy}>
+                      <Text style={[styles.choiceTitle, { color: colors.foreground }]}>Sign up with Phone Number</Text>
+                      <Text style={[styles.choiceDescription, { color: colors.mutedForeground }]}>Simulated verification for the shared Parent demo.</Text>
+                    </View>
+                    <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => { setSignupPath('child-email'); setError(''); }}
+                  style={({ pressed }) => [styles.signupChoice, { borderColor: colors.border, backgroundColor: colors.card, opacity: pressed ? 0.8 : 1 }]}
+                >
+                  <View style={[styles.choiceIcon, { backgroundColor: colors.secondary }]}><Feather name="users" size={18} color={colors.primary} /></View>
+                  <View style={styles.choiceCopy}>
+                    <Text style={[styles.choiceTitle, { color: colors.foreground }]}>Child account</Text>
+                    <Text style={[styles.choiceDescription, { color: colors.mutedForeground }]}>Join a family with Clerk email and an invitation code.</Text>
+                  </View>
+                  <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
+            ) : signupPath === 'parent-phone' ? (
+              <>
+                <Input label="Phone number" value={phoneNumber} onChangeText={setPhoneNumber} placeholder="408 887 7754" keyboardType="phone-pad" autoComplete="tel" />
+                <Text style={[styles.helperText, { color: colors.mutedForeground }]}>Demo number: 4088877754. Use code 1234 on the next screen. No SMS is sent.</Text>
+                {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
+                <Button label="Send demo code" icon="arrow-right" loading={demoBusy} disabled={!phoneNumber.trim() || busy} onPress={startPhoneSignup} testID="phone-signup-submit" />
+                <Pressable onPress={() => { setSignupPath('choose'); setError(''); }} style={styles.backLink}>
+                  <Text style={[styles.backText, { color: colors.primary }]}>Back to signup choices</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Input label="First name" value={firstName} onChangeText={setFirstName} placeholder="First name" autoCapitalize="words" autoComplete="given-name" />
+                <Input label="Last name" value={lastName} onChangeText={setLastName} placeholder="Last name" autoCapitalize="words" autoComplete="family-name" />
+                {signupPath === 'child-email' ? <Input label="Family invitation code" value={familyCode} onChangeText={setFamilyCode} placeholder="Enter your parent's family code" autoCapitalize="none" /> : null}
+                <Input label="Email address" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+                <Input label="Password" value={password} onChangeText={setPassword} placeholder="Create a password" secureTextEntry autoComplete="new-password" />
+                {signupPath === 'child-email' ? <Text style={[styles.helperText, { color: colors.mutedForeground }]}>Clerk email is required for real Child accounts. No phone number is collected.</Text> : null}
+                {clerkError ? <Text style={[styles.error, { color: colors.destructive }]}>{clerkError}</Text> : null}
+                {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
+                <Button
+                  label={signupPath === 'child-email' ? 'Continue with Child account' : 'Create Parent account'}
+                  icon="arrow-right"
+                  loading={busy}
+                  disabled={!firstName.trim() || !lastName.trim() || !email.trim() || !password || (signupPath === 'child-email' && !familyCode.trim()) || busy}
+                  onPress={() => { void submitEmail(); }}
+                  testID="email-auth-submit"
+                />
+                <Pressable onPress={() => { setSignupPath('choose'); setError(''); }} style={styles.backLink}>
+                  <Text style={[styles.backText, { color: colors.primary }]}>Back to signup choices</Text>
+                </Pressable>
               </>
             )}
+          </>
+        ) : demoVerification ? (
+          <>
+            <Input label="Four-digit verification code" value={code} onChangeText={setCode} placeholder="Enter code" keyboardType="number-pad" autoComplete="one-time-code" />
+            <Text style={[styles.helperText, { color: colors.mutedForeground }]}>This is a simulated code, not an SMS. Demo code: 1234.</Text>
+            {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
+            <Button label="Verify demo code" icon="check" loading={demoBusy} disabled={!code.trim() || busy} onPress={() => { void verifyDemoCode(); }} testID="verify-demo-code" />
+            <Pressable onPress={() => { setVerificationStep(null); setError(''); }} style={styles.backLink}>
+              <Text style={[styles.backText, { color: colors.primary }]}>Back</Text>
+            </Pressable>
           </>
         ) : (
           <>
             <Input label="Email verification code" value={code} onChangeText={setCode} placeholder="Enter code" keyboardType="number-pad" autoComplete="one-time-code" />
             {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-            <Button label="Verify email" icon="check" loading={busy} disabled={!code.trim() || busy} onPress={() => { void verify(); }} testID="verify-email" />
-            <Pressable onPress={() => { setVerificationPending(false); setError(''); }} style={styles.backLink}>
-              <Text style={[styles.backText, { color: colors.primary }]}>Back to sign in</Text>
+            <Button label="Verify email" icon="check" loading={busy} disabled={!code.trim() || busy} onPress={() => { void verifyEmailCode(); }} testID="verify-email" />
+            <Pressable onPress={() => { setVerificationStep(null); setError(''); }} style={styles.backLink}>
+              <Text style={[styles.backText, { color: colors.primary }]}>Back</Text>
             </Pressable>
           </>
         )}
@@ -369,6 +455,14 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', gap: 8 },
   methodRow: { flexDirection: 'row', gap: 8 },
   methodButton: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  signupChoices: { gap: 10 },
+  signupChoice: { minHeight: 76, borderWidth: 1, borderRadius: 15, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  choiceIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  choiceCopy: { flex: 1, gap: 4 },
+  choiceTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  choiceDescription: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 15 },
+  demoCredentials: { gap: 5, padding: 12, borderRadius: 14 },
+  demoCredentialsTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   modeButton: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 42, borderRadius: 13 },
   modeText: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   inputGroup: { gap: 7 },

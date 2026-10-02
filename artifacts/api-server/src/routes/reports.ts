@@ -10,6 +10,7 @@ import {
 import {
   CreateReportBody,
   CreateReportResponse,
+  CreatePhoneReportSessionBody,
   CreateReportSessionBody,
   CreateReportSessionResponse,
   GetReportParams,
@@ -36,6 +37,7 @@ import {
   isPathPalDemoAuthEnabled,
   PATHPAL_DEMO_FAMILY_ID,
   verifyPathPalDemoCredentials,
+  verifyPathPalDemoPhoneCode,
 } from "../lib/pathpal-demo-auth";
 import { reportObjectStorage, resolveReportStorageLocation } from "../lib/report-storage";
 
@@ -119,6 +121,47 @@ router.post("/reports/session", async (req, res): Promise<void> => {
     }));
   } catch (error) {
     req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "PathPal demo session could not be created");
+    res.status(503).json({ error: "Demonstration session could not be created." });
+  }
+});
+
+router.post("/reports/phone-session", async (req, res): Promise<void> => {
+  if (!isPathPalDemoAuthEnabled()) {
+    res.status(404).json({ error: "Demonstration sessions are disabled outside development." });
+    return;
+  }
+
+  const parsed = CreatePhoneReportSessionBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Enter a valid demo phone number and four-digit code." });
+    return;
+  }
+  if (!verifyPathPalDemoPhoneCode(parsed.data.phoneNumber, parsed.data.verificationCode)) {
+    res.status(401).json({ error: "Demonstration phone credentials were rejected." });
+    return;
+  }
+
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    res.status(503).json({ error: "Demonstration session signing is unavailable." });
+    return;
+  }
+
+  try {
+    await ensurePathPalDemoAccounts();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
+    const user = getPathPalDemoUser("parent");
+    res.json(CreateReportSessionResponse.parse({
+      accessToken: createPathPalDemoToken("parent", expiresAt, secret),
+      tokenType: "Bearer",
+      expiresAt: expiresAt.toISOString(),
+      role: "parent",
+      userId: user.userId,
+      displayName: user.displayName,
+      prototypeOnly: true,
+    }));
+  } catch (error) {
+    req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "PathPal phone demo session could not be created");
     res.status(503).json({ error: "Demonstration session could not be created." });
   }
 });

@@ -164,6 +164,7 @@ export function FamilySettings() {
         <>
           <ScreenHeader
             eyebrow="Parent account"
+            title="More"
             subtitle={`${state.parentProfile.name} · ${state.familyName}`}
             subtitleStyle={[
               styles.accountScreenSubtitle,

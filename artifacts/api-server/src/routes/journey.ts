@@ -769,7 +769,7 @@ function stopFromRoutesApiLocation(
   };
 }
 
-function parseGoogleRoute(
+export function parseGoogleRoute(
   route: Record<string, unknown>,
   index: number,
 ): ParsedGoogleRoute | undefined {
@@ -1041,7 +1041,7 @@ function isVtaBusLeg(legStop: LegStop, catalog: TransitCatalog | undefined): boo
   return false;
 }
 
-function filterVtaBusRoutes(
+export function filterVtaBusRoutes(
   routes: ParsedGoogleRoute[],
   catalog: TransitCatalog | undefined,
 ): ParsedGoogleRoute[] {
@@ -1057,6 +1057,59 @@ function filterVtaBusRoutes(
     if (hasNonBusVehicle) return false;
     return route.legStops.every((legStop) => isVtaBusLeg(legStop, catalog));
   });
+}
+
+export function shouldUseGoogleTransitFallback(
+  mode: TravelMode,
+  scheduledRoutes: JourneyRoute[],
+): boolean {
+  return mode !== "walking" && scheduledRoutes.length === 0;
+}
+
+export function choosePreferredTransitRoutes(
+  scheduledRoutes: JourneyRoute[],
+  googleTransitRoutes: JourneyRoute[],
+): JourneyRoute[] {
+  return scheduledRoutes.length ? scheduledRoutes : googleTransitRoutes;
+}
+
+function googleTransitItineraryKey(route: ParsedGoogleRoute): string {
+  return JSON.stringify(route.legStops
+    .filter((legStop) => legStop.type === "bus")
+    .map((legStop) => [
+      normalizedRef(legStop.routeNumber ?? legStop.routeName ?? ""),
+      normalizedRef(legStop.boarding.id ?? legStop.boarding.name),
+      normalizedRef(legStop.alighting.id ?? legStop.alighting.name),
+    ]));
+}
+
+function busGeometryLegCount(route: ParsedGoogleRoute): number {
+  return route.legStops.filter((legStop) =>
+    legStop.type === "bus" && !!legStop.polyline).length;
+}
+
+export function dedupeGoogleTransitRoutes(
+  routes: ParsedGoogleRoute[],
+): ParsedGoogleRoute[] {
+  const unique = new Map<string, ParsedGoogleRoute>();
+  for (const route of routes) {
+    const key = googleTransitItineraryKey(route);
+    const previous = unique.get(key);
+    const hasMoreGeometry = previous
+      ? busGeometryLegCount(route) > busGeometryLegCount(previous)
+      : true;
+    const hasSameGeometry = previous
+      ? busGeometryLegCount(route) === busGeometryLegCount(previous)
+      : false;
+    if (
+      !previous ||
+      hasMoreGeometry ||
+      (hasSameGeometry && route.route.durationMinutes < previous.route.durationMinutes)
+    ) {
+      unique.set(key, route);
+    }
+  }
+  return [...unique.values()];
 }
 
 async function fetchCachedGoogleRoutes(
@@ -1560,7 +1613,7 @@ function buildRouteLegs(
   });
 }
 
-function buildGoogleTransitRoute(
+export function buildGoogleTransitRoute(
   route: ParsedGoogleRoute,
   catalog: TransitCatalog | undefined,
 ): JourneyRoute {
@@ -1617,19 +1670,12 @@ async function buildJourney(
       buildGtfsRoute(candidate, index, feed, { lat, lng }, coordinates, catalog, monitoredStops)))
     : [];
   const transitJourneyRoutes = built.map(({ route }) => route);
-  const googleTransitResult = mode !== "walking" && !transitJourneyRoutes.length
+  const googleTransitResult = shouldUseGoogleTransitFallback(mode, transitJourneyRoutes)
     ? await fetchCachedGoogleDirections(lat, lng, destinationCoordinates ?? destination)
     : undefined;
-  const uniqueGoogleTransitRoutes = new Map<string, ParsedGoogleRoute>();
-  if (googleTransitResult) {
-    for (const route of filterVtaBusRoutes(googleTransitResult.routes, catalog)) {
-      const previous = uniqueGoogleTransitRoutes.get(route.route.id);
-      if (!previous || route.route.durationMinutes < previous.route.durationMinutes) {
-        uniqueGoogleTransitRoutes.set(route.route.id, route);
-      }
-    }
-  }
-  const googleTransitRoutes = [...uniqueGoogleTransitRoutes.values()]
+  const googleTransitRoutes = dedupeGoogleTransitRoutes(
+    googleTransitResult ? filterVtaBusRoutes(googleTransitResult.routes, catalog) : [],
+  )
     .map((route) => buildGoogleTransitRoute(route, catalog));
   const busStops = feed
     ? [...feed.byStop.keys()].map((id) => feed.stops.get(id)).filter((stop): stop is GtfsStop => !!stop).map(toJourneyStop)
@@ -1644,8 +1690,7 @@ async function buildJourney(
   const alerts = [...new Set((catalog?.alerts ?? []).map((alert) => alert.text))];
   const walkingJourneyRoutes = mode !== "transit" && walkingRoute ? [walkingRoute.route] : [];
   const rankedRoutes = rankJourneyRoutes([
-    ...transitJourneyRoutes,
-    ...googleTransitRoutes,
+    ...choosePreferredTransitRoutes(transitJourneyRoutes, googleTransitRoutes),
     ...walkingJourneyRoutes,
   ]);
   const nearestStop = stops[0] ?? null;

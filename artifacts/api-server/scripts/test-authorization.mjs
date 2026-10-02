@@ -11,7 +11,11 @@ globalThis.require = require;
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(scriptDir, "..");
 const outputDir = path.join(artifactDir, ".authorization-test-build");
-const testFiles = ["pathpal-auth.test.ts", "family-journeys.routes.test.ts"];
+const testFiles = [
+  "pathpal-auth.test.ts",
+  "family-journeys.routes.test.ts",
+  "journey-routes.test.ts",
+];
 const testEntryPoints = testFiles.map((file) => path.join(artifactDir, "tests", file));
 
 try {
@@ -48,7 +52,7 @@ globalThis.require = __bannerCrReq(import.meta.url);`,
       path.isAbsolute(outputPath) ? outputPath : path.resolve(process.cwd(), outputPath),
     );
   if (testOutputs.length !== testEntryPoints.length) {
-    throw new Error("Could not locate all bundled authorization test entry points.");
+    throw new Error("Could not locate all bundled test entry points.");
   }
   const spawnResult = spawnSync(process.execPath, ["--test", ...testOutputs], {
     cwd: artifactDir,

@@ -13,141 +13,13 @@ export interface ErrorResponse {
   error: string;
 }
 
-export type AccountStatusStatus = typeof AccountStatusStatus[keyof typeof AccountStatusStatus];
+export type JourneyOptionsResponseSource = typeof JourneyOptionsResponseSource[keyof typeof JourneyOptionsResponseSource];
 
 
-export const AccountStatusStatus = {
-  needs_setup: 'needs_setup',
-  parent: 'parent',
-  child_pending: 'child_pending',
-  child_approved: 'child_approved',
-  child_rejected: 'child_rejected',
-  manager: 'manager',
-  worker: 'worker',
+export const JourneyOptionsResponseSource = {
+  live: 'live',
+  demo: 'demo',
 } as const;
-
-export interface AccountStatus {
-  status: AccountStatusStatus;
-  userId: string;
-  displayName: string;
-  /** @nullable */
-  familyId: string | null;
-  /** @nullable */
-  familyName: string | null;
-  /** @nullable */
-  approvalDeadline: string | null;
-  /** @nullable */
-  teamName: string | null;
-}
-
-export interface ParentAccountInput {
-  /**
-     * @minLength 1
-     * @maxLength 80
-     */
-  displayName: string;
-  /**
-     * @minLength 1
-     * @maxLength 100
-     */
-  familyName: string;
-}
-
-export interface ChildAccountInput {
-  /**
-     * @minLength 1
-     * @maxLength 80
-     */
-  displayName: string;
-  /**
-     * @minLength 6
-     * @maxLength 24
-     */
-  invitationCode: string;
-}
-
-export interface StaffInvitationAcceptance {
-  /**
-     * @minLength 1
-     * @maxLength 80
-     */
-  displayName: string;
-  /**
-     * @minLength 12
-     * @maxLength 80
-     */
-  invitationCode: string;
-}
-
-export type FamilyMemberRole = typeof FamilyMemberRole[keyof typeof FamilyMemberRole];
-
-
-export const FamilyMemberRole = {
-  parent: 'parent',
-  child: 'child',
-} as const;
-
-export type FamilyMemberStatus = typeof FamilyMemberStatus[keyof typeof FamilyMemberStatus];
-
-
-export const FamilyMemberStatus = {
-  pending: 'pending',
-  approved: 'approved',
-  rejected: 'rejected',
-} as const;
-
-export interface FamilyMember {
-  membershipId: number;
-  displayName: string;
-  role: FamilyMemberRole;
-  status: FamilyMemberStatus;
-  requestedAt: string;
-  /** @nullable */
-  approvedAt: string | null;
-}
-
-export type FamilyViewState = typeof FamilyViewState[keyof typeof FamilyViewState];
-
-
-export const FamilyViewState = {
-  parent: 'parent',
-  child_pending: 'child_pending',
-  child_approved: 'child_approved',
-  child_rejected: 'child_rejected',
-} as const;
-
-export interface FamilyView {
-  state: FamilyViewState;
-  /** @nullable */
-  familyName: string | null;
-  /**
-     * Only returned to the owning parent
-     * @nullable
-     */
-  invitationCode: string | null;
-  /** @nullable */
-  approvalDeadline: string | null;
-  members: FamilyMember[];
-  pendingRequests: FamilyMember[];
-}
-
-export interface FamilyJourneyEndpoint {
-  /**
-     * @minLength 1
-     * @maxLength 200
-     */
-  name: string;
-  /**
-     * @minimum -90
-     * @maximum 90
-     */
-  latitude: number;
-  /**
-     * @minimum -180
-     * @maximum 180
-     */
-  longitude: number;
-}
 
 export type JourneyRouteSource = typeof JourneyRouteSource[keyof typeof JourneyRouteSource];
 
@@ -232,155 +104,6 @@ export interface JourneyRoute {
   mode: JourneyRouteMode;
   legs: JourneyLeg[];
 }
-
-export interface FamilyJourneyInput {
-  route: JourneyRoute;
-  origin: FamilyJourneyEndpoint;
-  destination: FamilyJourneyEndpoint;
-}
-
-export interface FamilyJourneyCheckInInput {
-  /**
-     * @minimum 0
-     * @maximum 100
-     */
-  milestoneIndex: number;
-}
-
-export interface FamilyJourney {
-  id: string;
-  route: JourneyRoute;
-  origin: FamilyJourneyEndpoint;
-  destination: FamilyJourneyEndpoint;
-  /**
-     * @minimum -1
-     * @maximum 100
-     */
-  milestoneIndex: number;
-  /** @nullable */
-  tripUpdatedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface FamilyJourneyResponse {
-  journey: FamilyJourney | null;
-}
-
-export type FamilyRequestResultStatus = typeof FamilyRequestResultStatus[keyof typeof FamilyRequestResultStatus];
-
-
-export const FamilyRequestResultStatus = {
-  approved: 'approved',
-  rejected: 'rejected',
-} as const;
-
-export interface FamilyRequestResult {
-  membershipId: number;
-  status: FamilyRequestResultStatus;
-}
-
-export type PathPalNotificationType = typeof PathPalNotificationType[keyof typeof PathPalNotificationType];
-
-
-export const PathPalNotificationType = {
-  child_join_request: 'child_join_request',
-  child_approved: 'child_approved',
-  child_rejected: 'child_rejected',
-} as const;
-
-export interface PathPalNotification {
-  id: number;
-  type: PathPalNotificationType;
-  title: string;
-  body: string;
-  createdAt: string;
-  /** @nullable */
-  readAt: string | null;
-}
-
-export type StaffInvitationInputRole = typeof StaffInvitationInputRole[keyof typeof StaffInvitationInputRole];
-
-
-export const StaffInvitationInputRole = {
-  manager: 'manager',
-  worker: 'worker',
-} as const;
-
-export interface StaffInvitationInput {
-  role: StaffInvitationInputRole;
-  /**
-     * @maxLength 120
-     * @nullable
-     */
-  teamName?: string | null;
-}
-
-export type StaffInvitationRole = typeof StaffInvitationRole[keyof typeof StaffInvitationRole];
-
-
-export const StaffInvitationRole = {
-  manager: 'manager',
-  worker: 'worker',
-} as const;
-
-export interface StaffInvitation {
-  invitationCode: string;
-  role: StaffInvitationRole;
-  /** @nullable */
-  teamName: string | null;
-  expiresAt: string;
-}
-
-export type ReportMapMarkerStatus = typeof ReportMapMarkerStatus[keyof typeof ReportMapMarkerStatus];
-
-
-export const ReportMapMarkerStatus = {
-  Submitted: 'Submitted',
-  Under_Review: 'Under Review',
-  Assigned: 'Assigned',
-  Resolved: 'Resolved',
-} as const;
-
-export interface ReportMapMarker {
-  id: string;
-  latitude: number;
-  longitude: number;
-  /**
-     * @minimum 1
-     * @maximum 10
-     * @nullable
-     */
-  severity: number | null;
-  status: ReportMapMarkerStatus;
-  /** @nullable */
-  assignedTeam: string | null;
-  /** @nullable */
-  routeAssignment: string | null;
-}
-
-export interface PublicHeatCell {
-  latitude: number;
-  longitude: number;
-  /**
-     * @minimum 0
-     * @maximum 1
-     */
-  intensity: number;
-}
-
-export interface ReportMapData {
-  markers: ReportMapMarker[];
-  publicHeat: PublicHeatCell[];
-}
-
-export type JourneyOptionsResponseSource = typeof JourneyOptionsResponseSource[keyof typeof JourneyOptionsResponseSource];
-
-
-export const JourneyOptionsResponseSource = {
-  live: 'live',
-  demo: 'demo',
-} as const;
 
 export interface JourneyOptionsResponse {
   source: JourneyOptionsResponseSource;
@@ -545,10 +268,6 @@ export interface CommunityReport {
   /** @nullable */
   familyAccountId: string | null;
   /** @nullable */
-  reporterUserId: string | null;
-  /** @nullable */
-  familyId: string | null;
-  /** @nullable */
   selectedCategory: CommunityReportSelectedCategory;
   /**
      * @minimum 37
@@ -594,84 +313,6 @@ export interface ReportStatusEvent {
 export type CommunityReportDetail = CommunityReport & {
   statusHistory: ReportStatusEvent[];
 };
-
-export type ReportSessionInputRole = typeof ReportSessionInputRole[keyof typeof ReportSessionInputRole];
-
-
-export const ReportSessionInputRole = {
-  parent: 'parent',
-  child: 'child',
-  manager: 'manager',
-  worker: 'worker',
-} as const;
-
-export interface ReportSessionInput {
-  /**
-     * @minLength 1
-     * @maxLength 128
-     */
-  username: string;
-  /**
-     * @minLength 1
-     * @maxLength 128
-     */
-  password: string;
-  role: ReportSessionInputRole;
-  /**
-     * @minLength 4
-     * @maxLength 8
-     */
-  verificationCode: string;
-}
-
-export type PhoneReportSessionInputRole = typeof PhoneReportSessionInputRole[keyof typeof PhoneReportSessionInputRole];
-
-
-export const PhoneReportSessionInputRole = {
-  parent: 'parent',
-  child: 'child',
-  manager: 'manager',
-  worker: 'worker',
-} as const;
-
-export interface PhoneReportSessionInput {
-  /**
-     * @minLength 7
-     * @maxLength 32
-     */
-  phoneNumber: string;
-  role: PhoneReportSessionInputRole;
-  /** @pattern ^[0-9]{4}$ */
-  verificationCode: string;
-}
-
-export type ReportSessionTokenType = typeof ReportSessionTokenType[keyof typeof ReportSessionTokenType];
-
-
-export const ReportSessionTokenType = {
-  Bearer: 'Bearer',
-} as const;
-
-export type ReportSessionRole = typeof ReportSessionRole[keyof typeof ReportSessionRole];
-
-
-export const ReportSessionRole = {
-  parent: 'parent',
-  child: 'child',
-  manager: 'manager',
-  worker: 'worker',
-} as const;
-
-export interface ReportSession {
-  /** @minLength 1 */
-  accessToken: string;
-  tokenType: ReportSessionTokenType;
-  expiresAt: string;
-  role: ReportSessionRole;
-  userId: string;
-  displayName: string;
-  prototypeOnly: true;
-}
 
 export type CommunityReportInputLocation = typeof CommunityReportInputLocation[keyof typeof CommunityReportInputLocation];
 
@@ -732,6 +373,57 @@ export interface CommunityReportInput {
   /** @maxLength 2796204 */
   photoBase64?: string;
   contentType?: CommunityReportInputContentType;
+}
+
+export type ReportSessionInputRole = typeof ReportSessionInputRole[keyof typeof ReportSessionInputRole];
+
+
+export const ReportSessionInputRole = {
+  parent: 'parent',
+  child: 'child',
+  citizen: 'citizen',
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
+export interface ReportSessionInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  username: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  password: string;
+  role: ReportSessionInputRole;
+}
+
+export type ReportSessionTokenType = typeof ReportSessionTokenType[keyof typeof ReportSessionTokenType];
+
+
+export const ReportSessionTokenType = {
+  Bearer: 'Bearer',
+} as const;
+
+export type ReportSessionRole = typeof ReportSessionRole[keyof typeof ReportSessionRole];
+
+
+export const ReportSessionRole = {
+  parent: 'parent',
+  child: 'child',
+  citizen: 'citizen',
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
+export interface ReportSession {
+  accessToken: string;
+  tokenType: ReportSessionTokenType;
+  expiresAt: string;
+  role: ReportSessionRole;
+  prototypeOnly: true;
 }
 
 export type CommunityReportUpdateCategory = typeof CommunityReportUpdateCategory[keyof typeof CommunityReportUpdateCategory];

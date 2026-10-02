@@ -9,12 +9,9 @@ import type { ReportSessionRole } from './reportSessionRole';
 import type { ReportSessionTokenType } from './reportSessionTokenType';
 
 export interface ReportSession {
-  /** @minLength 1 */
   accessToken: string;
   tokenType: ReportSessionTokenType;
   expiresAt: Date;
   role: ReportSessionRole;
-  userId: string;
-  displayName: string;
   prototypeOnly: true;
 }

@@ -11,17 +11,10 @@ globalThis.require = require;
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(scriptDir, "..");
 const outputDir = path.join(artifactDir, ".authorization-test-build");
-const testFiles = [
-  "pathpal-auth.test.ts",
-  "pathpal-demo-auth.test.ts",
-  "family-journeys.routes.test.ts",
-  "journey-routes.test.ts",
-];
-const testEntryPoints = testFiles.map((file) => path.join(artifactDir, "tests", file));
 
 try {
   const buildResult = await build({
-    entryPoints: testEntryPoints,
+    entryPoints: [path.join(artifactDir, "tests", "reports.authorization.test.ts")],
     platform: "node",
     bundle: true,
     format: "esm",
@@ -47,15 +40,11 @@ try {
 globalThis.require = __bannerCrReq(import.meta.url);`,
     },
   });
-  const testOutputs = Object.entries(buildResult.metafile.outputs)
-    .filter(([, output]) => testFiles.some((file) => output.entryPoint?.endsWith(file)))
-    .map(([outputPath]) =>
-      path.isAbsolute(outputPath) ? outputPath : path.resolve(process.cwd(), outputPath),
-    );
-  if (testOutputs.length !== testEntryPoints.length) {
-    throw new Error("Could not locate all bundled test entry points.");
-  }
-  const spawnResult = spawnSync(process.execPath, ["--test", ...testOutputs], {
+  const testOutput = Object.entries(buildResult.metafile.outputs)
+    .find(([, output]) => output.entryPoint?.endsWith("reports.authorization.test.ts"))?.[0];
+  if (!testOutput) throw new Error("Could not locate the bundled authorization test entry point.");
+  const testOutputPath = path.isAbsolute(testOutput) ? testOutput : path.resolve(process.cwd(), testOutput);
+  const spawnResult = spawnSync(process.execPath, ["--test", testOutputPath], {
     cwd: artifactDir,
     env: { ...process.env, NODE_ENV: "production", LOG_LEVEL: "fatal" },
     stdio: "inherit",

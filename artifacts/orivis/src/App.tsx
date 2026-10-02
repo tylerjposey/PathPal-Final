@@ -1,43 +1,56 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useClerk, useUser } from '@clerk/react';
-import { publishableKeyFromHost } from '@clerk/react/internal';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
-import { ArrowLeft, ArrowRight, ArrowUpRight, Bell, Check, ChevronDown, CircleUserRound, Clipboard, Clock3, FileText, House, LogOut, Map, MapPin, Menu, Plus, RefreshCw, ShieldCheck, Users, X } from 'lucide-react';
+import { ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Clock3, Crosshair, FileText, ImagePlus, LayoutDashboard, LogOut, MapPin, Menu, RefreshCw, RotateCcw, Search, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import pathpalMark from '@assets/pathpal-mark.png';
 import {
-  CommunityReportCategory, CommunityReportInputLocation, CommunityReportStatus, getReportPhoto,
-  getGetAccountStatusQueryKey, getGetMyFamilyQueryKey, getGetReportMapDataQueryKey, getGetReportQueryKey,
-  getListNotificationsQueryKey, getListReportsQueryKey, useAcceptStaffInvitation, useApproveFamilyJoinRequest,
-  useBootstrapInitialManager, useCreateChildAccount, useCreateParentAccount, useCreateReport,
-  useCreateStaffInvitation, useGetAccountStatus, useGetMyFamily, useGetReport, useGetReportMapData,
-  useListNotifications, useListReports, useMarkNotificationRead, useRejectFamilyJoinRequest, useUpdateReport,
-  type AccountStatus, type CommunityReport, type CommunityReportInput, type CommunityReportStatus as ReportStatus,
-  type FamilyView, type PathPalNotification, type ReportMapData, type StaffInvitation,
+  CommunityReportCategory, CommunityReportInputLocation, CommunityReportStatus,
+  createReportSession, getGetReportQueryKey, getListReportsQueryKey, getReportPhoto,
+  setAuthTokenGetter, useCreateReport, useGetReport, useListReports, useResetDemoReports, useUpdateReport,
+  type CommunityReport, type CommunityReportInput, type CommunityReportUpdate, type ReportSession, type ReportSessionInputRole,
 } from '@workspace/api-client-react';
 import './app.css';
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: true } } });
+const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 0, retry: 1, refetchOnWindowFocus: true } } });
+const STORAGE = 'orivis-demo-session';
+const roles: ReportSessionInputRole[] = ['parent', 'child', 'citizen', 'manager', 'worker'];
 const categories = Object.values(CommunityReportCategory);
-const neighborhoods = Object.values(CommunityReportInputLocation);
+const locations = Object.values(CommunityReportInputLocation);
 const statuses = Object.values(CommunityReportStatus);
-const mapBounds = { north: 37.41, south: 37.26, west: -121.99, east: -121.76 };
-const neighborhoodCoords: Record<string, [number, number]> = {
+const roleCopy: Record<ReportSessionInputRole, { title: string; description: string; tag: string }> = {
+  parent: { title: 'Family view', description: 'Keep an eye on the places your family moves through.', tag: 'FAMILY' },
+  child: { title: 'Young neighbor', description: 'Speak up when something on your route does not feel right.', tag: 'FAMILY' },
+  citizen: { title: 'Neighbor view', description: 'Make a local concern visible and follow what happens next.', tag: 'COMMUNITY' },
+  manager: { title: 'City desk', description: 'Triage reports, coordinate teams, and close the loop.', tag: 'CITY STAFF' },
+  worker: { title: 'Field view', description: 'See assigned work and update its progress on the ground.', tag: 'FIELD TEAM' },
+};
+const areaPins: Record<string, [number, number]> = {
   'Downtown San Jose': [37.3352, -121.8906], Japantown: [37.3495, -121.8941],
   'Willow Glen': [37.299, -121.899], 'East San Jose': [37.337, -121.828],
   'Alum Rock': [37.367, -121.824], 'Santa Clara': [37.3541, -121.9552],
 };
-const clerkPublishableKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const countyMapPath = `${basePath}/map`;
+const mapBounds = { north: 37.41, south: 37.26, west: -121.99, east: -121.76 };
 
+function getInitialSession(): ReportSession | null {
+  try {
+    const item = localStorage.getItem(STORAGE);
+    if (!item) return null;
+    const session = JSON.parse(item) as ReportSession;
+    if (!session.accessToken || Date.parse(session.expiresAt) <= Date.now() || !roles.includes(session.role)) {
+      localStorage.removeItem(STORAGE);
+      return null;
+    }
+    return session;
+  } catch { localStorage.removeItem(STORAGE); return null; }
+}
+let activeSession = getInitialSession();
+setAuthTokenGetter(() => activeSession?.accessToken ?? null);
 function errorText(error: unknown) {
   if (error && typeof error === 'object') {
-    const value = error as { message?: string; data?: { error?: string }; body?: { error?: string } };
-    return value.data?.error || value.body?.error || value.message || 'Please try again in a moment.';
+    const item = error as { message?: string; data?: { error?: string }; body?: { error?: string } };
+    return item.data?.error || item.body?.error || item.message || 'That did not work. Please try again.';
   }
-  return 'Please try again in a moment.';
+  return 'That did not work. Please try again.';
 }
 function dateText(value: string | null | undefined) {
   if (!value) return 'Not yet';
@@ -46,529 +59,333 @@ function dateText(value: string | null | undefined) {
 }
 function shortDate(value: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-function Header({ marker, title, description, action }: { marker: string; title: string; description: string; action?: ReactNode }) {
-  return <div className="page-heading"><div><div className="eyebrow"><span />{marker}</div><h1>{title}</h1><p>{description}</p></div>{action}</div>;
+function Status({ value }: { value: string }) {
+  return <span data-testid="status-report" className={`status status-${value.toLowerCase().replaceAll(' ', '-')}`}><span className="status-dot" />{value}</span>;
 }
-function ErrorNotice({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return <div className="error-panel" role="alert"><strong>We couldn’t load this view.</strong><span>{message}</span>{onRetry && <button className="text-button" onClick={onRetry}>Try again <ArrowRight size={15} /></button>}</div>;
+function Skeleton({ lines = 3 }: { lines?: number }) {
+  return <div className="skeleton-wrap" aria-label="Loading reports">{Array.from({ length: lines }, (_, i) => <div className="skeleton" key={i} style={{ width: `${94 - i * 12}%` }} />)}</div>;
 }
-function LoadingPanel({ label = 'Loading your workspace' }: { label?: string }) {
-  return <div className="loading-panel" aria-label={label}><div className="skeleton skeleton-title" /><div className="skeleton" /><div className="skeleton short" /></div>;
+function Failure({ error, retry }: { error: unknown; retry: () => void }) {
+  return <div className="notice notice-error"><strong>We could not load this right now.</strong><span>{errorText(error)}</span><button className="text-action" onClick={retry} data-testid="button-retry">Try again <ArrowRight size={15} /></button></div>;
 }
-function EmptyPanel({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="empty-panel"><span className="empty-icon"><MapPin size={22} /></span><h3>{title}</h3><p>{children}</p></div>;
+function Empty({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
+  return <div className="empty"><div className="empty-art"><MapPin size={28} strokeWidth={1.4} /><span className="empty-orbit" /></div><h3>{title}</h3><p>{description}</p>{action}</div>;
 }
-function StatusTag({ status }: { status: string }) {
-  return <span className={`status-tag status-${status.toLowerCase().replaceAll(' ', '-')}`}><i />{status}</span>;
-}
-function ReportCard({ report }: { report: CommunityReport }) {
-  return <Link className="report-card" href={`/reports/${report.id}`} data-testid={`link-report-${report.id}`}>
-    <div className="report-card-mark"><FileText size={18} /></div>
-    <div className="report-card-body"><div className="report-card-meta"><span>CASE {report.id}</span><span>{shortDate(report.submittedAt)}</span></div>
-      <strong>{report.summary}</strong><p>{report.description}</p>
-      <div className="report-card-facts"><span>{report.location}</span><span>{report.category}</span>{report.assignedTeam && <span>{report.assignedTeam}</span>}</div>
-    </div><div className="report-card-side"><StatusTag status={report.status} /><ArrowUpRight size={17} /></div>
+function ReportRow({ report }: { report: CommunityReport }) {
+  return <Link href={`/reports/${report.id}`} className="report-row" data-testid={`link-report-${report.id}`}>
+    <ProtectedPhoto id={report.id} hasPhoto={!!report.photoUri} compact />
+    <div className="row-body">
+      <div className="row-topline"><span className="eyebrow">CASE <span data-testid={`text-report-id-${report.id}`}>{report.id}</span></span><span className="row-date" data-testid={`text-submitted-${report.id}`}>{dateText(report.submittedAt)}</span></div>
+      <strong className="row-title">{report.summary}</strong>
+      <p className="row-description" data-testid={`text-description-${report.id}`}>{report.description}</p>
+      <div className="row-details">
+        <span data-testid={`text-selected-category-${report.id}`}><b>SELECTED ISSUE</b>{report.selectedCategory ?? 'Not selected'}</span>
+        <span data-testid={`text-ai-category-${report.id}`}><b>AI CATEGORY</b>{report.category}</span>
+        <span data-testid={`text-severity-${report.id}`}><b>SEVERITY</b>{report.severity} / 10</span>
+        <span data-testid={`text-assigned-team-${report.id}`}><b>ASSIGNED TEAM</b>{report.assignedTeam || 'Unassigned'}</span>
+        <span className="row-location" data-testid={`text-location-${report.id}`}><b>LOCATION / PIN</b>{report.location} · {report.latitude != null && report.longitude != null ? `${report.latitude.toFixed(6)}, ${report.longitude.toFixed(6)}` : 'Pin unavailable'}</span>
+      </div>
+    </div>
+    <div className="row-side"><Status value={report.status} /><span className="row-side-date">{dateText(report.submittedAt)}</span><ArrowUpRight size={19} className="row-arrow" /></div>
   </Link>;
 }
-function HeadingAction({ href, children }: { href: string; children: ReactNode }) {
-  return <Link className="button button-primary" href={href}>{children}<ArrowUpRight size={16} /></Link>;
+function Header({ title, description, marker, action }: { title: string; description: string; marker: string; action?: ReactNode }) {
+  return <div className="page-heading"><div><div className="section-kicker"><span className="kicker-line" />{marker}</div><h1>{title}</h1><p>{description}</p></div>{action}</div>;
 }
 
-function PublicAuth() {
-  const [location] = useLocation();
-  const signingUp = location.startsWith('/sign-up');
-  return <div className="auth-screen">
-    <section className="auth-story">
-      <Link href="/" className="brand auth-brand"><img src={pathpalMark} alt="" />PathPal</Link>
-      <div className="story-content"><span className="micro-label">SANTA CLARA COUNTY · NEIGHBORHOOD CARE</span>
-        <h1>Safer streets<br />start with <em>noticing.</em></h1>
-        <p>One trusted place for families to share concerns and city teams to follow through.</p>
-      </div>
-      <div className="auth-foot"><span className="foot-rule" />PRIVATE BY DEFAULT <span className="auth-foot-right">PATHPAL / 01</span></div>
-      <div className="story-orbit"><i /><i /><i /></div>
-    </section>
-    <section className="auth-panel">
-      <div className="auth-context"><span className="eyebrow"><span />A SAFER WAY TO GET THERE</span><h2>{signingUp ? 'Make room for a little more care.' : 'Welcome back to your neighborhood.'}</h2><p>Sign in securely to see the information your account is allowed to access.</p></div>
-      <div className="clerk-frame">
-        {signingUp
-          ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
-          : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />}
-      </div>
-      <div className="auth-privacy"><ShieldCheck size={18} /><span><strong>Who can see what is always clear.</strong><br />Your account access is assigned by PathPal, never selected at sign-in.</span></div>
-    </section>
-  </div>;
-}
-
-function ClerkCacheBoundary() {
-  const { addListener } = useClerk();
-  const client = useQueryClient();
-  const previous = useRef<string | null | undefined>(undefined);
-  useEffect(() => addListener(({ user }) => {
-    const userId = user?.id ?? null;
-    if (previous.current !== undefined && previous.current !== userId) client.clear();
-    previous.current = userId;
-  }), [addListener, client]);
-  return null;
-}
-
-function SetupScreen({ onDone }: { onDone: () => void }) {
-  const { user } = useUser();
-  const client = useQueryClient();
-  const parent = useCreateParentAccount();
-  const child = useCreateChildAccount();
-  const staff = useAcceptStaffInvitation();
-  const manager = useBootstrapInitialManager();
-  const [mode, setMode] = useState<'parent' | 'child' | 'staff' | 'manager'>('parent');
-  const [displayName, setDisplayName] = useState(user?.fullName || '');
-  const [familyName, setFamilyName] = useState('');
-  const [code, setCode] = useState('');
+function SignIn({ onSignIn }: { onSignIn: (session: ReportSession) => void }) {
+  const [role, setRole] = useState<ReportSessionInputRole>('citizen');
+  const [username, setUsername] = useState('AI4SG');
+  const [password, setPassword] = useState('1234');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [staffResult, setStaffResult] = useState<StaffInvitation | null>(null);
-  const busy = parent.isPending || child.isPending || staff.isPending || manager.isPending;
   async function submit(event: FormEvent) {
-    event.preventDefault(); setError('');
-    try {
-      if (mode === 'parent') await parent.mutateAsync({ data: { displayName: displayName.trim(), familyName: familyName.trim() } });
-      if (mode === 'child') await child.mutateAsync({ data: { displayName: displayName.trim(), invitationCode: code.trim() } });
-      if (mode === 'staff') await staff.mutateAsync({ data: { displayName: displayName.trim(), invitationCode: code.trim() } });
-      if (mode === 'manager') await manager.mutateAsync();
-      await client.invalidateQueries({ queryKey: getGetAccountStatusQueryKey() });
-      await client.invalidateQueries({ queryKey: getGetMyFamilyQueryKey() });
-      onDone();
-    } catch (err) { setError(errorText(err)); }
+    event.preventDefault(); setError(''); setBusy(true);
+    try { const session = await createReportSession({ username: username.trim(), password, role }); onSignIn(session); }
+    catch (err) { setError(errorText(err)); }
+    finally { setBusy(false); }
   }
-  return <div className="setup-screen"><div className="setup-brand"><Link href="/" className="brand"><img src={pathpalMark} alt="" />PathPal</Link><span>ACCOUNT SETUP</span></div>
-    <div className="setup-wrap"><div className="setup-intro"><span className="eyebrow"><span />YOUR ACCOUNT, YOUR ACCESS</span><h1>Let’s set up<br />your <em>PathPal.</em></h1><p>Choose how you’ll use PathPal. Your role is confirmed by the server after setup.</p></div>
-      <div className="setup-card"><div className="setup-tabs" role="tablist" aria-label="Account type">
-        {(['parent', 'child', 'staff', 'manager'] as const).map((item) => <button key={item} className={mode === item ? 'selected' : ''} role="tab" aria-selected={mode === item} onClick={() => { setMode(item); setError(''); }} data-testid={`tab-setup-${item}`}>{item === 'parent' ? 'Parent' : item === 'child' ? 'Join family' : item === 'staff' ? 'Staff invite' : 'Initial manager'}</button>)}
+  return <div className="signin-shell">
+    <div className="signin-left">
+      <div className="signin-brand"><img className="brand-icon" src={pathpalMark} alt="" /><span>PathPal</span></div>
+      <div className="signin-story"><span className="light-kicker">A BETTER WAY TO LOOK OUT FOR EACH OTHER</span><h1>A safer street<br />starts with <em>someone noticing.</em></h1><p>One place for neighbors to flag a concern and see what the city did next.</p></div>
+      <div className="signin-bottom"><span className="sign-line" /><span>SANTA CLARA COUNTY, CALIFORNIA</span><span>01 / 05</span></div>
+      <div className="signin-rings"><span /><span /><span /><i /></div>
+    </div>
+    <div className="signin-right">
+      <div className="signin-form-wrap"><div className="mini-label"><span className="mini-dot" /> PROTOTYPE WORKSPACE</div><h2>Step into your<br /><em>community.</em></h2><p className="signin-intro">Choose a demo perspective to explore how a report moves from the neighborhood to the city.</p>
+        <form onSubmit={submit}>
+          <label className="field-label">EXPLORE AS</label><div className="role-grid">{roles.map(item => <button type="button" key={item} data-testid={`button-role-${item}`} onClick={() => setRole(item)} className={`role-option ${role === item ? 'selected' : ''}`}><span className="role-check">{role === item && <Check size={13} />}</span><span><strong>{item === 'citizen' ? 'Neighbor' : item === 'manager' ? 'City manager' : item === 'worker' ? 'Field worker' : item === 'child' ? 'Young neighbor' : 'Parent'}</strong><small>{roleCopy[item].tag}</small></span></button>)}</div>
+          <div className="signin-fields"><label className="field"><span>DEMO USERNAME</span><input data-testid="input-username" value={username} onChange={e => setUsername(e.target.value)} required /></label><label className="field"><span>DEMO PASSWORD</span><input data-testid="input-password" type="password" value={password} onChange={e => setPassword(e.target.value)} required /></label></div>
+          {error && <div className="inline-error" role="alert" data-testid="text-login-error">{error}</div>}
+          <button className="primary-btn signin-submit" type="submit" disabled={busy} data-testid="button-sign-in">{busy ? 'Opening workspace…' : `Enter as ${role === 'citizen' ? 'neighbor' : role === 'manager' ? 'manager' : role === 'worker' ? 'worker' : role}`}<ArrowRight size={17} /></button>
+        </form>
+        <div className="demo-disclaimer"><ShieldCheck size={18} /><p><strong>Demo only.</strong> These shared credentials and roles are for prototyping, not secure accounts. Do not submit private or emergency information. For an immediate danger, call 911.</p></div>
       </div>
-      <form className="stack-form" onSubmit={submit}>
-        {mode !== 'manager' && <label className="field"><span>YOUR DISPLAY NAME</span><input value={displayName} onChange={e => setDisplayName(e.target.value)} minLength={1} maxLength={80} required autoComplete="name" data-testid="input-display-name" /></label>}
-        {mode === 'parent' && <label className="field"><span>FAMILY NAME</span><input value={familyName} onChange={e => setFamilyName(e.target.value)} maxLength={100} required placeholder="For example, the Garcia family" data-testid="input-family-name" /></label>}
-        {mode === 'child' && <label className="field"><span>FAMILY CODE</span><input value={code} onChange={e => setCode(e.target.value)} minLength={6} maxLength={24} required autoCapitalize="characters" placeholder="Enter the code from your parent" data-testid="input-family-code" /></label>}
-        {mode === 'staff' && <label className="field"><span>STAFF INVITATION CODE</span><input value={code} onChange={e => setCode(e.target.value)} minLength={12} maxLength={80} required data-testid="input-staff-code" /></label>}
-        {mode === 'manager' && <div className="maintainer-note"><ShieldCheck size={18} /><p>This action is available only to the maintainer-configured Clerk account. The server confirms eligibility before creating a manager account.</p></div>}
-        {error && <div className="inline-error" role="alert">{error}</div>}
-        <button className="button button-primary full-button" disabled={busy} type="submit" data-testid="button-complete-setup">{busy ? 'Setting up…' : mode === 'parent' ? 'Create family account' : mode === 'child' ? 'Request to join family' : mode === 'staff' ? 'Accept staff invitation' : 'Check manager eligibility'}<ArrowRight size={16} /></button>
-      </form>
-      <div className="setup-privacy"><ShieldCheck size={16} />Access is assigned by PathPal and confirmed by the server.</div></div>
     </div>
   </div>;
 }
 
-function AccessPending({ rejected = false }: { rejected?: boolean }) {
-  const { signOut } = useClerk();
-  const client = useQueryClient();
-  async function logout() { client.clear(); await signOut({ redirectUrl: `${basePath}/` || '/' }); }
-  return <div className="privacy-state"><Link href="/" className="brand setup-inline-brand"><img src={pathpalMark} alt="" />PathPal</Link><div className="privacy-seal"><Clock3 size={27} /></div><span className="eyebrow"><span />FAMILY ACCESS</span>
-    <h1>{rejected ? 'This request wasn’t approved.' : 'Your request is being reviewed.'}</h1>
-    <p>{rejected ? 'A parent or guardian did not approve this request. If you believe this is a mistake, ask them to invite you again.' : 'A parent or guardian needs to approve your request before you can access the family workspace.'}</p>
-    {!rejected && <div className="review-note">Until approval, family names, members, reports, maps, and photos stay hidden.</div>}
-    <button className="button button-subtle privacy-signout" onClick={() => void logout()} data-testid="button-sign-out-pending">Sign out <LogOut size={15} /></button>
-  </div>;
-}
-
-function Shell({ account, children }: { account: AccountStatus; children: React.ReactNode }) {
-  const { signOut } = useClerk();
-  const client = useQueryClient();
+function Shell({ session, signOut, children }: { session: ReportSession; signOut: () => void; children: ReactNode }) {
   const [location] = useLocation();
-  const [mobileNav, setMobileNav] = useState(false);
-  const isStaff = account.status === 'manager' || account.status === 'worker';
+  const [menu, setMenu] = useState(false);
+  useEffect(() => setMenu(false), [location]);
   const nav = [
-    { href: '/', label: isStaff ? 'Case workspace' : 'Family home', Icon: House },
-    { href: '/reports', label: isStaff ? 'Case queue' : 'Report history', Icon: FileText },
-    { href: countyMapPath, label: isStaff ? 'Case map' : 'Neighborhood map', Icon: Map },
-    ...(!isStaff ? [{ href: '/report/new', label: 'New report', Icon: MapPin }] : []),
-    ...(!isStaff ? [{ href: '/family', label: 'Family', Icon: Users }] : []),
-    { href: '/notifications', label: 'Notifications', Icon: Bell },
-    { href: '/profile', label: 'Account', Icon: CircleUserRound },
+    { href: '/', label: 'Overview', icon: LayoutDashboard },
+    { href: '/report/new', label: 'New report', icon: MapPin },
+    { href: '/reports', label: 'Report history', icon: FileText },
+    { href: '/settings', label: 'Settings', icon: Settings2 },
   ];
-  async function logout() { client.clear(); await signOut({ redirectUrl: `${basePath}/` || '/' }); }
-  useEffect(() => setMobileNav(false), [location]);
-  return <div className="app-layout"><aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
-    <Link href="/" className="brand sidebar-brand"><img src={pathpalMark} alt="" />PathPal</Link>
-    <div className="sidebar-heading">YOUR WORKSPACE</div><nav className="sidebar-nav">{nav.map(({ href, label, Icon }) => <Link key={href} href={href} className={`nav-item ${location === href || (href === '/reports' && location.startsWith('/reports/')) ? 'active' : ''}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={18} />{label}</Link>)}</nav>
-    <div className="sidebar-spacer" /><div className="sidebar-safety"><ShieldCheck size={18} /><span><strong>Not for emergencies</strong><small>Call 911 if someone is in immediate danger.</small></span></div>
-    <div className="account-chip"><span className="avatar">{account.displayName.slice(0, 1).toUpperCase()}</span><span className="account-chip-copy"><strong>{account.displayName}</strong><small>{account.status === 'parent' ? 'Parent' : account.status === 'child_approved' ? 'Family member' : account.status === 'manager' ? 'City manager' : 'Field team'}{account.teamName ? ` · ${account.teamName}` : ''}</small></span><button className="icon-button" onClick={() => void logout()} aria-label="Sign out" title="Sign out" data-testid="button-sign-out"><LogOut size={17} /></button></div>
-  </aside>{mobileNav && <button className="mobile-scrim" onClick={() => setMobileNav(false)} aria-label="Close navigation" />}
-  <div className="main-column"><header className="topbar"><button className="mobile-toggle" aria-label="Open menu" onClick={() => setMobileNav(true)} data-testid="button-open-menu"><Menu size={21} /></button><div className="county-label"><span className="live-dot" />SANTA CLARA COUNTY <b>/</b> {isStaff ? 'CITY SERVICES' : 'FAMILY SAFETY'}</div><div className="topbar-right"><span className="topbar-date">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span><Link href="/notifications" className="topbar-bell" aria-label="Notifications" data-testid="link-notifications-top"><Bell size={17} /></Link></div></header>
-    <main className="main-content">{children}</main><footer className="app-footer"><span>PATHPAL / COMMUNITY WORKSPACE</span><span>Clear access. Neighborly follow-through.</span></footer>
-  </div></div>;
-}
-
-function FamilyWorkspace({ account }: { account: AccountStatus }) {
-  const client = useQueryClient();
-  const { data: family, isLoading, error, refetch } = useGetMyFamily({ query: { queryKey: getGetMyFamilyQueryKey() } });
-  const approve = useApproveFamilyJoinRequest();
-  const reject = useRejectFamilyJoinRequest();
-  const [actionError, setActionError] = useState('');
-  const isParent = account.status === 'parent';
-  async function decide(id: number, action: 'approve' | 'reject') {
-    setActionError('');
-    try {
-      if (action === 'approve') await approve.mutateAsync({ id }); else await reject.mutateAsync({ id });
-      await Promise.all([
-        client.invalidateQueries({ queryKey: getGetMyFamilyQueryKey() }),
-        client.invalidateQueries({ queryKey: getGetAccountStatusQueryKey() }),
-        client.invalidateQueries({ queryKey: getListNotificationsQueryKey() }),
-      ]);
-    } catch (err) { setActionError(errorText(err)); }
-  }
-  return <>
-    <Header marker="FAMILY / PRIVATE SPACE" title={isParent ? 'Your family, together.' : 'A closer circle of care.'} description={isParent ? 'Manage who is connected to your family and review requests to join.' : 'Your family’s approved members and neighborhood reports are in one place.'} />
-    {isLoading ? <LoadingPanel /> : error ? <ErrorNotice message={errorText(error)} onRetry={() => void refetch()} /> : family ? <FamilyContent account={account} family={family} isParent={isParent} onDecision={decide} pending={approve.isPending || reject.isPending} actionError={actionError} /> : <ErrorNotice message="Family information is not available right now." />}
-  </>;
-}
-function FamilyContent({ account, family, isParent, onDecision, pending, actionError }: { account: AccountStatus; family: FamilyView; isParent: boolean; onDecision: (id: number, action: 'approve' | 'reject') => void; pending: boolean; actionError: string }) {
-  const [copied, setCopied] = useState(false);
-  async function copyCode() {
-    if (!family.invitationCode) return;
-    try { await navigator.clipboard.writeText(family.invitationCode); setCopied(true); window.setTimeout(() => setCopied(false), 1800); } catch { setCopied(false); }
-  }
-  return <div className="family-layout">
-    <section className="family-hero"><div><span className="micro-label">YOUR FAMILY SPACE</span><h2>{family.familyName}</h2><p>Visible only to this family’s approved members.</p></div><div className="family-count"><strong>{family.members.length.toString().padStart(2, '0')}</strong><span>APPROVED<br />MEMBERS</span></div></section>
-    {isParent && family.invitationCode && <section className="invite-code-card"><div><span className="eyebrow"><span />FAMILY INVITATION</span><h3>Invite a child to join</h3><p>Share this private code with your child. Their reports remain private until approved.</p></div><button className="code-copy" onClick={() => void copyCode()} data-testid="button-copy-family-code"><code>{family.invitationCode}</code><span>{copied ? <><Check size={15} /> COPIED</> : <><Clipboard size={15} /> COPY CODE</>}</span></button></section>}
-    <section className="content-section"><div className="section-heading"><div><span className="eyebrow"><span />FAMILY ROSTER</span><h2>People in this space</h2></div></div>
-      <div className="member-list">{family.members.filter(member => member.status === 'approved').map(member => <div className="member-row" key={member.membershipId}><span className="avatar member-avatar">{member.displayName.slice(0, 1).toUpperCase()}</span><div><strong>{member.displayName}{member.displayName === account.displayName ? ' · You' : ''}</strong><small>{member.role === 'parent' ? 'Parent / guardian' : 'Child'} · Joined {shortDate(member.approvedAt || member.requestedAt)}</small></div><span className="member-access">APPROVED</span></div>)}
-        {!family.members.some(member => member.status === 'approved') && <EmptyPanel title="No approved members yet">Once a family member is approved, they’ll appear here.</EmptyPanel>}</div>
-    </section>
-    {isParent && <section className="content-section"><div className="section-heading"><div><span className="eyebrow"><span />NEEDS YOUR REVIEW</span><h2>Join requests <span className="count-pill">{family.pendingRequests.length}</span></h2></div></div>
-      {actionError && <div className="inline-error">{actionError}</div>}
-      <div className="member-list">{family.pendingRequests.map(request => <div className="request-row" key={request.membershipId}><span className="avatar member-avatar">{request.displayName.slice(0, 1).toUpperCase()}</span><div className="request-copy"><strong>{request.displayName}</strong><small>Requested to join · {dateText(request.requestedAt)}</small></div><div className="request-actions"><button className="button button-subtle" disabled={pending} onClick={() => onDecision(request.membershipId, 'reject')} data-testid={`button-reject-${request.membershipId}`}>Decline</button><button className="button button-primary" disabled={pending} onClick={() => onDecision(request.membershipId, 'approve')} data-testid={`button-approve-${request.membershipId}`}><Check size={15} /> Approve</button></div></div>)}
-        {!family.pendingRequests.length && <EmptyPanel title="No requests to review">New family join requests will appear here.</EmptyPanel>}</div>
-    </section>}
+  return <div className="app-layout">
+    <aside className={`sidebar ${menu ? 'sidebar-open' : ''}`}>
+      <Link href="/" className="sidebar-brand" data-testid="link-logo"><img className="brand-icon" src={pathpalMark} alt="" /><span>PathPal</span></Link>
+      <div className="sidebar-overline">YOUR WORKSPACE</div>
+      <nav className="sidebar-nav">{nav.map(({ href, label, icon: Icon }) => <Link href={href} key={href} data-testid={`link-nav-${href === '/' ? 'overview' : href.replaceAll('/', '-')}`} className={`nav-item ${location === href || (href === '/reports' && location.startsWith('/reports/')) ? 'active' : ''}`}><Icon size={19} strokeWidth={1.7} />{label}{href === '/report/new' && <span className="nav-plus">+</span>}</Link>)}</nav>
+      <div className="sidebar-spacer" />
+      <div className="sidebar-note"><span className="sidebar-note-icon"><ShieldCheck size={19} /></span><span><strong>Neighbors first.</strong><small>Not for emergencies.<br />Call 911 for immediate danger.</small></span></div>
+      <div className="sidebar-person"><span className="person-avatar">{session.role.slice(0, 1).toUpperCase()}</span><div><strong>{session.role === 'citizen' ? 'Neighbor' : session.role === 'manager' ? 'City manager' : session.role === 'worker' ? 'Field worker' : session.role === 'child' ? 'Young neighbor' : 'Parent'}</strong><small>Demo account</small></div><button onClick={signOut} title="Sign out" aria-label="Sign out" data-testid="button-sidebar-signout"><LogOut size={17} /></button></div>
+    </aside>
+    {menu && <button className="mobile-backdrop" aria-label="Close menu" onClick={() => setMenu(false)} />}
+    <div className="main-column"><header className="topbar"><button className="mobile-menu" aria-label="Open menu" onClick={() => setMenu(true)} data-testid="button-open-menu"><Menu size={22} /></button><span className="topbar-location"><span className="topbar-pulse" /> SANTA CLARA COUNTY <span className="topbar-separator">/</span> COMMUNITY SAFETY</span><div className="topbar-right"><span className="demo-pill">LIVE DEMO</span><span className="topbar-date">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span></div></header><main className="main-content">{children}</main><footer className="app-footer"><span>PATHPAL / COMMUNITY WORKSPACE</span><span>Prototype experience · Not an emergency service</span></footer></div>
   </div>;
 }
 
-function FamilyHome({ account }: { account: AccountStatus }) {
-  const { data: reports, isLoading, error, refetch } = useListReports({ query: { queryKey: getListReportsQueryKey() } });
-  const { data: family } = useGetMyFamily({ query: { queryKey: getGetMyFamilyQueryKey() } });
-  const owned = reports ?? [];
+function Overview({ session }: { session: ReportSession }) {
+  const { data, isLoading, error, refetch } = useListReports();
+  const reports = data ?? [];
+  const open = reports.filter(r => r.status !== 'Resolved').length;
+  const resolved = reports.filter(r => r.status === 'Resolved').length;
+  const isStaff = session.role === 'manager' || session.role === 'worker';
+  const intro = roleCopy[session.role];
   return <>
-    <Header marker="FAMILY / HOME" title={`Looking out for ${family?.familyName || 'your family'}.`} description="A private view of the concerns and updates shared within your family." action={<HeadingAction href="/report/new">Share a concern</HeadingAction>} />
-    <div className="welcome-strip"><div><span className="micro-label">YOUR FAMILY WORKSPACE</span><h2>Notice something along the way?</h2><p>Share a neighborhood concern and see each update in context.</p><Link className="light-link" href="/report/new">Create a report <ArrowRight size={16} /></Link></div><div className="strip-mark"><MapPin size={43} strokeWidth={1.25} /></div></div>
-    <div className="stat-row"><div className="stat-block"><span>REPORTS IN YOUR FAMILY</span><strong>{isLoading ? '—' : owned.length.toString().padStart(2, '0')}</strong></div><div className="stat-block"><span>BEING WORKED ON</span><strong>{isLoading ? '—' : owned.filter(item => item.status !== 'Resolved').length.toString().padStart(2, '0')}</strong></div><div className="stat-block stat-context"><span>ACCESS</span><strong>{account.status === 'parent' ? 'Parent + children' : 'Approved family member'}</strong></div></div>
-    <section className="content-section"><div className="section-heading"><div><span className="eyebrow"><span />LATEST FROM YOUR FAMILY</span><h2>Report trail</h2></div><Link href="/reports" className="text-button">All reports <ArrowUpRight size={15} /></Link></div>
-      <div className="report-list">{isLoading ? <LoadingPanel /> : error ? <ErrorNotice message={errorText(error)} onRetry={() => void refetch()} /> : owned.length ? owned.slice(0, 4).map(report => <ReportCard key={report.id} report={report} />) : <EmptyPanel title="No reports yet">When your family shares a concern, its progress will appear here.</EmptyPanel>}</div>
+    <Header marker={`${intro.tag} / OVERVIEW`} title={session.role === 'manager' ? 'A clearer view of the city.' : session.role === 'worker' ? 'Work that moves things forward.' : 'A little more peace of mind.'} description={intro.description} action={<Link className="primary-btn" href="/report/new" data-testid="link-new-report">Share a concern <ArrowUpRight size={17} /></Link>} />
+    <div className="overview-grid">
+      <div className="welcome-panel"><div className="welcome-top"><span className="light-kicker">YOUR CORNER OF THE COMMUNITY</span><span className="welcome-decoration">O/</span></div><div><h2>{isStaff ? 'Every update makes the next step clearer.' : 'Noticed something? It matters.'}</h2><p>{isStaff ? 'Review the reports in your view, and keep the people behind them informed.' : 'A broken light, an unsafe crossing, something that feels off. Share it here and follow its path.'}</p><Link href={isStaff ? '/reports' : '/report/new'} className="welcome-link" data-testid="link-welcome-action">{isStaff ? 'View the report queue' : 'Make a report'} <ArrowRight size={16} /></Link></div><div className="welcome-rings"><i /><i /><i /></div></div>
+      <div className="stats-stack"><div className="stat-card"><span className="stat-label">REPORTS IN YOUR VIEW <ArrowUpRight size={17} /></span><div className="stat-value">{isLoading ? '—' : reports.length.toString().padStart(2, '0')}</div><span className="stat-foot">{isStaff ? 'Visible to your team' : 'Visible to this account'}</span></div><div className="stat-twins"><div className="stat-small"><span className="stat-label">IN PROGRESS</span><strong>{isLoading ? '—' : open.toString().padStart(2, '0')}</strong><span>Still being worked on</span></div><div className="stat-small"><span className="stat-label">RESOLVED</span><strong>{isLoading ? '—' : resolved.toString().padStart(2, '0')}</strong><span>Closed with an update</span></div></div></div>
+    </div>
+    <section className="content-section"><div className="section-title-row"><div><span className="section-kicker"><span className="kicker-line" />THE LATEST</span><h2>{isStaff ? 'Recent cases' : 'Your report trail'}</h2></div><Link href="/reports" className="text-action" data-testid="link-all-reports">View all reports <ArrowUpRight size={17} /></Link></div>
+      <div className="list-card">{isLoading ? <Skeleton lines={4} /> : error ? <Failure error={error} retry={() => void refetch()} /> : reports.length ? reports.slice(0, 4).map(report => <ReportRow report={report} key={report.id} />) : <Empty title="Nothing in your report trail yet" description="When a concern is shared, its progress will appear here." action={<Link href="/report/new" className="secondary-btn" data-testid="link-empty-create">Share a concern <ArrowRight size={16} /></Link>} />}</div>
     </section>
+    <div className="bottom-note"><span className="note-mark">01</span><p><strong>From first notice to follow-through.</strong> The description you send and the analysis returned by the system stay together, so you can understand each step in context.</p><ArrowDownRight size={22} /></div>
   </>;
 }
 
-function StaffHome({ account }: { account: AccountStatus }) {
-  const { data: reports, isLoading, error, refetch } = useListReports({ query: { queryKey: getListReportsQueryKey() } });
-  const [inviteRole, setInviteRole] = useState<'worker' | 'manager'>('worker');
-  const [teamName, setTeamName] = useState('');
-  const [invitation, setInvitation] = useState<StaffInvitation | null>(null);
-  const [inviteError, setInviteError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const createInvite = useCreateStaffInvitation();
-  const list = reports ?? [];
-  const isManager = account.status === 'manager';
-  async function invite(event: FormEvent) {
-    event.preventDefault(); setInviteError('');
-    try {
-      const result = await createInvite.mutateAsync({ data: { role: inviteRole, ...(inviteRole === 'worker' && teamName.trim() ? { teamName: teamName.trim() } : {}) } });
-      setInvitation(result); setCopied(false);
-    } catch (err) { setInviteError(errorText(err)); }
-  }
-  async function copyInvite() {
-    if (!invitation) return;
-    try { await navigator.clipboard.writeText(invitation.invitationCode); setCopied(true); } catch { setInviteError('Clipboard access is unavailable. Select and copy the code instead.'); }
-  }
-  return <>
-    <Header marker={`${isManager ? 'CITY DESK' : 'FIELD TEAM'} / CASES`} title={isManager ? 'The city, in clearer focus.' : 'Your team’s work, in one view.'} description={isManager ? 'Triage neighborhood reports and coordinate the next step across Santa Clara County.' : `${account.teamName || 'Assigned team'} · View assigned cases and update their status from the field.`} action={isManager ? <HeadingAction href="/reports">Open case queue</HeadingAction> : undefined} />
-    <div className="staff-overview"><div className="staff-lead"><span className="micro-label">CASE COORDINATION</span><h2>{isManager ? 'Every report deserves a clear next step.' : 'Small updates keep the whole response moving.'}</h2><p>{isManager ? 'Review incoming concerns, assign teams, and keep a complete record of follow-through.' : 'Your workspace shows only cases assigned to your team. Status is the only field you can change.'}</p></div><div className="staff-metrics"><span>VISIBLE CASES</span><strong>{isLoading ? '—' : list.length.toString().padStart(2, '0')}</strong><small>{isManager ? 'City-wide case queue' : 'Assigned to your team'}</small><div className="metric-divider" /><span>IN PROGRESS</span><b>{isLoading ? '—' : list.filter(item => item.status !== 'Resolved').length}</b></div></div>
-    {isManager && <section className="invite-staff-card"><div><span className="eyebrow"><span />ACCESS CONTROL</span><h2>Invite a staff member</h2><p>Each invitation is single-use and tied to its assigned PathPal role.</p>{invitation && <div className="issued-invite"><span>{invitation.role === 'worker' ? 'FIELD WORKER' : 'CITY MANAGER'}{invitation.teamName ? ` · ${invitation.teamName}` : ''}</span><code>{invitation.invitationCode}</code><small>Expires {dateText(invitation.expiresAt)}</small></div>}</div>
-      <form className="invite-form" onSubmit={invite}><label className="field"><span>INVITATION ROLE</span><span className="select-wrap"><select value={inviteRole} onChange={e => { setInviteRole(e.target.value as 'worker' | 'manager'); setInvitation(null); }}><option value="worker">Field worker</option><option value="manager">City manager</option></select><ChevronDown size={16} /></span></label>
-        {inviteRole === 'worker' && <label className="field"><span>TEAM NAME</span><input value={teamName} maxLength={120} onChange={e => setTeamName(e.target.value)} placeholder="Street response team" /></label>}
-        {inviteError && <div className="inline-error">{inviteError}</div>}
-        <button className="button button-primary" disabled={createInvite.isPending} type="submit">{createInvite.isPending ? 'Creating…' : invitation ? 'Create another invitation' : 'Create invitation'}<Plus size={16} /></button>
-        {invitation && <button className="button button-subtle" type="button" onClick={() => void copyInvite()}>{copied ? <Check size={15} /> : <Clipboard size={15} />}{copied ? 'Copied code' : 'Copy invitation code'}</button>}
-      </form>
-    </section>}
-    <section className="content-section"><div className="section-heading"><div><span className="eyebrow"><span />{isManager ? 'CITY CASES' : `TEAM QUEUE · ${account.teamName || 'ASSIGNED'}`}</span><h2>{isManager ? 'Latest reports' : 'Assigned cases'}</h2></div><Link href="/reports" className="text-button">Full queue <ArrowUpRight size={15} /></Link></div>
-      <div className="report-list">{isLoading ? <LoadingPanel /> : error ? <ErrorNotice message={errorText(error)} onRetry={() => void refetch()} /> : list.length ? list.slice(0, 5).map(report => <ReportCard key={report.id} report={report} />) : <EmptyPanel title="No cases in this view">New cases will appear here when they are assigned to your access scope.</EmptyPanel>}</div>
-    </section>
-  </>;
-}
-
-function ReportsPage({ account }: { account: AccountStatus }) {
+function Reports() {
   const { data, isLoading, error, refetch, isFetching } = useListReports({ query: { queryKey: getListReportsQueryKey(), refetchOnMount: 'always' } });
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('All statuses');
-  const isStaff = account.status === 'manager' || account.status === 'worker';
-  const filtered = (data ?? []).filter(report => (filter === 'All statuses' || report.status === filter) && `${report.id} ${report.summary} ${report.description} ${report.location} ${report.category}`.toLowerCase().includes(search.toLowerCase()));
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('All reports');
+  const reports = (data ?? []).filter(report => (filter === 'All reports' || report.status === filter) && `${report.summary} ${report.description} ${report.location} ${report.category} ${report.id}`.toLowerCase().includes(query.toLowerCase()));
   return <>
-    <Header marker={isStaff ? 'CITY SERVICES / CASE QUEUE' : 'FAMILY / REPORTS'} title={isStaff ? 'Cases needing follow-through.' : 'Your family’s report history.'} description={isStaff ? 'Review only the cases your role is authorized to access.' : 'Updates from concerns shared by approved members of your family.'} action={!isStaff ? <HeadingAction href="/report/new">New report</HeadingAction> : undefined} />
-    <div className="list-toolbar"><label className="search-box"><MapPin size={17} /><input placeholder="Search case, concern, or area" value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-reports" /></label><label className="filter-box"><span className="sr-only">Filter by status</span><select value={filter} onChange={e => setFilter(e.target.value)} data-testid="select-report-status"><option>All statuses</option>{statuses.map(status => <option key={status}>{status}</option>)}</select><ChevronDown size={15} /></label><button className="icon-button toolbar-refresh" onClick={() => void refetch()} disabled={isFetching} aria-label="Refresh reports" data-testid="button-refresh-reports"><RefreshCw size={17} /></button></div>
-    <div className="list-summary"><span>{isLoading ? 'Loading cases' : `${filtered.length} ${filtered.length === 1 ? 'case' : 'cases'}`}</span><span>{isStaff ? 'AUTHORIZED CASES ONLY' : 'APPROVED FAMILY REPORTS ONLY'}</span></div>
-    <div className="report-list">{isLoading ? <LoadingPanel /> : error ? <ErrorNotice message={errorText(error)} onRetry={() => void refetch()} /> : filtered.length ? filtered.map(report => <ReportCard key={report.id} report={report} />) : <EmptyPanel title={data?.length ? 'No matching reports' : 'No reports in this view'}>{data?.length ? 'Try a different search or status.' : 'When an eligible report is submitted, it will appear here.'}</EmptyPanel>}</div>
+    <Header marker="REPORTS / HISTORY" title="The whole story, in one place." description="Your saved reports and their latest city updates, newest first." action={<Link className="primary-btn" href="/report/new" data-testid="link-history-new">New report <ArrowUpRight size={17} /></Link>} />
+    <div className="history-toolbar"><div className="search-field"><Search size={18} /><input data-testid="input-search-reports" placeholder="Search by concern, place, or case ID" value={query} onChange={e => setQuery(e.target.value)} /></div><div className="filter-field"><SlidersHorizontal size={16} /><select data-testid="select-status-filter" value={filter} onChange={e => setFilter(e.target.value)}><option>All reports</option>{statuses.map(s => <option key={s}>{s}</option>)}</select><ChevronDown size={15} /></div><button className="refresh-btn" title="Refresh reports" aria-label="Refresh reports" onClick={() => void refetch()} disabled={isFetching} data-testid="button-refresh-reports"><RefreshCw size={18} className={isFetching ? 'spinning' : ''} /></button></div>
+    <div className="history-meta"><span>{isLoading ? 'LOADING' : `${reports.length} ${reports.length === 1 ? 'REPORT' : 'REPORTS'} FOUND`}</span><span>NEWEST FIRST <ArrowDownRight size={14} /></span></div>
+    <div className="list-card history-list">{isLoading ? <Skeleton lines={6} /> : error ? <Failure error={error} retry={() => void refetch()} /> : reports.length ? reports.map(report => <ReportRow key={report.id} report={report} />) : <Empty title={data?.length ? 'No matching reports' : 'No reports here yet'} description={data?.length ? 'Try another search or status to find what you need.' : 'A report will live here as soon as it is submitted.'} action={data?.length ? <button className="secondary-btn" onClick={() => { setQuery(''); setFilter('All reports'); }} data-testid="button-clear-filters">Clear filters</button> : <Link href="/report/new" className="secondary-btn" data-testid="link-history-empty">Start a report <ArrowRight size={16} /></Link>} />}</div>
+    <div className="history-hint"><ShieldCheck size={18} /> Reports are scoped by the demo account on the server. Family and neighbor views only show their own eligible reports.</div>
   </>;
-}
-
-function MapPage({ account }: { account: AccountStatus }) {
-  const { data, isLoading, error, refetch } = useGetReportMapData({ query: { queryKey: getGetReportMapDataQueryKey() } });
-  const [filter, setFilter] = useState<'all' | 'active' | 'resolved'>('all');
-  const markers = (data?.markers ?? []).filter(marker => filter === 'all' || (filter === 'resolved' ? marker.status === 'Resolved' : marker.status !== 'Resolved'));
-  const isStaff = account.status === 'manager' || account.status === 'worker';
-  return <>
-    <Header marker={isStaff ? 'CITY SERVICES / MAP' : 'FAMILY / MAP'} title={isStaff ? 'Cases across your service area.' : 'Your family’s neighborhood view.'} description="Individual markers are shown only when your account is authorized to view the report. Public heat is aggregated and anonymous." />
-    <section className="map-card"><div className="map-toolbar"><div><span className="eyebrow"><span />AUTHORIZED CASE MAP</span><strong>{isLoading ? 'Loading map data' : `${markers.length} authorized ${markers.length === 1 ? 'marker' : 'markers'}`}</strong></div><div className="map-filters" role="group" aria-label="Map marker filters">{(['all', 'active', 'resolved'] as const).map(item => <button className={filter === item ? 'selected' : ''} key={item} onClick={() => setFilter(item)}>{item === 'all' ? 'All' : item === 'active' ? 'In progress' : 'Resolved'}</button>)}</div></div>
-      {isLoading ? <LoadingPanel label="Loading authorized map data" /> : error ? <ErrorNotice message={errorText(error)} onRetry={() => void refetch()} /> : <NeighborhoodMap data={data} markers={markers} />}
-      <div className="map-legend"><span><i className="legend-case" />Authorized case</span><span><i className="legend-heat" />Anonymous public density</span><span>Approximate area map · not for navigation</span></div>
-    </section>
-    {!isStaff && <p className="privacy-caption"><ShieldCheck size={15} />Family access is kept separate from city-wide public density. No other family’s case markers are shown.</p>}
-  </>;
-}
-function NeighborhoodMap({ data, markers }: { data: ReportMapData | undefined; markers: ReportMapData['markers'] }) {
-  const heat = data?.publicHeat ?? [];
-  return <div className="neighborhood-map" aria-label="Schematic Santa Clara County report map">
-    <svg className="street-drawing" viewBox="0 0 900 480" preserveAspectRatio="none" aria-hidden="true">
-      <path className="water-shape" d="M0 0h138l25 50-29 49 14 50-42 26L0 148z" />
-      <path className="park-shape" d="M580 0h320v105l-80 37-61-20-56 41-92-39-55-79zM645 344l91-36 164 55v117H652l-58-75z" />
-      <path className="major-road" d="M15 332c172-50 269-11 421-79s293-90 464-164M230 0c10 98 54 129 89 214s37 164 96 266M0 176c165 44 285 26 425-20s300-30 475 13" />
-      <path className="minor-road" d="M0 418c134-46 266-36 385-71s326-17 515 27M74 0c70 91 32 197 82 480M422 0c-23 94 28 183 44 480M720 0c-46 133-62 251-76 480M0 267c141-30 255 1 385-42s301-29 515-2" />
-    </svg>
-    <span className="place-label place-santa">SANTA CLARA</span><span className="place-label place-japan">JAPANTOWN</span><span className="place-label place-downtown">DOWNTOWN SAN JOSE</span><span className="place-label place-willow">WILLOW GLEN</span><span className="place-label place-east">EAST SAN JOSE</span><span className="place-label place-alum">ALUM ROCK</span>
-    {heat.map((cell, index) => <span key={`heat-${index}`} className="heat-cell" style={{ left: `${((cell.longitude - mapBounds.west) / (mapBounds.east - mapBounds.west)) * 100}%`, top: `${((mapBounds.north - cell.latitude) / (mapBounds.north - mapBounds.south)) * 100}%`, opacity: 0.15 + cell.intensity * 0.48, transform: `translate(-50%,-50%) scale(${0.75 + cell.intensity})` }} />)}
-    {markers.map(marker => <Link key={marker.id} className={`case-pin pin-${marker.status.toLowerCase().replaceAll(' ', '-')}`} href={`/reports/${marker.id}`} title={`${marker.status} report`} style={{ left: `${((marker.longitude - mapBounds.west) / (mapBounds.east - mapBounds.west)) * 100}%`, top: `${((mapBounds.north - marker.latitude) / (mapBounds.north - mapBounds.south)) * 100}%` }}><MapPin size={22} fill="currentColor" /></Link>)}
-    <div className="map-scale-note">SANTA CLARA COUNTY · APPROXIMATE VIEW</div>
-  </div>;
 }
 
 function NewReport() {
-  const client = useQueryClient();
   const [, navigate] = useLocation();
+  const query = useQueryClient();
   const create = useCreateReport();
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState<CommunityReportInput['location']>('Santa Clara');
-  const [category, setCategory] = useState('');
-  const [latitude, setLatitude] = useState('37.3541');
-  const [longitude, setLongitude] = useState('-121.9552');
+  const [category, setCategory] = useState<string>('');
+  const [lat, setLat] = useState('37.3541');
+  const [lng, setLng] = useState('-121.9552');
   const [photo, setPhoto] = useState<{ name: string; data: string; type: 'image/jpeg' | 'image/png' | 'image/webp'; preview: string } | null>(null);
   const [error, setError] = useState('');
   const [geoBusy, setGeoBusy] = useState(false);
-  const pinLat = Number(latitude), pinLng = Number(longitude);
-  const pinVisible = Number.isFinite(pinLat) && pinLat >= mapBounds.south && pinLat <= mapBounds.north && Number.isFinite(pinLng) && pinLng >= mapBounds.west && pinLng <= mapBounds.east;
-  const pinStyle = pinVisible ? { left: `${((pinLng - mapBounds.west) / (mapBounds.east - mapBounds.west)) * 100}%`, top: `${((mapBounds.north - pinLat) / (mapBounds.north - mapBounds.south)) * 100}%` } : undefined;
-  function submit(event: FormEvent) {
-    event.preventDefault(); setError('');
-    const lat = Number(latitude), lng = Number(longitude);
-    if (description.trim().length < 12) { setError('Please add at least 12 characters so the city team can understand the concern.'); return; }
-    if (!Number.isFinite(lat) || lat < 37 || lat > 37.6 || !Number.isFinite(lng) || lng < -122.2 || lng > -121.6) { setError('Use coordinates within Santa Clara County.'); return; }
-    create.mutate({ data: { description: description.trim(), location, latitude: lat, longitude: lng, ...(category ? { category: category as CommunityReportInput['category'] } : {}), ...(photo ? { photoBase64: photo.data, contentType: photo.type } : {}) } }, {
-      onSuccess: async report => {
-        await Promise.all([
-          client.invalidateQueries({ queryKey: getListReportsQueryKey() }),
-          client.invalidateQueries({ queryKey: getGetReportMapDataQueryKey() }),
-        ]);
-        navigate(`/reports/${report.id}`);
-      },
-      onError: err => setError(errorText(err)),
-    });
+  const pinLatitude = Number(lat), pinLongitude = Number(lng);
+  const pinInMap = Number.isFinite(pinLatitude) && Number.isFinite(pinLongitude)
+    && pinLatitude >= mapBounds.south && pinLatitude <= mapBounds.north
+    && pinLongitude >= mapBounds.west && pinLongitude <= mapBounds.east;
+  const pinPosition = pinInMap ? {
+    left: `${((pinLongitude - mapBounds.west) / (mapBounds.east - mapBounds.west)) * 100}%`,
+    top: `${((mapBounds.north - pinLatitude) / (mapBounds.north - mapBounds.south)) * 100}%`,
+  } : undefined;
+  function changeLocation(value: CommunityReportInput['location']) { setLocation(value); const point = areaPins[value ?? 'Santa Clara']; setLat(String(point[0])); setLng(String(point[1])); }
+  function placeMapPin(latitude: number, longitude: number) {
+    setLat(latitude.toFixed(6)); setLng(longitude.toFixed(6));
+    const closest = locations.reduce((best, candidate) => {
+      const [bestLat, bestLng] = areaPins[best], [candidateLat, candidateLng] = areaPins[candidate];
+      const bestDistance = (bestLat - latitude) ** 2 + (bestLng - longitude) ** 2;
+      const candidateDistance = (candidateLat - latitude) ** 2 + (candidateLng - longitude) ** 2;
+      return candidateDistance < bestDistance ? candidate : best;
+    }, locations[0]);
+    setLocation(closest);
+    setError('');
   }
-  function pickPhoto(event: ChangeEvent<HTMLInputElement>) {
+  function clickMap(event: MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    placeMapPin(mapBounds.north - y * (mapBounds.north - mapBounds.south), mapBounds.west + x * (mapBounds.east - mapBounds.west));
+  }
+  function keyMap(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? .01 : .002;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      placeMapPin(pinInMap ? pinLatitude : 37.3352, pinInMap ? pinLongitude : -121.8906);
+      return;
+    }
+    const directions: Record<string, [number, number]> = {
+      ArrowUp: [step, 0], ArrowDown: [-step, 0], ArrowLeft: [0, -step], ArrowRight: [0, step],
+    };
+    const direction = directions[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    placeMapPin(
+      Math.max(mapBounds.south, Math.min(mapBounds.north, (pinInMap ? pinLatitude : 37.3352) + direction[0])),
+      Math.max(mapBounds.west, Math.min(mapBounds.east, (pinInMap ? pinLongitude : -121.8906) + direction[1])),
+    );
+  }
+  function choosePhoto(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setError('Choose a JPEG, PNG, or WebP image.'); return; }
     if (file.size > 2 * 1024 * 1024) { setError('Choose an image smaller than 2 MB.'); return; }
     const reader = new FileReader();
     reader.onload = () => { const result = String(reader.result); setPhoto({ name: file.name, data: result.split(',')[1], type: file.type as 'image/jpeg' | 'image/png' | 'image/webp', preview: result }); setError(''); };
-    reader.onerror = () => setError('This image could not be read. Choose another file.');
+    reader.onerror = () => setError('The image could not be read. Please try another.');
     reader.readAsDataURL(file);
   }
-  function updatePlace(next: CommunityReportInput['location']) {
-    setLocation(next);
-    const point = neighborhoodCoords[next || 'Santa Clara']; setLatitude(point[0].toFixed(6)); setLongitude(point[1].toFixed(6));
-  }
-  function placePin(lat: number, lng: number) {
-    setLatitude(lat.toFixed(6)); setLongitude(lng.toFixed(6));
-    const nearest = neighborhoods.reduce((best, item) => {
-      const point = neighborhoodCoords[item];
-      const current = neighborhoodCoords[best];
-      return (point[0] - lat) ** 2 + (point[1] - lng) ** 2 < (current[0] - lat) ** 2 + (current[1] - lng) ** 2 ? item : best;
-    }, neighborhoods[0]);
-    setLocation(nearest);
-  }
-  function clickPinMap(event: MouseEvent<HTMLDivElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    placePin(mapBounds.north - y * (mapBounds.north - mapBounds.south), mapBounds.west + x * (mapBounds.east - mapBounds.west));
-  }
-  function keyPinMap(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      placePin(pinVisible ? pinLat : 37.3352, pinVisible ? pinLng : -121.8906);
-    }
-  }
   function useMyLocation() {
-    if (!navigator.geolocation) { setError('Location access is not available in this browser. Enter coordinates instead.'); return; }
+    if (!navigator.geolocation) { setError('Your browser does not support location access. Enter the coordinates instead.'); return; }
     setGeoBusy(true); setError('');
-    navigator.geolocation.getCurrentPosition(position => {
-      placePin(position.coords.latitude, position.coords.longitude); setGeoBusy(false);
-    }, () => {
-      setError('Location access was unavailable. You can place the pin on the map or enter coordinates.'); setGeoBusy(false);
-    }, { timeout: 10000 });
+    navigator.geolocation.getCurrentPosition(position => { setLat(position.coords.latitude.toFixed(6)); setLng(position.coords.longitude.toFixed(6)); setGeoBusy(false); }, () => { setError('Location access was unavailable. Enter the pin coordinates manually.'); setGeoBusy(false); }, { timeout: 10000 });
+  }
+  async function submit(event: FormEvent) {
+    event.preventDefault(); setError('');
+    const latitude = Number(lat), longitude = Number(lng);
+    if (description.trim().length < 12) { setError('Please tell us a little more about the concern (at least 12 characters).'); return; }
+    if (!Number.isFinite(latitude) || latitude < 37 || latitude > 37.6 || !Number.isFinite(longitude) || longitude < -122.2 || longitude > -121.6) { setError('Place the pin within Santa Clara County: latitude 37–37.6 and longitude −122.2–−121.6.'); return; }
+    try {
+      const report = await create.mutateAsync({ data: { description: description.trim(), location, ...(category ? { category: category as CommunityReportInput['category'] } : {}), latitude, longitude, ...(photo ? { photoBase64: photo.data, contentType: photo.type } : {}) } });
+      await query.invalidateQueries({ queryKey: getListReportsQueryKey() });
+      navigate(`/reports/${report.id}`);
+    } catch (err) { setError(errorText(err)); }
   }
   return <>
-    <Link className="back-link" href="/reports"><ArrowLeft size={16} /> Report history</Link>
-    <Header marker="REPORTS / NEW CONCERN" title="Tell us what you noticed." description="A few specific details help your neighbors and city teams decide where to begin." />
-    <div className="form-layout"><form className="form-card" onSubmit={submit}>
-      <div className="form-section-heading"><span>01</span><div><h2>The concern</h2><p>Describe what happened in your own words.</p></div></div>
-      <label className="field"><span>WHAT IS HAPPENING?</span><textarea value={description} onChange={e => setDescription(e.target.value)} rows={6} maxLength={4000} required placeholder="For example: The sidewalk is lifted near the bus stop, making it difficult to pass with a stroller…" data-testid="input-report-description" /><small>{description.length} / 4,000 characters</small></label>
-      <div className="form-rule" /><div className="form-section-heading"><span>02</span><div><h2>Where it is</h2><p>Choose a neighborhood and enter the closest location pin.</p></div></div>
-      <div className="field-pair"><label className="field"><span>NEIGHBORHOOD</span><span className="select-wrap"><select value={location} onChange={e => updatePlace(e.target.value as CommunityReportInput['location'])}>{neighborhoods.map(item => <option key={item}>{item}</option>)}</select><ChevronDown size={15} /></span></label><label className="field"><span>ISSUE TYPE <em>OPTIONAL</em></span><span className="select-wrap"><select value={category} onChange={e => setCategory(e.target.value)}><option value="">Let PathPal suggest</option>{categories.map(item => <option key={item}>{item}</option>)}</select><ChevronDown size={15} /></span></label></div>
-      <div className="picker-map-heading"><strong><MapPin size={15} /> Place the report pin</strong><button type="button" className="text-button" onClick={useMyLocation} disabled={geoBusy}>{geoBusy ? 'Locating…' : 'Use my location'}</button></div>
-      <div className="form-map" role="button" tabIndex={0} onClick={clickPinMap} onKeyDown={keyPinMap} aria-label={`Approximate Santa Clara County map. ${pinVisible ? `Pin at ${pinLat.toFixed(6)}, ${pinLng.toFixed(6)}.` : 'Pin outside the displayed view.'} Click to place a pin.`} data-testid="map-place-report-pin">
-        <svg viewBox="0 0 900 300" preserveAspectRatio="none" aria-hidden="true"><path className="water-shape" d="M0 0h138l25 50-29 49 14 50-42 26L0 148z" /><path className="park-shape" d="M580 0h320v105l-80 37-61-20-56 41-92-39-55-79zM645 220l91-36 164 55v61H652l-58-45z" /><path className="major-road" d="M15 232c172-50 269-11 421-79s293-70 464-124M230 0c10 75 54 99 89 154s37 95 96 146M0 126c165 44 285 26 425-20s300-30 475 13" /><path className="minor-road" d="M0 264c134-46 266-26 385-61s326-7 515 27M422 0c-23 74 28 123 44 300M720 0c-46 93-62 171-76 300" /></svg>
-        <span className="form-map-label" style={{ left: '9%', top: '20%' }}>SANTA CLARA</span><span className="form-map-label" style={{ left: '39%', top: '30%' }}>JAPANTOWN</span><span className="form-map-label" style={{ left: '31%', top: '62%' }}>DOWNTOWN</span><span className="form-map-label" style={{ left: '70%', top: '70%' }}>EAST SAN JOSE</span>
-        {pinStyle && <span className="form-map-pin" style={pinStyle}><MapPin size={26} fill="currentColor" /></span>}<span className="form-map-caption">APPROXIMATE MAP · NOT TO SCALE</span>
-      </div>
-      <div className="coordinates-readout"><span />{pinVisible ? `${pinLat.toFixed(6)}, ${pinLng.toFixed(6)}` : 'Pin outside county map — enter valid coordinates below.'}</div>
-      <div className="field-pair coordinates"><label className="field"><span>LATITUDE</span><input type="number" step="any" value={latitude} onChange={e => setLatitude(e.target.value)} required /></label><label className="field"><span>LONGITUDE</span><input type="number" step="any" value={longitude} onChange={e => setLongitude(e.target.value)} required /></label></div>
-      <div className="form-rule" /><div className="form-section-heading"><span>03</span><div><h2>Add a photo</h2><p>Optional. Avoid including faces or identifying details.</p></div></div>
-      <label className="photo-picker">{photo ? <><img src={photo.preview} alt="Selected report preview" /><strong>{photo.name}</strong></> : <><MapPin size={23} /><strong>Choose a photo</strong><span>JPEG, PNG, or WebP · up to 2 MB</span></>}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={pickPhoto} /></label>
-      {photo && <button type="button" className="text-button remove-photo" onClick={() => setPhoto(null)}><X size={14} /> Remove photo</button>}
-      {error && <div className="inline-error" role="alert">{error}</div>}
-      <div className="form-actions"><span>Your report is shared with your permitted PathPal audience.</span><button className="button button-primary" disabled={create.isPending}>{create.isPending ? 'Sending report…' : 'Submit report'}<ArrowRight size={16} /></button></div>
-    </form><aside className="aside-card"><span className="eyebrow"><span />WHAT HAPPENS NEXT</span><h2>Clear steps, kept together.</h2><div className="steps-list"><div><i>1</i><p><strong>Your report is recorded</strong><small>Its location and details stay connected to your account.</small></p></div><div><i>2</i><p><strong>A team reviews it</strong><small>City staff can categorize and assign a next step.</small></p></div><div><i>3</i><p><strong>You can follow progress</strong><small>Authorized members see updates in report history.</small></p></div></div><div className="emergency-note"><ShieldCheck size={18} /><span>This service is not an emergency channel. Call 911 for immediate danger.</span></div></aside></div>
+    <Link href="/reports" className="back-link" data-testid="link-back-history"><ArrowLeft size={16} /> Report history</Link>
+    <Header marker="REPORTS / NEW" title="Tell us what you noticed." description="A few details help your neighbors and city teams understand where to start." />
+    <div className="form-layout"><form className="form-card" onSubmit={submit}><div className="form-section-head"><span className="form-number">01</span><div><h2>The concern</h2><p>Describe what you saw in your own words.</p></div></div>
+      <label className="field"><span>WHAT IS HAPPENING? <b>*</b></span><textarea data-testid="input-description" placeholder="For example: The sidewalk is lifted near the bus stop, and it's difficult to pass with a stroller…" value={description} onChange={e => setDescription(e.target.value)} minLength={12} maxLength={4000} required rows={6} /><small>{description.length} / 4,000 characters</small></label>
+      <div className="form-divider" /><div className="form-section-head"><span className="form-number">02</span><div><h2>Where it is</h2><p>Select an area and confirm the exact pin.</p></div></div>
+      <div className="field-pair"><label className="field"><span>NEIGHBORHOOD</span><span className="select-wrap"><select data-testid="select-location" value={location} onChange={e => changeLocation(e.target.value as CommunityReportInput['location'])}>{locations.map(l => <option key={l}>{l}</option>)}</select><ChevronDown size={16} /></span></label><label className="field"><span>CATEGORY <em>OPTIONAL</em></span><span className="select-wrap"><select data-testid="select-category" value={category} onChange={e => setCategory(e.target.value)}><option value="">Let PathPal suggest</option>{categories.map(c => <option key={c}>{c}</option>)}</select><ChevronDown size={16} /></span></label></div>
+      <div className="pin-box"><div className="pin-box-head"><div><MapPin size={18} /><strong>Drop a pin on the map</strong></div><button type="button" onClick={useMyLocation} disabled={geoBusy} className="text-action" data-testid="button-use-location"><Crosshair size={15} />{geoBusy ? 'Locating…' : 'Use my location'}</button></div>
+        <p className="map-instructions">Tap or click to place a pin. This is a schematic, approximate view of San Jose, not a street-accurate map.</p>
+        <div className="pin-map" role="button" tabIndex={0} onClick={clickMap} onKeyDown={keyMap} aria-label={`Approximate San Jose location map. ${pinInMap ? `Pin at latitude ${lat}, longitude ${lng}.` : 'Pin outside the displayed area.'} Click or tap to place a pin; use arrow keys to move it, Shift and arrow keys for larger steps.`} data-testid="map-drop-pin">
+          <svg className="pin-map-lines" viewBox="0 0 600 290" preserveAspectRatio="none" aria-hidden="true">
+            <path className="map-water" d="M0 0H114L132 25 112 52 124 73 87 106 25 122 0 113Z" />
+            <path className="map-park" d="M392 0H600V58L567 74 535 67 510 94 452 80 426 42Z M485 192L530 178 600 214V290H521L480 251Z" />
+            <path className="map-road-major" d="M25 190C160 169 261 177 380 156S525 137 600 108 M177 0C184 68 235 99 258 146S282 231 319 290 M0 74C149 103 240 102 340 76S514 92 600 109" />
+            <path className="map-road-minor" d="M0 244C120 218 262 224 345 203S490 192 600 219 M58 0C106 64 93 144 133 290 M347 0C339 61 361 149 402 290 M490 0C465 91 448 173 447 290 M0 150C120 132 190 144 287 119S450 115 600 143" />
+          </svg>
+          <span className="map-place map-place-santa">SANTA CLARA</span><span className="map-place map-place-japantown">JAPANTOWN</span><span className="map-place map-place-downtown">DOWNTOWN</span><span className="map-place map-place-willow">WILLOW GLEN</span><span className="map-place map-place-alum">ALUM ROCK</span><span className="map-place map-place-east">EAST SAN JOSE</span>
+          {pinPosition && <span className="map-selected-pin" style={pinPosition} aria-hidden="true"><MapPin size={29} fill="#087f83" stroke="#f5fbf9" strokeWidth={1.8} /></span>}
+          <span className="map-scale" aria-hidden="true">APPROXIMATE MAP / NOT TO SCALE</span>
+        </div>
+        <div className="map-readout" aria-live="polite"><span className="map-readout-dot" />{pinInMap ? `Selected pin · ${pinLatitude.toFixed(6)}, ${pinLongitude.toFixed(6)}` : 'Pin is outside this schematic view; manual coordinates still apply.'}</div>
+        <div className="pin-manual-label">OR ENTER COORDINATES MANUALLY</div>
+        <div className="field-pair"><label className="field"><span>LATITUDE <b>*</b></span><input type="number" step="any" min="37" max="37.6" required data-testid="input-latitude" value={lat} onChange={e => setLat(e.target.value)} /></label><label className="field"><span>LONGITUDE <b>*</b></span><input type="number" step="any" min="-122.2" max="-121.6" required data-testid="input-longitude" value={lng} onChange={e => setLng(e.target.value)} /></label></div><small>The coordinates shown here are the pin submitted and saved with your report.</small></div>
+      <div className="form-divider" /><div className="form-section-head"><span className="form-number">03</span><div><h2>Add a photo</h2><p>Optional, but it can make the situation easier to see.</p></div></div>
+      <label className="upload-box" htmlFor="photo-upload" data-testid="label-upload-photo">{photo ? <><img src={photo.preview} alt="Selected report preview" /><span>{photo.name}</span><span className="upload-change">Choose another image</span></> : <><ImagePlus size={25} strokeWidth={1.5} /><strong>Choose an image</strong><span>JPEG, PNG, or WebP · up to 2 MB</span></>}<input id="photo-upload" data-testid="input-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} /></label>{photo && <button type="button" className="remove-photo" onClick={() => setPhoto(null)} data-testid="button-remove-photo"><X size={14} /> Remove photo</button>}
+      {error && <div className="inline-error" role="alert" data-testid="text-create-error">{error}</div>}
+      <div className="form-actions"><span>You can follow the full history after submitting.</span><button type="submit" disabled={create.isPending} className="primary-btn" data-testid="button-submit-report">{create.isPending ? 'Submitting report…' : 'Submit report'} <ArrowRight size={17} /></button></div>
+    </form><aside className="form-aside"><div className="aside-card"><span className="section-kicker"><span className="kicker-line" />WHAT HAPPENS NEXT</span><div className="steps"><div><span>01</span><p><strong>You share the concern</strong><small>Your description, pin, and photo are saved together.</small></p></div><div><span>02</span><p><strong>PathPal adds context</strong><small>You'll see the suggested category, summary, and priority alongside your original words.</small></p></div><div><span>03</span><p><strong>Follow the response</strong><small>City updates appear in the report's timeline.</small></p></div></div></div><div className="aside-warning"><ShieldCheck size={20} /><p>This is a prototype, not an emergency channel. Call 911 if someone is in immediate danger.</p></div></aside></div>
   </>;
 }
 
-function ReportPhoto({ reportId, alt }: { reportId: string; alt: string }) {
-  const [url, setUrl] = useState('');
+function ProtectedPhoto({ id, hasPhoto, compact = false }: { id: string; hasPhoto: boolean; compact?: boolean }) {
+  const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    let active = true;
-    let objectUrl = '';
-    getReportPhoto(reportId).then(blob => {
-      if (!active) return;
-      objectUrl = URL.createObjectURL(blob);
-      setUrl(objectUrl);
-    }).catch(() => { if (active) setFailed(true); });
-    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [reportId]);
-  if (failed) return <div className="photo-unavailable">The attached photo is no longer available.</div>;
-  if (!url) return <div className="photo-loading"><div className="skeleton" /></div>;
-  return <img src={url} alt={alt} />;
+    if (!hasPhoto) return;
+    let current = true; let objectUrl: string | null = null;
+    setUrl(null); setFailed(false);
+    getReportPhoto(id).then(blob => { if (current) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); } }).catch(() => { if (current) setFailed(true); });
+    return () => { current = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [id, hasPhoto]);
+  return <div className={`report-photo ${compact ? 'report-thumb' : ''}`}>{url ? <img src={url} alt="Photo submitted with report" data-testid={compact ? `img-report-thumbnail-${id}` : 'img-report-photo'} /> : <div className="photo-placeholder"><ImagePlus size={compact ? 20 : 27} strokeWidth={1.3} /><span>{hasPhoto ? failed ? 'Photo unavailable' : 'Loading photo…' : 'No photo attached'}</span></div>}</div>;
 }
 
-function ReportDetail({ account }: { account: AccountStatus }) {
-  const params = useParams<{ id: string }>();
-  const id = params.id || '';
-  const client = useQueryClient();
-  const { data: report, isLoading, error, refetch } = useGetReport(id, { query: { enabled: !!id, queryKey: getGetReportQueryKey(id) } });
+function Detail({ session }: { session: ReportSession }) {
+  const { id = '' } = useParams<{ id: string }>();
+  const { data: report, isLoading, error, refetch } = useGetReport(id, { query: { queryKey: getGetReportQueryKey(id), enabled: !!id, refetchOnMount: 'always' } });
   const update = useUpdateReport();
-  const isManager = account.status === 'manager';
-  const isWorker = account.status === 'worker';
-  const [status, setStatus] = useState<ReportStatus | ''>('');
-  const [team, setTeam] = useState('');
-  const [notes, setNotes] = useState('');
-  const [message, setMessage] = useState('');
-  const [actionError, setActionError] = useState('');
-  useEffect(() => { if (report) { setStatus(report.status); setTeam(report.assignedTeam || ''); setNotes(report.managerNotes || ''); } }, [report?.id]);
-  async function save(data: Parameters<typeof update.mutateAsync>[0]['data']) {
-    setActionError(''); setMessage('');
+  const query = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<CommunityReportUpdate>({});
+  const [saveError, setSaveError] = useState('');
+  function startEdit() {
+    if (!report) return;
+    setForm(session.role === 'worker' ? { status: report.status } : { description: report.description, category: report.category, severity: report.severity, location: report.location, status: report.status, assignedTeam: report.assignedTeam, managerNotes: report.managerNotes, routeAssignment: report.routeAssignment, latitude: report.latitude ?? undefined, longitude: report.longitude ?? undefined });
+    setSaveError(''); setEditing(true);
+  }
+  async function save(event: FormEvent) {
+    event.preventDefault(); if (!report) return; setSaveError('');
+    if (session.role === 'manager' && ((form.latitude !== undefined || form.longitude !== undefined) && (form.latitude === undefined || form.longitude === undefined || form.latitude < 37 || form.latitude > 37.6 || form.longitude < -122.2 || form.longitude > -121.6))) { setSaveError('Enter both pin coordinates within Santa Clara County, or leave both blank.'); return; }
     try {
-      await update.mutateAsync({ id, data });
-      await Promise.all([
-        client.invalidateQueries({ queryKey: getGetReportQueryKey(id) }),
-        client.invalidateQueries({ queryKey: getListReportsQueryKey() }),
-        client.invalidateQueries({ queryKey: getGetReportMapDataQueryKey() }),
-      ]);
-      setMessage('Case update saved.');
-    } catch (err) { setActionError(errorText(err)); }
-  }
-  if (isLoading) return <LoadingPanel label="Loading case details" />;
-  if (error) return <ErrorNotice message={errorText(error)} onRetry={() => void refetch()} />;
-  if (!report) return <EmptyPanel title="This report is unavailable">It may have moved out of your access scope.</EmptyPanel>;
-  return <>
-    <Link href="/reports" className="back-link"><ArrowLeft size={16} /> Back to reports</Link>
-    <div className="detail-heading"><div><span className="eyebrow"><span />CASE {report.id} · {report.location.toUpperCase()}</span><h1>{report.summary}</h1><div className="detail-meta"><StatusTag status={report.status} /><span>Submitted {dateText(report.submittedAt)}</span><span>{report.category}</span></div></div></div>
-    <div className="detail-layout"><div className="detail-main">
-      <section className="detail-card"><span className="eyebrow"><span />REPORT DETAILS</span><h2>What was noticed</h2><p className="detail-description">{report.description}</p><div className="detail-facts"><div><span>SELECTED CATEGORY</span><strong>{report.selectedCategory || 'Not selected'}</strong></div><div><span>PRIORITY</span><strong>{report.priority}</strong></div><div><span>SEVERITY</span><strong>{report.severity} / 10</strong></div><div><span>RECOMMENDED DEPARTMENT</span><strong>{report.recommendedDepartment}</strong></div><div><span>LOCATION</span><strong>{report.location}</strong></div><div><span>COORDINATES</span><strong>{report.latitude?.toFixed(6) ?? 'Not available'}{report.longitude != null ? `, ${report.longitude.toFixed(6)}` : ''}</strong></div></div>
-        {report.photoUri && <div className="detail-photo"><ReportPhoto reportId={id} alt="Photo attached to this report" /></div>}
-      </section>
-      <section className="detail-card"><span className="eyebrow"><span />STATUS HISTORY</span><h2>Case timeline</h2><div className="timeline">{report.statusHistory?.length ? report.statusHistory.map((event, index) => <div className="timeline-entry" key={`${event.changedAt}-${index}`}><i /><div><strong>{event.toStatus}</strong><span>{dateText(event.changedAt)}</span><small>Updated by {event.changedBy}</small></div></div>) : <p className="quiet-copy">No status updates have been recorded yet.</p>}</div></section>
-    </div><aside className="detail-aside">
-      <section className="detail-card case-assignment"><span className="eyebrow"><span />FOLLOW-THROUGH</span><h2>Current response</h2><div className="assignment-fact"><span>ASSIGNED TEAM</span><strong>{report.assignedTeam || 'Not assigned yet'}</strong></div><div className="assignment-fact"><span>ROUTE / SERVICE AREA</span><strong>{report.routeAssignment || 'Not specified'}</strong></div><div className="assignment-fact"><span>LAST UPDATED</span><strong>{dateText(report.updatedAt)}</strong></div>{report.managerNotes && <div className="manager-note"><span>STAFF UPDATE</span><p>{report.managerNotes}</p></div>}</section>
-      {(isManager || isWorker) && <section className="detail-card case-edit"><span className="eyebrow"><span />{isManager ? 'MANAGER CONTROLS' : 'TEAM UPDATE'}</span><h2>{isManager ? 'Update case' : 'Update status'}</h2>
-        {isManager ? <><label className="field"><span>STATUS</span><span className="select-wrap"><select value={status} onChange={e => setStatus(e.target.value as ReportStatus)}>{statuses.map(item => <option key={item}>{item}</option>)}</select><ChevronDown size={15} /></span></label><label className="field"><span>ASSIGNED TEAM</span><input value={team} maxLength={120} onChange={e => setTeam(e.target.value)} placeholder="Assign a response team" /></label><label className="field"><span>CASE UPDATE</span><textarea rows={3} maxLength={4000} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add a clear, helpful update" /></label><button className="button button-primary full-button" disabled={update.isPending} onClick={() => void save({ status: status || report.status, assignedTeam: team.trim() || null, managerNotes: notes.trim() || null })}>{update.isPending ? 'Saving…' : 'Save case update'}<Check size={15} /></button></> :
-          <><p className="quiet-copy">Your team can change case status only. Report details and assignments are managed by a city manager.</p><label className="field"><span>CASE STATUS</span><span className="select-wrap"><select value={status} onChange={e => setStatus(e.target.value as ReportStatus)}>{statuses.map(item => <option key={item}>{item}</option>)}</select><ChevronDown size={15} /></span></label><button className="button button-primary full-button" disabled={update.isPending || status === report.status} onClick={() => void save({ status: status || report.status })}>{update.isPending ? 'Saving…' : 'Save status'}<Check size={15} /></button></>}
-        {message && <div className="inline-success">{message}</div>}{actionError && <div className="inline-error">{actionError}</div>}
-      </section>}
-    </aside></div>
-  </>;
-}
-
-function NotificationsPage() {
-  const client = useQueryClient();
-  const { data, isLoading, error, refetch } = useListNotifications({ query: { queryKey: getListNotificationsQueryKey(), refetchOnMount: 'always' } });
-  const mark = useMarkNotificationRead();
-  const [actionError, setActionError] = useState('');
-  const notifications: PathPalNotification[] = data ?? [];
-  async function markRead(id: number) {
-    setActionError('');
-    try { await mark.mutateAsync({ id }); await client.invalidateQueries({ queryKey: getListNotificationsQueryKey() }); }
-    catch (err) { setActionError(errorText(err)); }
+      await update.mutateAsync({ id, data: session.role === 'worker' ? { status: form.status } : form });
+      await Promise.all([query.invalidateQueries({ queryKey: getGetReportQueryKey(id) }), query.invalidateQueries({ queryKey: getListReportsQueryKey() })]);
+      setEditing(false);
+    } catch (err) { setSaveError(errorText(err)); }
   }
   return <>
-    <Header marker="ACCOUNT / NOTIFICATIONS" title="Updates worth knowing." description="Messages related to your family access and PathPal activity." />
-    {actionError && <div className="inline-error">{actionError}</div>}
-    <div className="notification-list">{isLoading ? <LoadingPanel /> : error ? <ErrorNotice message={errorText(error)} onRetry={() => void refetch()} /> : notifications.length ? notifications.map(item => <article className={`notification-card ${item.readAt ? '' : 'unread'}`} key={item.id}><div className="notification-symbol"><Bell size={18} /></div><div className="notification-content"><div className="notification-meta"><span>{item.type.replaceAll('_', ' ').toUpperCase()}</span><time>{dateText(item.createdAt)}</time></div><h2>{item.title}</h2><p>{item.body}</p></div>{item.readAt ? <span className="read-label">READ</span> : <button className="button button-subtle" onClick={() => void markRead(item.id)} disabled={mark.isPending} data-testid={`button-mark-read-${item.id}`}>Mark read</button>}</article>) : <EmptyPanel title="You’re all caught up">When there’s an account or family update, it will appear here.</EmptyPanel>}</div>
+    <Link href="/reports" className="back-link" data-testid="link-detail-back"><ArrowLeft size={16} /> Report history</Link>
+    {isLoading ? <div className="detail-loading"><Skeleton lines={8} /></div> : error || !report ? <Failure error={error ?? new Error('Report not found or not visible to this account.')} retry={() => void refetch()} /> : <>
+      <div className="detail-hero"><div><div className="section-kicker"><span className="kicker-line" />CASE FILE / {report.id.slice(0, 12).toUpperCase()}</div><h1>{report.summary}</h1><div className="detail-hero-meta"><Status value={report.status} /><span><MapPin size={15} />{report.location}</span><span><Clock3 size={15} />Submitted {shortDate(report.submittedAt)}</span></div></div><div className="detail-hero-actions">{(session.role === 'manager' || session.role === 'worker') && <button className="primary-btn" onClick={startEdit} data-testid="button-edit-report">{session.role === 'worker' ? 'Update status' : 'Manage report'} <ArrowUpRight size={16} /></button>}</div></div>
+      <div className="detail-grid"><div className="detail-main">
+        <div className="detail-card input-output"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />THE FULL CONTEXT</span><h2>What was shared <em>&</em> what we found</h2></div><div className="context-pair"><div className="context-box original"><div className="context-tag"><span>01</span> NEIGHBOR'S WORDS</div><p data-testid="text-report-description">{report.description}</p><span className="context-caption">Original submitted description</span></div><div className="context-box analysis"><div className="context-tag"><Sparkles size={15} /> SYSTEM ANALYSIS</div><div className="analysis-summary"><span>SUMMARY</span><strong data-testid="text-report-summary">{report.summary}</strong></div><div className="analysis-fields"><div><span>SUGGESTED CATEGORY</span><strong>{report.category}</strong></div><div><span>RECOMMENDED TEAM</span><strong>{report.recommendedDepartment}</strong></div><div><span>PRIORITY</span><strong>{report.priority}</strong></div><div><span>SEVERITY</span><strong>{report.severity} / 10</strong></div></div></div></div><div className="context-foot">Selected category: {report.selectedCategory ?? 'Let PathPal suggest'} <span>·</span> Analysis is guidance, not a confirmed finding.</div></div>
+        <div className="detail-card"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />LOCATION & EVIDENCE</span><h2>At the scene</h2></div><div className="scene-grid"><ProtectedPhoto id={id} hasPhoto={!!report.photoUri} /><div className="pin-detail"><span className="detail-label">REPORTED LOCATION</span><h3>{report.location}</h3><div className="pin-coordinates"><MapPin size={19} /><div><strong>Submitted pin</strong><span data-testid="text-report-coordinates">{report.latitude != null && report.longitude != null ? `${report.latitude.toFixed(6)}, ${report.longitude.toFixed(6)}` : 'No coordinates recorded'}</span></div></div>{report.latitude != null && report.longitude != null && <a href={`https://www.openstreetmap.org/?mlat=${report.latitude}&mlon=${report.longitude}#map=17/${report.latitude}/${report.longitude}`} target="_blank" rel="noreferrer" className="text-action" data-testid="link-open-map">Open pin in map <ArrowUpRight size={16} /></a>}</div></div></div>
+        <div className="detail-card"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />CASE ACTIVITY</span><h2>How it is moving</h2></div>{report.statusHistory.length ? <div className="timeline">{report.statusHistory.map((event, i) => <div className="timeline-event" key={`${event.changedAt}-${i}`}><span className="timeline-node" /><div><div className="timeline-top"><strong>{event.toStatus}</strong><time>{dateText(event.changedAt)}</time></div><p>{event.fromStatus ? `Moved from ${event.fromStatus}` : 'Report received'} <span>·</span> {event.changedBy}</p></div></div>)}</div> : <p className="quiet-text">No status changes have been recorded yet.</p>}</div>
+      </div><aside className="detail-aside"><div className="detail-card case-card"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />CASE DETAILS</span><h2>At a glance</h2></div><div className="case-facts"><div><span>CASE ID</span><strong className="mono">{report.id}</strong></div><div><span>STATUS</span><Status value={report.status} /></div><div><span>ASSIGNED TEAM</span><strong>{report.assignedTeam || 'Not assigned yet'}</strong></div><div><span>ROUTE ASSIGNMENT</span><strong>{report.routeAssignment || 'Not assigned yet'}</strong></div><div><span>MANAGER NOTES</span><strong className="normal-weight">{report.managerNotes || 'No notes added yet'}</strong></div></div></div><div className="detail-card timestamp-card"><span className="section-kicker"><span className="kicker-line" />TIMESTAMPS</span><div><span>Submitted</span><strong>{dateText(report.submittedAt)}</strong></div><div><span>Last updated</span><strong>{dateText(report.updatedAt)}</strong></div><div><span>Assigned</span><strong>{dateText(report.assignedAt)}</strong></div><div><span>Resolved</span><strong>{dateText(report.resolvedAt)}</strong></div></div><div className="aside-warning"><ShieldCheck size={20} /><p>This case is visible according to your demo role. For immediate danger, call 911.</p></div></aside></div>
+      {editing && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setEditing(false); }}><div className="edit-modal" role="dialog" aria-modal="true" aria-label="Edit report"><div className="modal-header"><div><span className="section-kicker"><span className="kicker-line" />CASE / {report.id.slice(0, 8).toUpperCase()}</span><h2>{session.role === 'worker' ? 'Update progress' : 'Manage report'}</h2></div><button onClick={() => setEditing(false)} aria-label="Close editor" data-testid="button-close-editor"><X size={20} /></button></div><form onSubmit={save} className="edit-form">
+        {session.role === 'manager' && <><label className="field"><span>DESCRIPTION</span><textarea required minLength={12} maxLength={4000} rows={4} value={form.description ?? ''} onChange={e => setForm({ ...form, description: e.target.value })} data-testid="input-edit-description" /></label><div className="field-pair"><label className="field"><span>CATEGORY</span><span className="select-wrap"><select value={form.category ?? ''} onChange={e => setForm({ ...form, category: e.target.value as CommunityReportUpdate['category'] })} data-testid="select-edit-category">{categories.map(c => <option key={c}>{c}</option>)}</select><ChevronDown size={16} /></span></label><label className="field"><span>SEVERITY / 10</span><input type="number" min="1" max="10" required value={form.severity ?? 1} onChange={e => setForm({ ...form, severity: Number(e.target.value) })} data-testid="input-edit-severity" /></label></div><label className="field"><span>LOCATION</span><span className="select-wrap"><select value={form.location ?? ''} onChange={e => setForm({ ...form, location: e.target.value as CommunityReportUpdate['location'] })} data-testid="select-edit-location">{locations.map(l => <option key={l}>{l}</option>)}</select><ChevronDown size={16} /></span></label><div className="field-pair"><label className="field"><span>PIN LATITUDE</span><input type="number" step="any" min="37" max="37.6" value={form.latitude ?? ''} onChange={e => setForm({ ...form, latitude: e.target.value ? Number(e.target.value) : undefined })} data-testid="input-edit-latitude" /></label><label className="field"><span>PIN LONGITUDE</span><input type="number" step="any" min="-122.2" max="-121.6" value={form.longitude ?? ''} onChange={e => setForm({ ...form, longitude: e.target.value ? Number(e.target.value) : undefined })} data-testid="input-edit-longitude" /></label></div></>}
+        <label className="field"><span>STATUS</span><span className="select-wrap"><select value={form.status ?? report.status} onChange={e => setForm({ ...form, status: e.target.value as CommunityReportUpdate['status'] })} data-testid="select-edit-status">{statuses.map(s => <option key={s}>{s}</option>)}</select><ChevronDown size={16} /></span></label>
+        {session.role === 'manager' && <><label className="field"><span>ASSIGNED TEAM</span><input maxLength={120} value={form.assignedTeam ?? ''} onChange={e => setForm({ ...form, assignedTeam: e.target.value || null })} placeholder="Team or department" data-testid="input-edit-team" /></label><label className="field"><span>ROUTE ASSIGNMENT</span><input maxLength={160} value={form.routeAssignment ?? ''} onChange={e => setForm({ ...form, routeAssignment: e.target.value || null })} placeholder="Route or work order" data-testid="input-edit-route" /></label><label className="field"><span>MANAGER NOTES</span><textarea maxLength={4000} rows={3} value={form.managerNotes ?? ''} onChange={e => setForm({ ...form, managerNotes: e.target.value || null })} placeholder="Internal case notes" data-testid="input-edit-notes" /></label></>}
+        {saveError && <div className="inline-error" role="alert" data-testid="text-update-error">{saveError}</div>}<div className="modal-actions"><button type="button" className="secondary-btn" onClick={() => setEditing(false)} data-testid="button-cancel-edit">Cancel</button><button className="primary-btn" disabled={update.isPending} type="submit" data-testid="button-save-report">{update.isPending ? 'Saving…' : 'Save changes'} <ArrowRight size={16} /></button></div></form></div></div>}
+    </>}
   </>;
 }
 
-function ProfilePage({ account }: { account: AccountStatus }) {
-  const { signOut } = useClerk();
+function Settings({ session, signOut }: { session: ReportSession; signOut: () => void }) {
+  const reset = useResetDemoReports();
+  const query = useQueryClient();
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  async function resetDemo() {
+    if (!window.confirm('Restore the six demonstration reports? Your submitted reports will not be deleted.')) return;
+    setError(''); setMessage('');
+    try { const reports = await reset.mutateAsync(); await query.invalidateQueries({ queryKey: getListReportsQueryKey() }); setMessage(`Restored ${reports.length} demonstration reports. Your submitted reports were kept.`); }
+    catch (err) { setError(errorText(err)); }
+  }
+  return <><Header marker="WORKSPACE / SETTINGS" title="A little housekeeping." description="Manage this prototype session and its demonstration data." /><div className="settings-layout"><div className="settings-card"><div className="settings-icon"><ShieldCheck size={21} /></div><div><span className="section-kicker"><span className="kicker-line" />CURRENT SESSION</span><h2>{roleCopy[session.role].title}</h2><p>{roleCopy[session.role].description}</p><div className="settings-facts"><div><span>ACCESS</span><strong>{session.role.toUpperCase()} / DEMO</strong></div><div><span>SESSION EXPIRES</span><strong>{dateText(session.expiresAt)}</strong></div></div><button className="secondary-btn" onClick={signOut} data-testid="button-sign-out">Sign out <LogOut size={16} /></button></div></div>
+    <div className="settings-card"><div className="settings-icon"><RotateCcw size={21} /></div><div><span className="section-kicker"><span className="kicker-line" />DEMO DATA</span><h2>Restore the starting view</h2><p>Restore six demonstration cases without deleting reports people submitted during this demo.</p>{session.role === 'manager' ? <button className="secondary-btn" disabled={reset.isPending} onClick={() => void resetDemo()} data-testid="button-reset-demo">{reset.isPending ? 'Restoring…' : 'Restore demo cases'} <RotateCcw size={16} /></button> : <div className="quiet-banner">Only the city manager demo role can restore demo cases.</div>}{message && <div className="inline-success" data-testid="text-reset-success">{message}</div>}{error && <div className="inline-error" role="alert" data-testid="text-reset-error">{error}</div>}</div></div>
+    <div className="settings-disclaimer"><span className="section-kicker"><span className="kicker-line" />A NOTE ABOUT THIS DEMO</span><h2>Built to demonstrate the process, not protect real accounts.</h2><p>All demo roles use shared credentials. This is not secure authentication, an emergency dispatch service, or a place for sensitive personal information. The reports shown depend on server-side demo role scoping.</p></div></div></>;
+}
+
+function NotFound() { return <div className="not-found"><span className="section-kicker"><span className="kicker-line" />404 / NOT FOUND</span><h1>This path ends here.</h1><p>Let's get you back to the neighborhood.</p><Link href="/" className="primary-btn" data-testid="link-not-found-home">Return to overview <ArrowRight size={16} /></Link></div>; }
+
+function Workspace() {
+  const [session, setSession] = useState<ReportSession | null>(activeSession);
+  const [, navigate] = useLocation();
   const client = useQueryClient();
-  async function logout() { client.clear(); await signOut({ redirectUrl: `${basePath}/` || '/' }); }
-  return <><Header marker="ACCOUNT / PROFILE" title="Account and access." description="Your identity comes from your secure sign-in. PathPal access is assigned by the account service." />
-    <section className="profile-card"><span className="avatar profile-avatar">{account.displayName.slice(0, 1).toUpperCase()}</span><div><span className="eyebrow"><span />PATHPAL ACCOUNT</span><h2>{account.displayName}</h2><p>{account.status === 'parent' ? 'Parent / guardian' : account.status === 'child_approved' ? 'Approved family member' : account.status === 'manager' ? 'City manager' : `Field team${account.teamName ? ` · ${account.teamName}` : ''}`}</p><div className="profile-access"><ShieldCheck size={17} />Role access is confirmed by the server and cannot be changed here.</div><button className="button button-subtle" onClick={() => void logout()} data-testid="button-profile-sign-out">Sign out <LogOut size={15} /></button></div></section>
-  </>;
-}
-function NotFound() { return <div className="not-found"><span className="eyebrow"><span />404 / NOT FOUND</span><h1>This path ends here.</h1><p>Return to your authorized PathPal workspace.</p><Link className="button button-primary" href="/">Go to workspace <ArrowRight size={16} /></Link></div>; }
-
-function SignedInApp() {
-  const { isLoaded, isSignedIn } = useUser();
-  const { data: account, isLoading, error, refetch } = useGetAccountStatus({ query: { enabled: isLoaded && !!isSignedIn, queryKey: getGetAccountStatusQueryKey(), refetchOnMount: 'always' } });
-  const [location] = useLocation();
-  if (!isLoaded) return <div className="auth-loading"><LoadingPanel label="Checking secure sign-in" /></div>;
-  if (!isSignedIn) return <PublicAuth />;
-  if (isLoading) return <div className="auth-loading"><LoadingPanel label="Loading PathPal account" /></div>;
-  if (error) return <div className="auth-loading"><ErrorNotice message={errorText(error)} onRetry={() => void refetch()} /></div>;
-  if (!account) return <div className="auth-loading"><ErrorNotice message="Your account status is unavailable." onRetry={() => void refetch()} /></div>;
-  if (account.status === 'needs_setup') return <SetupScreen onDone={() => void refetch()} />;
-  if (account.status === 'child_pending') return <AccessPending />;
-  if (account.status === 'child_rejected') return <AccessPending rejected />;
-  const isStaff = account.status === 'manager' || account.status === 'worker';
-  return <Shell account={account}><Switch>
-    <Route path="/"><>{isStaff ? <StaffHome account={account} /> : <FamilyHome account={account} />}</></Route>
-    <Route path="/reports"><ReportsPage account={account} /></Route>
-    <Route path="/reports/:id"><ReportDetail account={account} /></Route>
-    <Route path="/report/new">{isStaff ? <NotFound /> : <NewReport />}</Route>
-    <Route path="/map"><MapPage account={account} /></Route>
-    <Route path="/family">{isStaff ? <NotFound /> : <FamilyWorkspace account={account} />}</Route>
-    <Route path="/notifications"><NotificationsPage /></Route>
-    <Route path="/profile"><ProfilePage account={account} /></Route>
-    <Route><NotFound /></Route>
-  </Switch></Shell>;
-}
-
-function ClerkRoutes() {
-  const [, setLocation] = useLocation();
-  const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
-  return <ClerkProvider publishableKey={clerkPublishableKey} proxyUrl={clerkProxyUrl} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`}
-    routerPush={to => setLocation(stripBase(to))} routerReplace={to => setLocation(stripBase(to), { replace: true })}
-    appearance={{ variables: { colorPrimary: '#176e6a', colorForeground: '#17393d', colorMutedForeground: '#637c7b', colorBackground: '#fbfaf5', colorInput: '#fffefa', colorInputForeground: '#17393d', colorDanger: '#a94d49', colorNeutral: '#d6dfd7', fontFamily: 'DM Sans, sans-serif', borderRadius: '10px' }, elements: { card: 'clerk-card', headerTitle: 'clerk-title', formButtonPrimary: 'clerk-primary', formFieldInput: 'clerk-input' } }}>
-    <ClerkCacheBoundary />
-    <Switch><Route path="/sign-in/*?"><PublicAuth /></Route><Route path="/sign-up/*?"><PublicAuth /></Route><Route><SignedInApp /></Route></Switch>
-  </ClerkProvider>;
+  function setSignedIn(next: ReportSession) {
+    client.clear(); activeSession = next; setAuthTokenGetter(() => activeSession?.accessToken ?? null);
+    localStorage.setItem(STORAGE, JSON.stringify(next)); setSession(next); navigate('/');
+  }
+  function signOut() {
+    activeSession = null; setAuthTokenGetter(null); localStorage.removeItem(STORAGE); client.clear(); setSession(null); navigate('/');
+  }
+  useEffect(() => { if (session && Date.parse(session.expiresAt) <= Date.now()) signOut(); }, [session]);
+  if (!session) return <SignIn onSignIn={setSignedIn} />;
+  return <Shell session={session} signOut={signOut}><Switch><Route path="/"><Overview session={session} /></Route><Route path="/report/new"><NewReport /></Route><Route path="/reports"><Reports /></Route><Route path="/reports/:id"><Detail session={session} /></Route><Route path="/settings"><Settings session={session} signOut={signOut} /></Route><Route><NotFound /></Route></Switch></Shell>;
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><WouterRouter base={basePath}><ClerkRoutes /></WouterRouter></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Workspace /></WouterRouter></QueryClientProvider>;
 }
 export default App;

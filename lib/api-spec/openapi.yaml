@@ -221,504 +221,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /accounts/me:
-    get:
-      operationId: getAccountStatus
-      tags: [accounts]
-      summary: Get the signed-in user's PathPal account and approval status
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Account status; pending children receive no family details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccountStatus"
-        "401":
-          description: Missing or invalid Clerk session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /accounts/bootstrap-manager:
-    post:
-      operationId: bootstrapInitialManager
-      tags: [accounts]
-      summary: Create the initial manager only for the maintainer-configured Clerk user
-      security:
-        - bearerAuth: []
-      responses:
-        "201":
-          description: Initial manager account created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccountStatus"
-        "403":
-          description: Signed-in user is not the configured maintainer account
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /accounts/parent:
-    post:
-      operationId: createParentAccount
-      tags: [accounts]
-      summary: Create the signed-in user's parent account and family
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ParentAccountInput"
-      responses:
-        "201":
-          description: Parent account and family created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccountStatus"
-  /accounts/child:
-    post:
-      operationId: createChildAccount
-      tags: [accounts]
-      summary: Request to join a family using its invitation code
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ChildAccountInput"
-      responses:
-        "201":
-          description: Child account created in pending approval state
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccountStatus"
-        "400":
-          description: Invitation code is invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Account already has a profile or pending request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /accounts/staff:
-    post:
-      operationId: acceptStaffInvitation
-      tags: [accounts]
-      summary: Accept a City Manager or City Worker invitation
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/StaffInvitationAcceptance"
-      responses:
-        "201":
-          description: Staff account created with the invited role and team
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccountStatus"
-        "400":
-          description: Invitation is invalid or expired
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Account already has a profile
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /families/me:
-    get:
-      operationId: getMyFamily
-      tags: [families]
-      summary: Get family information visible to the signed-in member
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Family management data; only the owning parent receives the invitation code
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FamilyView"
-        "403":
-          description: Family data is not available to this account
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /families/me/journey:
-    get:
-      operationId: getFamilyJourney
-      tags: [families]
-      summary: Get the family's currently shared journey
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: The active family journey, if one has been saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FamilyJourneyResponse"
-        "401":
-          description: Missing or invalid Clerk session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Only an approved parent or child may access family journeys
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    put:
-      operationId: saveFamilyJourney
-      tags: [families]
-      summary: Save or replace the family's shared journey
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FamilyJourneyInput"
-      responses:
-        "200":
-          description: The saved family journey
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FamilyJourneyResponse"
-        "400":
-          description: Invalid journey or endpoint data
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Missing or invalid Clerk session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Only an approved parent or child may save family journeys
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /families/me/journey/check-ins:
-    post:
-      operationId: confirmFamilyJourneyMilestone
-      tags: [families]
-      summary: Record the next child journey check-in for the family
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FamilyJourneyCheckInInput"
-      responses:
-        "200":
-          description: The updated shared journey progress
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FamilyJourneyResponse"
-        "400":
-          description: Invalid journey milestone
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Only an approved child may check in to a family journey
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: No family journey has been saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Journey check-ins must be confirmed in order
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /families/requests/{id}/approve:
-    post:
-      operationId: approveFamilyJoinRequest
-      tags: [families]
-      summary: Approve a pending child request as the owning parent
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/FamilyMembershipId"
-      responses:
-        "200":
-          description: Child approved and connected to the family
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FamilyRequestResult"
-        "403":
-          description: Only the owning parent may approve the request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Pending request not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /families/requests/{id}/reject:
-    post:
-      operationId: rejectFamilyJoinRequest
-      tags: [families]
-      summary: Reject a pending child request as the owning parent
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/FamilyMembershipId"
-      responses:
-        "200":
-          description: Child request rejected
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FamilyRequestResult"
-        "403":
-          description: Only the owning parent may reject the request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Pending request not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /notifications:
-    get:
-      operationId: listNotifications
-      tags: [notifications]
-      summary: List notifications for the signed-in account
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Account-scoped notifications
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PathPalNotification"
-  /notifications/{id}/read:
-    patch:
-      operationId: markNotificationRead
-      tags: [notifications]
-      summary: Mark one of the signed-in user's notifications as read
-      security:
-        - bearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/NotificationId"
-      responses:
-        "200":
-          description: Notification marked read
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PathPalNotification"
-        "404":
-          description: Notification not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /staff/invitations:
-    post:
-      operationId: createStaffInvitation
-      tags: [staff]
-      summary: Issue a one-time City Manager or City Worker invitation
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/StaffInvitationInput"
-      responses:
-        "201":
-          description: Invitation created; the code is returned once
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StaffInvitation"
-        "403":
-          description: Only a City Case Manager may invite staff
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /reports/map-data:
-    get:
-      operationId: getReportMapData
-      tags: [reports]
-      summary: Get authorized report markers and anonymous aggregate heat cells
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Role-scoped markers and anonymous public heat data
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportMapData"
-        "401":
-          description: Missing or invalid Clerk session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Account is pending parent approval or is not authorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /reports/public-heat:
-    get:
-      operationId: getPublicReportHeat
-      tags: [reports]
-      summary: Get anonymized report-density cells without report identifiers
-      security: []
-      responses:
-        "200":
-          description: Heat cells aggregated across at least three reports each
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PublicHeatCell"
-  /reports/session:
-    post:
-      operationId: createReportSession
-      tags: [reports]
-      summary: Start a role-scoped demonstration session in development
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReportSessionInput"
-      responses:
-        "200":
-          description: Signed demonstration session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportSession"
-        "400":
-          description: Invalid session input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Demonstration credentials were rejected
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Demonstration sessions are disabled outside development
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "503":
-          description: Demonstration session signing is unavailable
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /reports/phone-session:
-    post:
-      operationId: createPhoneReportSession
-      tags: [reports]
-      summary: Start the simulated phone demonstration session in development
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PhoneReportSessionInput"
-      responses:
-        "200":
-          description: Signed role-specific demonstration session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportSession"
-        "400":
-          description: Invalid phone session input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Demonstration phone credentials were rejected
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Demonstration sessions are disabled outside development
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "503":
-          description: Demonstration session signing is unavailable
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
   /reports:
     get:
       operationId: listReports
@@ -780,6 +282,42 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Photo storage is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /reports/session:
+    post:
+      operationId: createReportSession
+      tags: [reports]
+      summary: Create a prototype-only signed demo session; these roles are not secure real accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportSessionInput"
+      responses:
+        "200":
+          description: Signed bearer session, valid for 24 hours
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSession"
+        "400":
+          description: Invalid session input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid demo credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Session signing is not configured
           content:
             application/json:
               schema:
@@ -1029,20 +567,6 @@ components:
         type: string
         minLength: 1
         maxLength: 80
-    FamilyMembershipId:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        minimum: 1
-    NotificationId:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        minimum: 1
   schemas:
     HealthStatus:
       type: object
@@ -1057,164 +581,6 @@ components:
         error:
           type: string
       required: [error]
-    AccountStatus:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [needs_setup, parent, child_pending, child_approved, child_rejected, manager, worker]
-        userId: { type: string }
-        displayName: { type: string }
-        familyId: { type: ["string", "null"] }
-        familyName: { type: ["string", "null"] }
-        approvalDeadline: { type: ["string", "null"], format: date-time }
-        teamName: { type: ["string", "null"] }
-      required: [status, userId, displayName, familyId, familyName, approvalDeadline, teamName]
-    ParentAccountInput:
-      type: object
-      properties:
-        displayName: { type: string, minLength: 1, maxLength: 80 }
-        familyName: { type: string, minLength: 1, maxLength: 100 }
-      required: [displayName, familyName]
-    ChildAccountInput:
-      type: object
-      properties:
-        displayName: { type: string, minLength: 1, maxLength: 80 }
-        invitationCode: { type: string, minLength: 6, maxLength: 24 }
-      required: [displayName, invitationCode]
-    StaffInvitationAcceptance:
-      type: object
-      properties:
-        displayName: { type: string, minLength: 1, maxLength: 80 }
-        invitationCode: { type: string, minLength: 12, maxLength: 80 }
-      required: [displayName, invitationCode]
-    FamilyMember:
-      type: object
-      properties:
-        membershipId: { type: integer }
-        displayName: { type: string }
-        role: { type: string, enum: [parent, child] }
-        status: { type: string, enum: [pending, approved, rejected] }
-        requestedAt: { type: string, format: date-time }
-        approvedAt: { type: ["string", "null"], format: date-time }
-      required: [membershipId, displayName, role, status, requestedAt, approvedAt]
-    FamilyView:
-      type: object
-      properties:
-        state: { type: string, enum: [parent, child_pending, child_approved, child_rejected] }
-        familyName: { type: ["string", "null"] }
-        invitationCode: { type: ["string", "null"], description: Only returned to the owning parent }
-        approvalDeadline: { type: ["string", "null"], format: date-time }
-        members:
-          type: array
-          items: { $ref: "#/components/schemas/FamilyMember" }
-        pendingRequests:
-          type: array
-          items: { $ref: "#/components/schemas/FamilyMember" }
-      required: [state, familyName, invitationCode, approvalDeadline, members, pendingRequests]
-    FamilyJourneyEndpoint:
-      type: object
-      properties:
-        name: { type: string, minLength: 1, maxLength: 200 }
-        latitude: { type: number, minimum: -90, maximum: 90 }
-        longitude: { type: number, minimum: -180, maximum: 180 }
-      required: [name, latitude, longitude]
-    FamilyJourneyInput:
-      type: object
-      properties:
-        route:
-          $ref: "#/components/schemas/JourneyRoute"
-        origin:
-          $ref: "#/components/schemas/FamilyJourneyEndpoint"
-        destination:
-          $ref: "#/components/schemas/FamilyJourneyEndpoint"
-      required: [route, origin, destination]
-    FamilyJourneyCheckInInput:
-      type: object
-      properties:
-        milestoneIndex: { type: integer, minimum: 0, maximum: 100 }
-      required: [milestoneIndex]
-    FamilyJourney:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        route:
-          $ref: "#/components/schemas/JourneyRoute"
-        origin:
-          $ref: "#/components/schemas/FamilyJourneyEndpoint"
-        destination:
-          $ref: "#/components/schemas/FamilyJourneyEndpoint"
-        milestoneIndex: { type: integer, minimum: -1, maximum: 100 }
-        tripUpdatedAt: { type: ["string", "null"], format: date-time }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-      required: [id, route, origin, destination, milestoneIndex, tripUpdatedAt, createdAt, updatedAt]
-    FamilyJourneyResponse:
-      type: object
-      properties:
-        journey:
-          oneOf:
-            - $ref: "#/components/schemas/FamilyJourney"
-            - type: "null"
-      required: [journey]
-    FamilyRequestResult:
-      type: object
-      properties:
-        membershipId: { type: integer }
-        status: { type: string, enum: [approved, rejected] }
-      required: [membershipId, status]
-    PathPalNotification:
-      type: object
-      properties:
-        id: { type: integer }
-        type: { type: string, enum: [child_join_request, child_approved, child_rejected] }
-        title: { type: string }
-        body: { type: string }
-        createdAt: { type: string, format: date-time }
-        readAt: { type: ["string", "null"], format: date-time }
-      required: [id, type, title, body, createdAt, readAt]
-    StaffInvitationInput:
-      type: object
-      properties:
-        role: { type: string, enum: [manager, worker] }
-        teamName: { type: ["string", "null"], maxLength: 120 }
-      required: [role]
-    StaffInvitation:
-      type: object
-      properties:
-        invitationCode: { type: string }
-        role: { type: string, enum: [manager, worker] }
-        teamName: { type: ["string", "null"] }
-        expiresAt: { type: string, format: date-time }
-      required: [invitationCode, role, teamName, expiresAt]
-    ReportMapMarker:
-      type: object
-      properties:
-        id: { type: string }
-        latitude: { type: number }
-        longitude: { type: number }
-        severity: { type: ["integer", "null"], minimum: 1, maximum: 10 }
-        status: { type: string, enum: [Submitted, Under Review, Assigned, Resolved] }
-        assignedTeam: { type: ["string", "null"] }
-        routeAssignment: { type: ["string", "null"] }
-      required: [id, latitude, longitude, severity, status, assignedTeam, routeAssignment]
-    PublicHeatCell:
-      type: object
-      properties:
-        latitude: { type: number }
-        longitude: { type: number }
-        intensity: { type: number, minimum: 0, maximum: 1 }
-      required: [latitude, longitude, intensity]
-    ReportMapData:
-      type: object
-      properties:
-        markers:
-          type: array
-          items: { $ref: "#/components/schemas/ReportMapMarker" }
-        publicHeat:
-          type: array
-          items: { $ref: "#/components/schemas/PublicHeatCell" }
-      required: [markers, publicHeat]
     JourneyOptionsResponse:
       type: object
       properties:
@@ -1439,8 +805,6 @@ components:
         awardedPoints: { type: boolean }
         reporterAccountId: { type: ["string", "null"] }
         familyAccountId: { type: ["string", "null"] }
-        reporterUserId: { type: ["string", "null"] }
-        familyId: { type: ["string", "null"] }
         selectedCategory:
           type: ["string", "null"]
           enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns, null]
@@ -1451,7 +815,7 @@ components:
         updatedAt: { type: string, format: date-time }
         assignedAt: { type: ["string", "null"], format: date-time }
         resolvedAt: { type: ["string", "null"], format: date-time }
-      required: [id, category, summary, description, severity, status, location, x, y, photoUri, photoReference, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints, reporterAccountId, familyAccountId, reporterUserId, familyId, selectedCategory, latitude, longitude, managerNotes, routeAssignment, updatedAt, assignedAt, resolvedAt]
+      required: [id, category, summary, description, severity, status, location, x, y, photoUri, photoReference, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints, reporterAccountId, familyAccountId, selectedCategory, latitude, longitude, managerNotes, routeAssignment, updatedAt, assignedAt, resolvedAt]
     CommunityReportDetail:
       allOf:
         - $ref: "#/components/schemas/CommunityReport"
@@ -1470,38 +834,6 @@ components:
         changedBy: { type: string }
         changedAt: { type: string, format: date-time }
       required: [fromStatus, toStatus, changedBy, changedAt]
-    ReportSessionInput:
-      type: object
-      properties:
-        username: { type: string, minLength: 1, maxLength: 128 }
-        password: { type: string, minLength: 1, maxLength: 128 }
-        role:
-          type: string
-          enum: [parent, child, manager, worker]
-        verificationCode: { type: string, minLength: 4, maxLength: 8 }
-      required: [username, password, role, verificationCode]
-    PhoneReportSessionInput:
-      type: object
-      properties:
-        phoneNumber: { type: string, minLength: 7, maxLength: 32 }
-        role:
-          type: string
-          enum: [parent, child, manager, worker]
-        verificationCode: { type: string, pattern: "^[0-9]{4}$" }
-      required: [phoneNumber, role, verificationCode]
-    ReportSession:
-      type: object
-      properties:
-        accessToken: { type: string, minLength: 1 }
-        tokenType: { type: string, enum: [Bearer] }
-        expiresAt: { type: string, format: date-time }
-        role:
-          type: string
-          enum: [parent, child, manager, worker]
-        userId: { type: string }
-        displayName: { type: string }
-        prototypeOnly: { type: boolean, enum: [true] }
-      required: [accessToken, tokenType, expiresAt, role, userId, displayName, prototypeOnly]
     CommunityReportInput:
       type: object
       properties:
@@ -1519,6 +851,22 @@ components:
           type: string
           enum: [image/jpeg, image/png, image/webp]
       required: [description, latitude, longitude]
+    ReportSessionInput:
+      type: object
+      properties:
+        username: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 1, maxLength: 200 }
+        role: { type: string, enum: [parent, child, citizen, manager, worker] }
+      required: [username, password, role]
+    ReportSession:
+      type: object
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { type: string, format: date-time }
+        role: { type: string, enum: [parent, child, citizen, manager, worker] }
+        prototypeOnly: { type: boolean, enum: [true] }
+      required: [accessToken, tokenType, expiresAt, role, prototypeOnly]
     CommunityReportUpdate:
       type: object
       properties:

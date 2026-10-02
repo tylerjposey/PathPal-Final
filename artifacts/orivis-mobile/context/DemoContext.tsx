@@ -2,14 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createReport as submitCommunityReport,
   getListReportsQueryKey,
+  listReports,
+  resetDemoReports,
   updateReport as saveCommunityReport,
   useListReports,
   type CommunityReportInput,
   type CommunityReportUpdate,
-  type ReportSession,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  clearReportSession,
+  hasReportSession,
   reportAccountScope,
   reportListQueryKey,
   toSafetyReport,
@@ -24,7 +27,7 @@ import React, {
   type ReactNode,
 } from 'react';
 
-export type Role = 'parent' | 'child' | 'manager' | 'worker';
+export type Role = 'parent' | 'child' | 'citizen' | 'manager' | 'worker';
 export type ReportCategory =
   | 'Blight'
   | 'Illegal dumping'
@@ -175,6 +178,7 @@ export const DEFAULT_DEMO_JOURNEY: SelectedJourney = {
 export const ROLE_LABELS: Record<Role, string> = {
   parent: 'Parent',
   child: 'Child',
+  citizen: 'Citizen',
   manager: 'City Case Manager',
   worker: 'City Worker',
 };
@@ -204,14 +208,6 @@ export interface DemoUser {
   role: Role;
   reportServiceUnavailable?: boolean;
   reportServiceError?: string;
-}
-
-export interface PendingSignUp {
-  role: 'parent' | 'child';
-  firstName: string;
-  lastName: string;
-  email: string;
-  familyCode: string;
 }
 
 export interface ChildProfile {
@@ -320,14 +316,49 @@ export interface DemoState {
 
 const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
+function makeReport(
+  id: string,
+  category: ReportCategory,
+  description: string,
+  severity: number,
+  status: CaseStatus,
+  location: string,
+  x: number,
+  y: number,
+  hoursAgo: number,
+  assignedTeam?: string,
+): SafetyReport {
+  const department = category === 'Poor lighting' || category === 'Unsafe bus stops'
+    ? 'Transportation & Public Works'
+    : category === 'Damaged sidewalks'
+      ? 'Public Works'
+      : 'Environmental Services';
+  return {
+    id,
+    category,
+    summary: description,
+    description,
+    severity,
+    status,
+    location,
+    x,
+    y,
+    submittedAt: ago(hoursAgo),
+    recommendedDepartment: department,
+    priority: severity >= 8 ? 'High' : severity >= 5 ? 'Medium' : 'Low',
+    assignedTeam,
+    awardedPoints: status === 'Resolved',
+  };
+}
+
 export function createInitialDemoState(): DemoState {
   return {
     account: null,
-    familyName: '',
-    parentProfile: { name: '', email: '', phone: '' },
-    child: { name: '', school: '' },
-    familyChildren: [],
-    invitationCode: '',
+    familyName: 'The Chen family',
+    parentProfile: { name: 'Jordan Chen', email: '', phone: '' },
+    child: { name: 'Maya Chen', school: 'River Glen Elementary' },
+    familyChildren: [{ id: 'child-1', name: 'Maya Chen', school: 'River Glen Elementary' }],
+    invitationCode: '1234',
     childLogin: null,
     notificationPreferences: {
       journeyUpdates: true,
@@ -340,19 +371,127 @@ export function createInitialDemoState(): DemoState {
     selectedJourney: null,
     busDelayed: true,
     rewardPoints: 320,
-    rewardHistory: [],
-    reports: [],
+    rewardHistory: ['+50 points · Willow Glen sidewalk report resolved'],
+    reports: [
+      makeReport(
+        'OR-2481',
+        'Illegal dumping',
+        'Several bags and loose debris beside the trail entrance.',
+        9,
+        'Assigned',
+        'Downtown San Jose',
+        49,
+        42,
+        7,
+        'San Jose – West Clean Team',
+      ),
+      makeReport(
+        'OR-2478',
+        'Poor lighting',
+        'The pedestrian crossing near the stop is very dark after sunset.',
+        7,
+        'Under Review',
+        'Japantown',
+        37,
+        29,
+        18,
+      ),
+      makeReport(
+        'OR-2474',
+        'Damaged sidewalks',
+        'Raised pavement near the school crossing could be a trip hazard.',
+        6,
+        'Submitted',
+        'Willow Glen',
+        31,
+        70,
+        29,
+      ),
+      makeReport(
+        'OR-2469',
+        'Blight',
+        'Litter around the park entrance has now been cleared.',
+        3,
+        'Resolved',
+        'Alum Rock',
+        78,
+        26,
+        75,
+        'Parks Response Team',
+      ),
+      makeReport(
+        'OR-2463',
+        'Unsafe bus stops',
+        'The sidewalk at the northbound stop is cracked and difficult to navigate.',
+        6,
+        'Assigned',
+        'East San Jose',
+        76,
+        60,
+        49,
+        'San Jose – West Clean Team',
+      ),
+      makeReport(
+        'OR-2459',
+        'Other concerns',
+        'A recycling bin is overflowing at the transit plaza.',
+        4,
+        'Submitted',
+        'Santa Clara',
+        18,
+        47,
+        92,
+      ),
+    ],
     legacyReportsByAccount: {},
     reportScopeKey: null,
-    notifications: [],
+    notifications: [
+      {
+        id: 'notif-demo-sos',
+        title: 'Practice SOS completed',
+        body: 'A sample, simulated family safety drill was closed. No services were contacted.',
+        kind: 'SOS',
+        createdAt: ago(26),
+        channel: 'In-app',
+        unread: false,
+      },
+      {
+        id: 'notif-bus-delay',
+        title: 'Route 22 is delayed',
+        body: 'A simulated 8-minute delay is posted for the River Glen stop.',
+        kind: 'Transit',
+        createdAt: ago(2),
+        channel: 'In-app',
+        unread: true,
+      },
+      {
+        id: 'notif-reward',
+        title: 'You earned 50 points',
+        body: 'A family community report was verified and resolved.',
+        kind: 'Reward',
+        createdAt: ago(75),
+        channel: 'In-app',
+        unread: false,
+      },
+    ],
     sosActive: false,
     sosTriggers: [],
     sosMessages: [],
-    sosEvents: [],
+    sosEvents: [
+      {
+        id: 'SOS-DEMO-01',
+        location: 'Civic Center, San Jose · demo location',
+        time: ago(26),
+        situation: 'Sample practice event shown for demonstration.',
+        status: 'Ended',
+        triggers: [],
+        sharedMessages: [],
+      },
+    ],
   };
 }
 
-const SAMPLE_REPORT_IDS = new Set<string>();
+const SAMPLE_REPORT_IDS = new Set(createInitialDemoState().reports.map((report) => report.id));
 
 function legacyReportsFrom(reports: SafetyReport[]) {
   return reports.filter((report) =>
@@ -375,39 +514,6 @@ function visibleReports(serverReports: SafetyReport[], legacyReports: SafetyRepo
 
 const STORAGE_KEY = 'orivis-demo-v1';
 
-function privateDataFree(state: DemoState): DemoState {
-  return {
-    ...state,
-    account: null,
-    familyName: '',
-    parentProfile: { name: '', email: '', phone: '' },
-    child: { name: '', school: '' },
-    familyChildren: [],
-    invitationCode: '',
-    childLogin: null,
-    reports: [],
-    legacyReportsByAccount: {},
-    reportScopeKey: null,
-    notifications: [],
-    notificationPreferences: {
-      journeyUpdates: true,
-      safetyAlerts: true,
-      communityUpdates: true,
-      rewardUpdates: true,
-    },
-    milestoneIndex: -1,
-    tripUpdatedAt: null,
-    selectedJourney: null,
-    busDelayed: false,
-    rewardPoints: 320,
-    rewardHistory: [],
-    sosActive: false,
-    sosTriggers: [],
-    sosMessages: [],
-    sosEvents: [],
-  };
-}
-
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -429,29 +535,55 @@ function notification(
   };
 }
 
+function analyzeDescription(description: string, selected?: ReportCategory) {
+  const text = description.toLowerCase();
+  const category =
+    selected ||
+    (text.includes('dump') || text.includes('bags') || text.includes('debris')
+      ? 'Illegal dumping'
+      : text.includes('light') || text.includes('dark')
+        ? 'Poor lighting'
+        : text.includes('sidewalk') || text.includes('crack') || text.includes('pavement')
+          ? 'Damaged sidewalks'
+          : text.includes('bus stop') || text.includes('transit')
+            ? 'Unsafe bus stops'
+            : text.includes('suspicious')
+              ? 'Suspicious activity'
+              : 'Other concerns');
+  const alarming = /unsafe|danger|broken|dark|trip|glass|traffic|sharp/.test(text);
+  const score = Math.min(10, Math.max(2, (alarming ? 7 : 4) + (description.length > 115 ? 1 : 0)));
+  const recommendedDepartment =
+    category === 'Poor lighting' || category === 'Unsafe bus stops'
+      ? 'Transportation & Public Works'
+      : category === 'Damaged sidewalks'
+        ? 'Public Works'
+        : 'Environmental Services';
+  return {
+    category,
+    severity: score,
+    priority: (score >= 8 ? 'High' : score >= 5 ? 'Medium' : 'Low') as SafetyReport['priority'],
+    recommendedDepartment,
+  };
+}
+
 interface DemoContextValue {
   state: DemoState;
   hydrated: boolean;
   reportsError: boolean;
   reportsLoading: boolean;
-  demoSession: ReportSession | null;
-  pendingSignUp: PendingSignUp | null;
+  authenticate: (username: string, password: string, role: Role) => DemoUser | null;
+  verifyFamilyInvite: (code: string) => boolean;
+  createFamily: (familyName: string, childName: string, inviteCode: string) => void;
+  joinFamily: (code: string, childName: string, username: string, password: string) => boolean;
   saveParentProfile: (profile: ParentProfile) => Promise<void>;
   saveChildProfile: (id: string, profile: ChildProfile) => Promise<void>;
   saveFamilySettings: (settings: { familyName: string; invitationCode: string }) => Promise<void>;
   saveNotificationPreferences: (preferences: NotificationPreferences) => Promise<void>;
   setAccount: (account: DemoUser | null) => void;
-  setDemoSession: (session: ReportSession) => void;
-  clearDemoSession: () => void;
-  setDemoAccount: (account: DemoUser | null) => void;
-  setPendingSignUp: (draft: PendingSignUp | null) => void;
-  clearPendingSignUp: () => void;
   signOut: () => void;
-  clearUserScopedState: () => void;
   resetDemo: () => Promise<void>;
   confirmMilestone: (index: number) => void;
   selectJourney: (journey: SelectedJourney) => void;
-  syncSharedJourney: (journey: SelectedJourney | null, milestoneIndex: number, tripUpdatedAt: string | null) => void;
   simulateMissedCheckin: () => void;
   reportBusDelay: () => void;
   createReport: (input: {
@@ -479,8 +611,6 @@ const DemoContext = createContext<DemoContextValue | null>(null);
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(createInitialDemoState);
   const [hydrated, setHydrated] = useState(false);
-  const [demoSession, setDemoSessionState] = useState<ReportSession | null>(null);
-  const [pendingSignUp, setPendingSignUpState] = useState<PendingSignUp | null>(null);
   const queryClient = useQueryClient();
   const activeReportScope = state.account ? reportAccountScope(state.account) : 'anonymous';
   const reportsQuery = useListReports({
@@ -508,7 +638,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       const reports = visibleReports(serverReports, legacy);
       if (JSON.stringify(current.reports) === JSON.stringify(reports) && JSON.stringify(current.legacyReportsByAccount) === JSON.stringify(buckets)) return current;
       const next = { ...current, reports, legacyReportsByAccount: buckets, reportScopeKey: scope };
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(privateDataFree(next)));
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   }, [reportsQuery.data, reportsQuery.isSuccess, reportsQuery.isError, reportsQuery.queryKey, hydrated, state.account]);
@@ -516,20 +646,26 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => {
+      .then(async (raw) => {
         if (!mounted) return;
         if (raw) {
           try {
             const parsed = JSON.parse(raw) as Partial<DemoState>;
             const initial = createInitialDemoState();
-            const saved = privateDataFree({ ...initial, ...parsed });
-            saved.account = null;
-            saved.familyName = '';
-            saved.parentProfile = { name: '', email: '', phone: '' };
-            saved.child = { name: '', school: '' };
-            saved.familyChildren = [];
-            saved.invitationCode = '';
-            saved.childLogin = null;
+            const saved = { ...initial, ...parsed };
+            saved.parentProfile = {
+              ...initial.parentProfile,
+              ...parsed.parentProfile,
+              name: parsed.parentProfile?.name ??
+                (saved.account?.role === 'parent' ? saved.account.name : initial.parentProfile.name),
+            };
+            saved.familyChildren = Array.isArray(parsed.familyChildren) && parsed.familyChildren.length > 0
+              ? parsed.familyChildren.map((child, index) => ({
+                  id: child.id || `child-${index + 1}`,
+                  name: child.name,
+                  school: child.school,
+                }))
+              : [{ id: 'child-1', ...saved.child }];
             saved.notificationPreferences = {
               ...initial.notificationPreferences,
               ...parsed.notificationPreferences,
@@ -541,9 +677,28 @@ export function DemoProvider({ children }: { children: ReactNode }) {
               saved.selectedJourney = null;
               saved.milestoneIndex = -1;
             }
+            const buckets = { ...saved.legacyReportsByAccount };
+            for (const [scope, rows] of Object.entries(buckets)) {
+              buckets[scope] = uniqueReports(legacyReportsFrom(rows));
+            }
+            const savedScope = saved.reportScopeKey ?? (saved.account ? reportAccountScope(saved.account) : null);
+            const migrationScope = savedScope ?? 'legacy:unattributed';
+            if (migrationScope) {
+              buckets[migrationScope] = uniqueReports([
+                ...legacyReportsFrom(buckets[migrationScope] ?? []),
+                ...legacyReportsFrom(saved.reports),
+              ]);
+            }
+            saved.legacyReportsByAccount = buckets;
+            saved.reportScopeKey = savedScope;
+            saved.reports = visibleReports([], savedScope ? buckets[savedScope] ?? [] : []);
+            if (saved.account && !(saved.account.reportServiceUnavailable && ['parent', 'child'].includes(saved.account.role))) {
+              const valid = await hasReportSession(saved.account.role);
+              if (!valid) saved.account = null;
+            }
             if (mounted) {
               setState(saved);
-              void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(privateDataFree(saved)));
+              void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
             }
           } catch {
             setState(createInitialDemoState());
@@ -575,16 +730,71 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       if (notifications.length !== next.notifications.length) {
         next = { ...next, notifications };
       }
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(privateDataFree(next))).catch(() => undefined);
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
       return next;
     });
   }, []);
 
   const persistUpdate = useCallback(async (recipe: (current: DemoState) => DemoState) => {
     const next = recipe(state);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(privateDataFree(next)));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setState(next);
   }, [state]);
+
+  const authenticate = useCallback((username: string, password: string, role: Role) => {
+    if (username.trim().toLowerCase() === 'ai4sg' && password === '1234') {
+      const names: Record<Role, string> = {
+        parent: state.parentProfile.name,
+        child: state.child.name,
+        citizen: 'Taylor Morgan',
+        manager: 'Avery Patel',
+        worker: 'Luis Rivera',
+      };
+      return { username: 'AI4SG', name: names[role], role };
+    }
+    if (
+      role === 'child' &&
+      state.childLogin &&
+      username.trim().toLowerCase() === state.childLogin.username.toLowerCase() &&
+      password === state.childLogin.password
+    ) {
+      return { username: state.childLogin.username, name: state.child.name, role: 'child' as const };
+    }
+    return null;
+  }, [state.child.name, state.childLogin, state.parentProfile.name]);
+
+  const verifyFamilyInvite = useCallback(
+    (code: string) => code.trim() === state.invitationCode && code.trim().length > 0,
+    [state.invitationCode],
+  );
+
+  const createFamily = useCallback((familyName: string, childName: string, inviteCode: string) => {
+    update((current) => ({
+      ...current,
+      familyName: familyName.trim() || 'The PathPal family',
+      child: { ...current.child, name: childName.trim() || 'New family member' },
+      familyChildren: current.familyChildren.length
+        ? [{ ...current.familyChildren[0], name: childName.trim() || 'New family member' }, ...current.familyChildren.slice(1)]
+        : [{ id: 'child-1', name: childName.trim() || 'New family member', school: current.child.school }],
+      invitationCode: inviteCode.trim() || '1234',
+      childLogin: null,
+    }));
+  }, [update]);
+
+  const joinFamily = useCallback((code: string, childName: string, username: string, password: string) => {
+    if (!verifyFamilyInvite(code) || username.trim().length < 3 || password.length < 4 || !childName.trim()) {
+      return false;
+    }
+    update((current) => ({
+      ...current,
+      child: { ...current.child, name: childName.trim() },
+      familyChildren: current.familyChildren.length
+        ? [{ ...current.familyChildren[0], name: childName.trim() }, ...current.familyChildren.slice(1)]
+        : [{ id: 'child-1', name: childName.trim(), school: current.child.school }],
+      childLogin: { username: username.trim(), password },
+    }));
+    return true;
+  }, [update, verifyFamilyInvite]);
 
   const saveParentProfile = useCallback((profile: ParentProfile) => persistUpdate((current) => {
     const parentProfile = {
@@ -636,52 +846,76 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     })),
   [persistUpdate]);
 
-  const clearUserScopedState = useCallback(() => {
-    setState((current) => {
-      const cleared = privateDataFree(current);
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cleared)).catch(() => undefined);
-      return cleared;
+  const setAccount = useCallback((account: DemoUser | null) => {
+    const isReportQuery = (query: { queryKey: readonly unknown[] }) =>
+      typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/reports');
+    void queryClient.cancelQueries({ predicate: isReportQuery });
+    queryClient.removeQueries({ predicate: isReportQuery });
+    const scope = account ? reportAccountScope(account) : null;
+    update((current) => {
+      const buckets = { ...current.legacyReportsByAccount };
+      const sourceScope = current.reportScopeKey ?? (current.account ? reportAccountScope(current.account) : null);
+      if (sourceScope) {
+        buckets[sourceScope] = uniqueReports([
+          ...legacyReportsFrom(buckets[sourceScope] ?? []),
+          ...legacyReportsFrom(current.reports),
+        ]);
+      }
+      const legacy = scope ? buckets[scope] ?? [] : [];
+      return {
+        ...current,
+        account,
+        reportScopeKey: scope,
+        legacyReportsByAccount: buckets,
+        reports: visibleReports([], legacy),
+      };
     });
-  }, []);
-
-  const setDemoSession = useCallback((session: ReportSession) => {
-    queryClient.clear();
-    setState(privateDataFree(createInitialDemoState()));
-    setPendingSignUpState(null);
-    setDemoSessionState(session);
-  }, [queryClient]);
-
-  const clearDemoSession = useCallback(() => {
-    setDemoSessionState(null);
-  }, []);
-
-  const setDemoAccount = useCallback((account: DemoUser | null) => {
-    setState((current) => ({ ...privateDataFree(current), account }));
-  }, []);
-
-  const setPendingSignUp = useCallback((draft: PendingSignUp | null) => {
-    setPendingSignUpState(draft);
-  }, []);
-
-  const clearPendingSignUp = useCallback(() => {
-    setPendingSignUpState(null);
-  }, []);
-
-  const setAccount = useCallback((_account: DemoUser | null) => {
-    clearUserScopedState();
-  }, [clearUserScopedState]);
+  }, [update, queryClient]);
 
   const signOut = useCallback(() => {
-    clearUserScopedState();
-    clearDemoSession();
-    clearPendingSignUp();
-  }, [clearUserScopedState, clearDemoSession, clearPendingSignUp]);
+    void clearReportSession();
+    const isReportQuery = (query: { queryKey: readonly unknown[] }) =>
+      typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith('/api/reports');
+    void queryClient.cancelQueries({ predicate: isReportQuery });
+    queryClient.removeQueries({ predicate: isReportQuery });
+    update((current) => {
+      const scope = current.reportScopeKey ?? (current.account ? reportAccountScope(current.account) : null);
+      const buckets = { ...current.legacyReportsByAccount };
+      if (scope) {
+        buckets[scope] = uniqueReports([
+          ...legacyReportsFrom(buckets[scope] ?? []),
+          ...legacyReportsFrom(current.reports),
+        ]);
+      }
+      return {
+        ...current,
+        account: null,
+        reportScopeKey: scope,
+        legacyReportsByAccount: buckets,
+        reports: visibleReports([], scope ? buckets[scope] ?? [] : []),
+      };
+    });
+  }, [update, queryClient]);
 
   const resetDemo = useCallback(async () => {
-    const next = privateDataFree(createInitialDemoState());
+    if (state.account?.role !== 'manager') throw new Error('Only a city case manager can restore shared demonstration cases.');
+    await resetDemoReports();
+    const restoredReports = await listReports();
+    const initial = createInitialDemoState();
+    const serverReports = restoredReports.map(toSafetyReport);
+    const serverIds = new Set(serverReports.map((report) => report.id));
+    const originalIds = new Set(createInitialDemoState().reports.map((report) => report.id));
+    const legacyReports = state.reports.filter((report) => !serverIds.has(report.id) && !originalIds.has(report.id));
+    const next = {
+      ...initial,
+      reports: visibleReports(serverReports, legacyReports),
+      legacyReportsByAccount: state.legacyReportsByAccount,
+    };
+    await clearReportSession();
     setState(next);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(privateDataFree(next)));
-  }, []);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
+  }, [state.account?.role, state.reports, queryClient]);
 
   const confirmMilestone = useCallback((index: number) => {
     update((current) => {
@@ -716,20 +950,6 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         notification('Journey selected', `${current.child.name} selected ${journey.name} from ${journey.startStop} to ${journey.destinationStop}.`, 'Transit'),
         ...current.notifications,
       ],
-    }));
-  }, [update]);
-
-  const syncSharedJourney = useCallback((
-    journey: SelectedJourney | null,
-    milestoneIndex: number,
-    tripUpdatedAt: string | null,
-  ) => {
-    update((current) => ({
-      ...current,
-      selectedJourney: journey,
-      milestoneIndex,
-      tripUpdatedAt,
-      busDelayed: false,
     }));
   }, [update]);
 
@@ -973,24 +1193,19 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     hydrated,
     reportsError: Boolean(currentQueryMatchesScope && reportsQuery.isError && !state.account?.reportServiceUnavailable),
     reportsLoading: Boolean(currentQueryMatchesScope && state.account && !state.account.reportServiceUnavailable && (reportsQuery.isPending || reportsQuery.isFetching)),
-    demoSession,
-    pendingSignUp,
+    authenticate,
+    verifyFamilyInvite,
+    createFamily,
+    joinFamily,
     saveParentProfile,
     saveChildProfile,
     saveFamilySettings,
     saveNotificationPreferences,
     setAccount,
-    setDemoSession,
-    clearDemoSession,
-    setDemoAccount,
-    setPendingSignUp,
-    clearPendingSignUp,
     signOut,
-    clearUserScopedState,
     resetDemo,
     confirmMilestone,
     selectJourney,
-    syncSharedJourney,
     simulateMissedCheckin,
     reportBusDelay,
     createReport,
@@ -1007,28 +1222,23 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     state,
     visibleState,
     hydrated,
-    demoSession,
-    pendingSignUp,
     reportsQuery.isError,
     reportsQuery.isPending,
     reportsQuery.isFetching,
     currentQueryMatchesScope,
+    authenticate,
+    verifyFamilyInvite,
+    createFamily,
+    joinFamily,
     saveParentProfile,
     saveChildProfile,
     saveFamilySettings,
     saveNotificationPreferences,
     setAccount,
-    setDemoSession,
-    clearDemoSession,
-    setDemoAccount,
-    setPendingSignUp,
-    clearPendingSignUp,
     signOut,
-    clearUserScopedState,
     resetDemo,
     confirmMilestone,
     selectJourney,
-    syncSharedJourney,
     simulateMissedCheckin,
     reportBusDelay,
     createReport,

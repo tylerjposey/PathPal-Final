@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
+import { Storage } from "@google-cloud/storage";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { and, asc, desc, eq } from "drizzle-orm";
 import {
@@ -10,7 +11,6 @@ import {
 import {
   CreateReportBody,
   CreateReportResponse,
-  CreatePhoneReportSessionBody,
   CreateReportSessionBody,
   CreateReportSessionResponse,
   GetReportParams,
@@ -22,24 +22,6 @@ import {
   UpdateReportParams,
   UpdateReportResponse,
 } from "@workspace/api-zod";
-import {
-  authenticateAccount,
-  assertCanUpdateReport,
-  canViewReport,
-  HttpError,
-  requireApprovedFamilyMember,
-  type PathPalPrincipal,
-} from "../lib/pathpal-auth";
-import {
-  createPathPalDemoToken,
-  ensurePathPalDemoAccounts,
-  getPathPalDemoUser,
-  isPathPalDemoAuthEnabled,
-  PATHPAL_DEMO_FAMILY_ID,
-  verifyPathPalDemoCredentials,
-  verifyPathPalDemoPhoneCode,
-} from "../lib/pathpal-demo-auth";
-import { reportObjectStorage, resolveReportStorageLocation } from "../lib/report-storage";
 
 const router: IRouter = Router();
 const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
@@ -55,10 +37,25 @@ const locations = [
   { name: "Santa Clara", x: 17, y: 45, latitude: 37.3541, longitude: -121.9552 },
 ] as const;
 const westCleanTeam = "San Jose – West Clean Team";
-const demoFamilyId = PATHPAL_DEMO_FAMILY_ID;
-const demoReporterUserId = "demo-parent-ai4sg";
-const storage = reportObjectStorage;
+const demoFamilyId = "demo-family-ai4sg";
+const demoCitizenId = "demo-citizen-ai4sg";
+const storage = new Storage({
+  credentials: {
+    audience: "replit",
+    subject_token_type: "access_token",
+    token_url: "http://127.0.0.1:1106/token",
+    type: "external_account",
+    credential_source: {
+      url: "http://127.0.0.1:1106/credential",
+      format: { type: "json", subject_token_field_name: "access_token" },
+    },
+    universe_domain: "googleapis.com",
+  },
+  projectId: "",
+});
 
+type Role = "parent" | "child" | "citizen" | "manager" | "worker";
+type Claims = { role: Role; sub: string; familyId: string | null; exp: number };
 type SeedRow = {
   id: string;
   category: string;
@@ -74,6 +71,12 @@ type SeedRow = {
   assignedTeam: string | null;
 };
 
+class HttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
 const seed: SeedRow[] = [
   { id: "OR-2481", category: "Illegal dumping", description: "Several bags and loose debris beside the trail entrance.", severity: 9, status: "Assigned", location: "Downtown San Jose", x: 49, y: 42, latitude: 37.3391, longitude: -121.8871, hoursAgo: 7, assignedTeam: westCleanTeam },
   { id: "OR-2478", category: "Poor lighting", description: "The pedestrian crossing near the stop is very dark after sunset.", severity: 7, status: "Under Review", location: "Japantown", x: 37, y: 29, latitude: 37.3487, longitude: -121.8963, hoursAgo: 18, assignedTeam: null },
@@ -83,88 +86,6 @@ const seed: SeedRow[] = [
   { id: "OR-2459", category: "Other concerns", description: "A recycling bin is overflowing at the transit plaza.", severity: 4, status: "Submitted", location: "Santa Clara", x: 18, y: 47, latitude: 37.3545, longitude: -121.956, hoursAgo: 92, assignedTeam: null },
 ];
 const demoIds = seed.map(({ id }) => id);
-
-router.post("/reports/session", async (req, res): Promise<void> => {
-  if (!isPathPalDemoAuthEnabled()) {
-    res.status(404).json({ error: "Demonstration sessions are disabled outside development." });
-    return;
-  }
-
-  const parsed = CreateReportSessionBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid demonstration session input." });
-    return;
-  }
-  if (!verifyPathPalDemoCredentials(parsed.data)) {
-    res.status(401).json({ error: "Demonstration credentials were rejected." });
-    return;
-  }
-
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    res.status(503).json({ error: "Demonstration session signing is unavailable." });
-    return;
-  }
-
-  try {
-    await ensurePathPalDemoAccounts();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
-    const user = getPathPalDemoUser(parsed.data.role);
-    res.json(CreateReportSessionResponse.parse({
-      accessToken: createPathPalDemoToken(parsed.data.role, expiresAt, secret),
-      tokenType: "Bearer",
-      expiresAt: expiresAt.toISOString(),
-      role: parsed.data.role,
-      userId: user.userId,
-      displayName: user.displayName,
-      prototypeOnly: true,
-    }));
-  } catch (error) {
-    req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "PathPal demo session could not be created");
-    res.status(503).json({ error: "Demonstration session could not be created." });
-  }
-});
-
-router.post("/reports/phone-session", async (req, res): Promise<void> => {
-  if (!isPathPalDemoAuthEnabled()) {
-    res.status(404).json({ error: "Demonstration sessions are disabled outside development." });
-    return;
-  }
-
-  const parsed = CreatePhoneReportSessionBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Enter a valid demo phone number and four-digit code." });
-    return;
-  }
-  if (!verifyPathPalDemoPhoneCode(parsed.data.phoneNumber, parsed.data.verificationCode)) {
-    res.status(401).json({ error: "Demonstration phone credentials were rejected." });
-    return;
-  }
-
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    res.status(503).json({ error: "Demonstration session signing is unavailable." });
-    return;
-  }
-
-  try {
-    await ensurePathPalDemoAccounts();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
-    const user = getPathPalDemoUser(parsed.data.role);
-    res.json(CreateReportSessionResponse.parse({
-      accessToken: createPathPalDemoToken(parsed.data.role, expiresAt, secret),
-      tokenType: "Bearer",
-      expiresAt: expiresAt.toISOString(),
-      role: parsed.data.role,
-      userId: user.userId,
-      displayName: user.displayName,
-      prototypeOnly: true,
-    }));
-  } catch (error) {
-    req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "PathPal phone demo session could not be created");
-    res.status(503).json({ error: "Demonstration session could not be created." });
-  }
-});
 
 function reportResponse(row: CommunityReportRow) {
   return {
@@ -186,8 +107,6 @@ function reportResponse(row: CommunityReportRow) {
     awardedPoints: row.awardedPoints,
     reporterAccountId: row.reporterAccountId,
     familyAccountId: row.familyAccountId,
-    reporterUserId: row.reporterUserId,
-    familyId: row.familyId,
     selectedCategory: row.selectedCategory,
     latitude: row.latitude,
     longitude: row.longitude,
@@ -264,10 +183,8 @@ async function seedInitialReportsIdempotently(): Promise<void> {
       priority: report.severity >= 8 ? "High" : report.severity >= 5 ? "Medium" : "Low",
       assignedTeam: report.assignedTeam,
       awardedPoints: report.status === "Resolved",
-      reporterAccountId: demoReporterUserId,
+      reporterAccountId: demoCitizenId,
       familyAccountId: demoFamilyId,
-      reporterUserId: demoReporterUserId,
-      familyId: demoFamilyId,
       assignedAt: report.status === "Assigned" || report.status === "Resolved" ? submittedAt : null,
       resolvedAt: report.status === "Resolved" ? submittedAt : null,
     }).onConflictDoNothing();
@@ -277,10 +194,8 @@ async function seedInitialReportsIdempotently(): Promise<void> {
     const missingFields: Partial<typeof communityReportsTable.$inferInsert> = {};
     if (existing.latitude == null) missingFields.latitude = report.latitude;
     if (existing.longitude == null) missingFields.longitude = report.longitude;
-    if (existing.reporterAccountId !== demoReporterUserId) missingFields.reporterAccountId = demoReporterUserId;
-    if (existing.familyAccountId !== demoFamilyId) missingFields.familyAccountId = demoFamilyId;
-    if (existing.reporterUserId !== demoReporterUserId) missingFields.reporterUserId = demoReporterUserId;
-    if (existing.familyId !== demoFamilyId) missingFields.familyId = demoFamilyId;
+    if (existing.reporterAccountId == null) missingFields.reporterAccountId = demoCitizenId;
+    if (existing.familyAccountId == null) missingFields.familyAccountId = demoFamilyId;
     if (existing.selectedCategory == null) missingFields.selectedCategory = report.category;
     if (existing.photoReference == null) missingFields.photoReference = "No photo provided";
     if (existing.assignedAt == null && (existing.status === "Assigned" || existing.status === "Resolved")) {
@@ -325,10 +240,8 @@ async function restoreDemoReports(): Promise<CommunityReportRow[]> {
       priority: report.severity >= 8 ? "High" : report.severity >= 5 ? "Medium" : "Low",
       assignedTeam: report.assignedTeam,
       awardedPoints: report.status === "Resolved",
-      reporterAccountId: demoReporterUserId,
+      reporterAccountId: demoCitizenId,
       familyAccountId: demoFamilyId,
-      reporterUserId: demoReporterUserId,
-      familyId: demoFamilyId,
       managerNotes: null,
       routeAssignment: null,
       assignedAt: report.status === "Assigned" || report.status === "Resolved" ? submittedAt : null,
@@ -355,11 +268,9 @@ async function restoreDemoReports(): Promise<CommunityReportRow[]> {
         recommendedDepartment: analysis.recommendedDepartment,
         priority: report.severity >= 8 ? "High" : report.severity >= 5 ? "Medium" : "Low",
         assignedTeam: report.assignedTeam,
-        reporterAccountId: demoReporterUserId,
-        familyAccountId: demoFamilyId,
-        reporterUserId: demoReporterUserId,
-        familyId: demoFamilyId,
         awardedPoints: report.status === "Resolved",
+        reporterAccountId: demoCitizenId,
+        familyAccountId: demoFamilyId,
         managerNotes: null,
         routeAssignment: null,
         assignedAt: report.status === "Assigned" || report.status === "Resolved" ? submittedAt : null,
@@ -372,18 +283,53 @@ async function restoreDemoReports(): Promise<CommunityReportRow[]> {
   return restored;
 }
 
-function requireView(principal: PathPalPrincipal, row: CommunityReportRow): void {
-  if (!canViewReport(principal, row)) {
-    throw new HttpError(403, "You are not authorized to view this report.");
+function createToken(claims: Claims, secret: string): string {
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function authenticate(req: Request): Claims {
+  const auth = req.get("authorization") ?? "";
+  const match = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(auth);
+  const secret = process.env.SESSION_SECRET;
+  if (!match || !secret) throw new HttpError(401, "A valid bearer session is required.");
+  const [payload, signature, extra] = match[1].split(".");
+  if (!payload || !signature || extra) throw new HttpError(401, "A valid bearer session is required.");
+  const expected = createHmac("sha256", secret).update(payload).digest();
+  const received = Buffer.from(signature, "base64url");
+  if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
+    throw new HttpError(401, "A valid bearer session is required.");
+  }
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Claims;
+    const roles: Role[] = ["parent", "child", "citizen", "manager", "worker"];
+    if (!roles.includes(claims.role) || !claims.sub || claims.exp <= Math.floor(Date.now() / 1000)) throw new Error("invalid");
+    return claims;
+  } catch {
+    throw new HttpError(401, "A valid bearer session is required.");
   }
 }
 
+function canView(claims: Claims, row: CommunityReportRow): boolean {
+  if (claims.role === "manager") return true;
+  if (claims.role === "worker") return row.assignedTeam === westCleanTeam;
+  if (claims.role === "citizen") return row.reporterAccountId === claims.sub;
+  if (claims.role === "parent" || claims.role === "child") return row.familyAccountId === claims.familyId;
+  return false;
+}
+
+function requireView(claims: Claims, row: CommunityReportRow): void {
+  if (!canView(claims, row)) throw new HttpError(403, "You are not authorized to view this report.");
+}
+
 function storageLocation(): { bucket: string; prefix: string } {
-  try {
-    return resolveReportStorageLocation();
-  } catch {
-    throw new HttpError(503, "Private photo storage is not configured.");
-  }
+  const bucket = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+  const rawPrivateDir = process.env.PRIVATE_OBJECT_DIR;
+  if (!bucket || !rawPrivateDir) throw new HttpError(503, "Private photo storage is not configured.");
+  const parts = rawPrivateDir.split("/").filter(Boolean);
+  if (parts[0] === bucket) parts.shift();
+  return { bucket, prefix: parts.join("/") };
 }
 
 function decodePhoto(encoded: string, contentType: string): Buffer {
@@ -436,13 +382,10 @@ function errorResponse(error: unknown, res: Response): void {
 
 router.get("/reports", async (req, res): Promise<void> => {
   try {
-    const principal = await authenticateAccount(req);
-    if (principal.role === "parent" || principal.role === "child") {
-      requireApprovedFamilyMember(principal);
-    }
+    const claims = authenticate(req);
     await seedInitialReportsIdempotently();
     const rows = await db.select().from(communityReportsTable).orderBy(desc(communityReportsTable.submittedAt));
-    res.json(ListReportsResponse.parse(rows.filter((row) => canViewReport(principal, row)).map(reportResponse)));
+    res.json(ListReportsResponse.parse(rows.filter((row) => canView(claims, row)).map(reportResponse)));
   } catch (error) {
     req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "Community reports list failed");
     errorResponse(error, res);
@@ -452,11 +395,8 @@ router.get("/reports", async (req, res): Promise<void> => {
 router.post("/reports", async (req, res): Promise<void> => {
   let uploadedKey: string | undefined;
   try {
-    const principal = await authenticateAccount(req);
-    if (principal.role !== "parent" && principal.role !== "child") {
-      throw new HttpError(403, "Only a parent or approved child may submit a family report.");
-    }
-    const familyId = requireApprovedFamilyMember(principal);
+    const claims = authenticate(req);
+    if (!["parent", "child", "citizen"].includes(claims.role)) throw new HttpError(403, "Only parent, child, or citizen demo roles may submit reports.");
     if (process.env.NODE_ENV !== "development") {
       enforceCreateRateLimit(req.ip || req.socket.remoteAddress || "unknown");
     }
@@ -489,6 +429,7 @@ router.post("/reports", async (req, res): Promise<void> => {
     }
     const analysis = analyze(description, category);
     const submittedAt = new Date();
+    const familyAccountId = claims.role === "parent" || claims.role === "child" ? claims.familyId : null;
     const created = await db.transaction(async (tx) => {
       const [inserted] = await tx.insert(communityReportsTable).values({
         id,
@@ -510,16 +451,14 @@ router.post("/reports", async (req, res): Promise<void> => {
         updatedAt: submittedAt,
         recommendedDepartment: analysis.recommendedDepartment,
         priority: analysis.priority,
-        reporterAccountId: null,
-        familyAccountId: null,
-        reporterUserId: principal.userId,
-        familyId,
+        reporterAccountId: claims.sub,
+        familyAccountId,
         assignedAt: null,
         resolvedAt: null,
       }).returning();
       if (!inserted) throw new Error("Report insert returned no row.");
       await tx.insert(communityReportStatusEventsTable).values({
-        reportId: id, fromStatus: null, toStatus: "Submitted", changedBy: principal.userId, changedAt: submittedAt,
+        reportId: id, fromStatus: null, toStatus: "Submitted", changedBy: claims.sub, changedAt: submittedAt,
       });
       return inserted;
     });
@@ -552,18 +491,41 @@ router.post("/reports", async (req, res): Promise<void> => {
   }
 });
 
+router.post("/reports/session", (req, res): void => {
+  const parsed = CreateReportSessionBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid session input." });
+    return;
+  }
+  if (parsed.data.username.trim().toLowerCase() !== "ai4sg" || parsed.data.password !== "1234") {
+    res.status(401).json({ error: "Invalid demo credentials." });
+    return;
+  }
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    res.status(503).json({ error: "Demo session signing is not configured." });
+    return;
+  }
+  const role = parsed.data.role;
+  const sub = role === "parent" ? "demo-family-parent-ai4sg"
+    : role === "child" ? "demo-family-child-ai4sg"
+      : role === "citizen" ? demoCitizenId
+        : role === "manager" ? "Avery Patel" : "Luis Rivera";
+  const familyId = role === "parent" || role === "child" ? demoFamilyId : null;
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
+  const accessToken = createToken({ role, sub, familyId, exp: Math.floor(expiresAt.getTime() / 1000) }, secret);
+  res.json(CreateReportSessionResponse.parse({ accessToken, tokenType: "Bearer", expiresAt, role, prototypeOnly: true }));
+});
+
 router.get("/reports/:id", async (req, res): Promise<void> => {
   try {
     const params = GetReportParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
-    const principal = await authenticateAccount(req);
-    if (principal.role === "parent" || principal.role === "child") {
-      requireApprovedFamilyMember(principal);
-    }
+    const claims = authenticate(req);
     const [row] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!row) throw new HttpError(404, "Report not found.");
-    requireView(principal, row);
+    requireView(claims, row);
     const history = await db.select({
       fromStatus: communityReportStatusEventsTable.fromStatus,
       toStatus: communityReportStatusEventsTable.toStatus,
@@ -582,7 +544,8 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
   try {
     const params = UpdateReportParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
-    const principal = await authenticateAccount(req);
+    const claims = authenticate(req);
+    if (claims.role !== "manager" && claims.role !== "worker") throw new HttpError(403, "This role may not edit reports.");
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) throw new HttpError(400, "Provide a valid report update.");
     const allowedKeys = new Set(["description", "category", "severity", "location", "status", "assignedTeam", "managerNotes", "routeAssignment", "latitude", "longitude"]);
     if (Object.keys(req.body).some((key) => !allowedKeys.has(key))) throw new HttpError(400, "Report update contains unsupported fields.");
@@ -590,10 +553,15 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
     if (!parsed.success || Object.keys(parsed.data).length === 0) throw new HttpError(400, "Provide at least one valid report update.");
     const update = parsed.data;
     if ((update.latitude === undefined) !== (update.longitude === undefined)) throw new HttpError(400, "Provide both latitude and longitude when moving the map pin.");
+    if (claims.role === "worker" && (Object.keys(update).some((key) => key !== "status") || !update.status)) {
+      throw new HttpError(403, "Workers may update only report status.");
+    }
     const [current] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!current) throw new HttpError(404, "Report not found.");
-    assertCanUpdateReport(principal, current, Object.keys(update));
+    if (claims.role === "worker" && current.assignedTeam !== westCleanTeam) {
+      throw new HttpError(403, "Workers may update reports assigned to the West Clean Team.");
+    }
     const changes: Partial<typeof communityReportsTable.$inferInsert> = { updatedAt: new Date() };
     if (update.description !== undefined) {
       changes.description = update.description.trim();
@@ -650,7 +618,7 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
         reportId: current.id,
         fromStatus: current.status,
         toStatus: update.status,
-        changedBy: principal.userId,
+        changedBy: claims.sub,
         changedAt: latest.updatedAt,
       });
     }
@@ -670,10 +638,8 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
 
 router.post("/reports/demo/reset", async (req, res): Promise<void> => {
   try {
-    const principal = await authenticateAccount(req);
-    if (principal.role !== "manager") {
-      throw new HttpError(403, "Only a City Case Manager may reset demonstration reports.");
-    }
+    const claims = authenticate(req);
+    if (claims.role !== "manager") throw new HttpError(403, "Only the manager demo role may reset demonstration reports.");
     const rows = await restoreDemoReports();
     res.json(ResetDemoReportsResponse.parse(rows.map(reportResponse)));
   } catch (error) {
@@ -685,14 +651,11 @@ router.get("/reports/:id/photo", async (req, res): Promise<void> => {
   try {
     const params = GetReportPhotoParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
-    const principal = await authenticateAccount(req);
-    if (principal.role === "parent" || principal.role === "child") {
-      requireApprovedFamilyMember(principal);
-    }
+    const claims = authenticate(req);
     const [report] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!report) throw new HttpError(404, "Report not found.");
-    requireView(principal, report);
+    requireView(claims, report);
     if (!report.photoObjectKey || !report.photoContentType || !["image/jpeg", "image/png", "image/webp"].includes(report.photoContentType)) {
       throw new HttpError(404, "Report photo not found.");
     }

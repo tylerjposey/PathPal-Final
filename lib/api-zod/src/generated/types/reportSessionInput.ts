@@ -10,18 +10,13 @@ import type { ReportSessionInputRole } from './reportSessionInputRole';
 export interface ReportSessionInput {
   /**
      * @minLength 1
-     * @maxLength 128
+     * @maxLength 100
      */
   username: string;
   /**
      * @minLength 1
-     * @maxLength 128
+     * @maxLength 200
      */
   password: string;
   role: ReportSessionInputRole;
-  /**
-     * @minLength 4
-     * @maxLength 8
-     */
-  verificationCode: string;
 }

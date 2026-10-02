@@ -19,12 +19,20 @@ import {
 } from '@workspace/api-client-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { Button, Card, Chip, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
 import { GoogleJourneyMap } from '@/components/GoogleJourneyMap';
 import { JourneyMap } from '@/components/JourneyMap';
 import { LocationAutocompleteField, type SelectedPlace } from '@/components/LocationAutocompleteField';
 import { buildJourneyMilestones, type SelectedJourney, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
+import {
+  createSavedJourneyMapTarget,
+  createSelectedRouteMapTarget,
+  openMapDirections,
+  type MapDirectionsTarget,
+  type MapProvider,
+} from '@/lib/map-directions';
 
 const MODE_OPTIONS: { value: TravelModeParameter; label: string }[] = [
   { value: 'any', label: 'Best option' },
@@ -226,10 +234,21 @@ export function JourneyScreen() {
     savedJourney.destinationLatitude === destinationCoordinates.lat &&
     savedJourney.destinationLongitude === destinationCoordinates.lng,
   );
-  const canOpenSavedJourney = Boolean(
-    savedJourney &&
-    isValidCoordinate(savedJourney.originLatitude, savedJourney.originLongitude) &&
-    isValidCoordinate(savedJourney.destinationLatitude, savedJourney.destinationLongitude),
+  const savedDirectionsTarget = savedJourney
+    ? createSavedJourneyMapTarget(savedJourney)
+    : null;
+  const canOpenSavedJourney = Boolean(savedDirectionsTarget);
+  const selectedDirectionsTarget = searchRequested && selectedRoute
+    ? createSelectedRouteMapTarget(
+        selectedRoute.mode,
+        origin ? { lat: origin.lat, lng: origin.lng } : null,
+        destinationCoordinates
+          ? { lat: destinationCoordinates.lat, lng: destinationCoordinates.lng }
+          : null,
+      )
+    : null;
+  const canOpenSelectedRouteDirections = Boolean(
+    selectedRoute?.available && selectedDirectionsTarget,
   );
   const hasMissingGeometry = Boolean(selectedRoute?.legs.some((leg) => !leg.polyline));
   const canUseGoogleMap = searchRequested && !!journey.data?.map3dAvailable && !googleMapFailed;
@@ -245,34 +264,18 @@ export function JourneyScreen() {
   const nextMilestoneIndex = progressIndex + 1;
   const nextMilestone = milestones[nextMilestoneIndex];
 
-  const openSavedJourneyInMaps = async (provider: 'google' | 'apple') => {
-    if (!savedJourney || !canOpenSavedJourney) {
-      setMapLinkError('Route coordinates are unavailable. Find and select the route again.');
-      return;
-    }
-    const originPoint = `${savedJourney.originLatitude},${savedJourney.originLongitude}`;
-    const destinationPoint = `${savedJourney.destinationLatitude},${savedJourney.destinationLongitude}`;
-    const walking = savedJourney.mode === 'walking';
-    const params = new URLSearchParams();
-    if (provider === 'google') {
-      params.set('api', '1');
-      params.set('origin', originPoint);
-      params.set('destination', destinationPoint);
-      params.set('travelmode', walking ? 'walking' : 'transit');
-    } else {
-      params.set('saddr', originPoint);
-      params.set('daddr', destinationPoint);
-      params.set('dirflg', walking ? 'w' : 'r');
-    }
-    const url = provider === 'google'
-      ? `https://www.google.com/maps/dir/?${params.toString()}`
-      : `https://maps.apple.com/?${params.toString()}`;
-    try {
-      await Linking.openURL(url);
-      setMapLinkError('');
-    } catch {
-      setMapLinkError(`Could not open ${provider === 'google' ? 'Google Maps' : 'Apple Maps'}. Try opening the link in a browser.`);
-    }
+  const openJourneyInMaps = async (
+    provider: MapProvider,
+    target: MapDirectionsTarget | null,
+  ) => {
+    const result = await openMapDirections({
+      provider,
+      target,
+      platform: Platform.OS === 'ios' || Platform.OS === 'android' ? Platform.OS : 'other',
+      openURL: (url) => Linking.openURL(url),
+      openBrowser: (url) => WebBrowser.openBrowserAsync(url),
+    });
+    setMapLinkError(result.ok ? '' : result.message);
   };
 
   const locate = async () => {
@@ -684,10 +687,10 @@ export function JourneyScreen() {
           {checkInError ? <Text accessibilityRole="alert" style={[styles.small, { color: colors.destructive }]}>{checkInError}</Text> : null}
         </Card>
       ) : null}
-      {savedJourneyMatchesRoute && canOpenSavedJourney ? (
+      {canOpenSelectedRouteDirections ? (
         <>
-          <Button label="Open in Google Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('google'); }} testID="open-route-google-maps" />
-          <Button label="Open in Apple Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('apple'); }} testID="open-route-apple-maps" />
+          <Button label="Open in Google Maps" icon="map" variant="secondary" onPress={() => { void openJourneyInMaps('google', selectedDirectionsTarget); }} testID="open-route-google-maps" />
+          <Button label="Open in Apple Maps" icon="map" variant="secondary" onPress={() => { void openJourneyInMaps('apple', selectedDirectionsTarget); }} testID="open-route-apple-maps" />
           <Text style={[styles.caption, { color: colors.mutedForeground }]}>
             External map apps may calculate a different path. Confirm the route and service details before traveling.
           </Text>
@@ -699,8 +702,8 @@ export function JourneyScreen() {
           <Text style={[styles.small, { color: colors.mutedForeground }]}>
             {savedJourney?.startingLocation || savedJourney?.startStop} → {savedJourney?.destination}
           </Text>
-          <Button label="Open in Google Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('google'); }} testID="open-saved-route-google-maps" />
-          <Button label="Open in Apple Maps" icon="map" variant="secondary" onPress={() => { void openSavedJourneyInMaps('apple'); }} testID="open-saved-route-apple-maps" />
+          <Button label="Open in Google Maps" icon="map" variant="secondary" onPress={() => { void openJourneyInMaps('google', savedDirectionsTarget); }} testID="open-saved-route-google-maps" />
+          <Button label="Open in Apple Maps" icon="map" variant="secondary" onPress={() => { void openJourneyInMaps('apple', savedDirectionsTarget); }} testID="open-saved-route-apple-maps" />
           <Text style={[styles.caption, { color: colors.mutedForeground }]}>
             External map apps may calculate a different path. Confirm the route and service details before traveling.
           </Text>
@@ -738,7 +741,3 @@ const styles = StyleSheet.create({
   recommended: { fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1.1, marginBottom: 3 },
   metrics: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
 });
-
-function isValidCoordinate(lat: number | null | undefined, lng: number | null | undefined): boolean {
-  return Number.isFinite(lat) && Number.isFinite(lng) && lat! >= -90 && lat! <= 90 && lng! >= -180 && lng! <= 180;
-}

@@ -1,0 +1,85 @@
+Add **optional live journey progress sharing with automatic checkpoint notifications** to the existing PathPal app. Reuse the current family database, routes, journey screens, and notifications. Keep development focused on this feature to minimize credits.
+
+**1. Parent controls**
+
+In **More → Family Management → Select Child**, add an **“Enable Journey Progress Sharing”** toggle, off by default. Only the child’s linked parent can change it.
+
+Sharing requires both the parent enabling this setting and the child opting in and granting location permission on their iPhone. Explain that location sharing operates only during an active journey.
+
+**2. Child experience**
+
+When the child starts a walking or bus journey with sharing enabled:
+
+- Explain that location will be processed to share progress and automatically notify their parent at checkpoints.
+- Request the necessary device location permission.
+- Begin collecting location after permission is granted and the journey starts.
+- Display **“Sharing journey progress with your parent”** and a **“Stop Sharing”** control.
+- Keep manual check-in buttons available for milestones that have not been completed.
+
+Notify the parent when sharing starts or stops. Stop collection when the journey finishes, is canceled, expires, or either side disables sharing. Route planning and manual check-ins must continue working without location permission.
+
+**3. Parent homepage visualization**
+
+Update the child’s existing journey card with a horizontal progress line:
+
+- A **moving circle** represents estimated progress along the selected route.
+- Always show a **yellow “Halfway” flag at 50% of the route’s travel distance**, including walking trips and bus trips without transfers.
+- Add **yellow flags at bus-transfer locations**, positioned proportionally along the route and labeled with transfer information.
+- Show a **green flag at the final destination**.
+- Combine labels where checkpoints overlap.
+- Retain distinct colors for walking and individual bus segments.
+
+Also show the planned route and destination, estimated percentage completed, latest milestone, estimated arrival time when available, and a **“Last updated”** timestamp.
+
+Include an **“Open Full Journey Map”** button. Use the progress line on the homepage; the full map should show the planned route, stops, transfers, and destination without revealing the child’s exact live position.
+
+**4. Automatic and manual check-ins**
+
+When live sharing is active, use actual location updates to detect checkpoint and destination arrival.
+
+- Automatically notify the parent when the child passes the halfway checkpoint.
+- Notify the parent when the child reaches a transfer location.
+- Notify the parent when the child reaches their destination.
+- Save each event with its timestamp and whether it was **automatic** or **manual**.
+- After a milestone is completed automatically or manually, replace its matching check-in button with a completed status on both dashboards.
+- Prevent duplicate events and notifications when location updates repeat or a manual check-in occurs at the same time.
+
+Use route-aware checks, acceptable location accuracy, and multiple consistent readings to avoid marking arrival from one inaccurate GPS reading. For destination arrival, require a configurable arrival radius and brief dwell period. For halfway, detect valid progress crossing 50% without requiring the child to stop.
+
+A transfer-location arrival must not automatically confirm boarding the next bus or getting off the previous bus. Keep those action buttons until the child confirms them. Label automatic destination events **“Arrived — detected from location”** rather than claiming verified safety.
+
+If location detection is unavailable or uncertain, retain manual check-ins. Provide a simple way to correct an incorrect automatic arrival and notify the parent of the correction.
+
+**5. Calculate progress from the chosen route**
+
+Process device location securely on the backend against the geometry and ordered segments of the child’s active route.
+
+Calculate progress using distance along the route, current segment, and direction. The circle must move from actual location-derived progress, never from a timer or simulated movement.
+
+Animate between received updates without advancing beyond the latest calculated position. Handle inaccurate GPS, intersecting route sections, and off-route positions without misleading jumps. Recalculate when the selected route changes.
+
+If updates stop, retain the last known progress and clearly mark it as stale. Display **“Progress temporarily unavailable”** when it cannot be determined confidently.
+
+**6. Privacy and access**
+
+Send the parent dashboard only derived progress, route segment, milestones, ETA, and update timestamp. Exclude raw coordinates from dashboard responses.
+
+Use an opaque journey identifier linked securely to the authenticated child and approved family. This is pseudonymized personal data, not fully anonymous data.
+
+Enforce authorization on the server for every location update and progress request. Other families and city staff must not access child tracking information.
+
+Keep coordinates out of ordinary logs, analytics, notifications, and error messages. Retain only the latest location and minimal calculation state needed during the active journey. Delete temporary coordinates when sharing ends while retaining journey milestone records.
+
+**7. Background operation and efficiency**
+
+Inspect the existing Expo/React Native setup and use a compatible location library. Configure iPhone background updates during active journeys, including when the screen is locked, with appropriate permissions and native settings.
+
+Throttle updates to reduce battery use, network traffic, and database writes. Reuse saved route geometry instead of calling Google Routes for every update.
+
+Handle connectivity loss, permission changes, and background restrictions gracefully. Process delayed updates using their capture timestamps so old readings cannot falsely complete a newer journey.
+
+**8. Verification**
+
+Verify walking and bus journeys, halfway and transfer checkpoints, automatic destination arrival, manual fallback, button replacement, duplicate prevention, inaccurate GPS, stopped sharing, and isolation between families.
+
+Test background and locked-screen behavior on a physical iPhone when available. Summarize what was implemented, what remains unverified, and any required native rebuild, Xcode configuration, or backend deployment setup.

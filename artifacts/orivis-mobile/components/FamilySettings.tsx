@@ -148,6 +148,7 @@ export function FamilySettings() {
   const familyChildren = state.familyChildren.length
     ? state.familyChildren
     : [{ id: 'child-1', ...state.child }];
+  const parentCount = state.parentProfile ? 1 : 0;
   const assignedRoute = state.selectedJourney?.name ?? DEFAULT_DEMO_JOURNEY.name;
 
   return (
@@ -171,6 +172,13 @@ export function FamilySettings() {
               { color: colors.familySubtitleForeground },
             ]}
           />
+          <Text
+            testID="family-member-count"
+            style={[styles.familyMemberSummary, { color: colors.mutedForeground }]}
+          >
+            {parentCount} {parentCount === 1 ? 'Parent' : 'Parents'} and {familyChildren.length}{' '}
+            {familyChildren.length === 1 ? 'Child' : 'Children'}
+          </Text>
           <SectionTitle title="Family" titleStyle={styles.familySectionTitle} />
           <SettingsRow
             title="Family Hierarchy"
@@ -611,6 +619,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 22, gap: 11 },
   accountCopy: { flex: 1, gap: 4 },
   accountScreenSubtitle: { fontFamily: 'Inter_600SemiBold', fontSize: 19 },
+  familyMemberSummary: { fontFamily: 'Inter_600SemiBold', fontSize: 14, lineHeight: 20 },
   familySectionTitle: { fontSize: 24 },
   cardTitle: { fontFamily: 'Inter_700Bold', fontSize: 15, lineHeight: 20 },
   cardBody: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },

@@ -48,6 +48,332 @@ export interface JoinFamilyInput {
   username: string;
 }
 
+export interface TrackingFamilyInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  familyName: string;
+}
+
+export interface TrackingFamilyJoinInput {
+  /** @pattern ^[0-9]{10}$ */
+  invitationCode: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  displayName: string;
+}
+
+export interface TrackingChild {
+  id: string;
+  name: string;
+}
+
+export interface TrackingRouteStop {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  lat: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  lng: number;
+}
+
+export type TrackingRouteLegType = typeof TrackingRouteLegType[keyof typeof TrackingRouteLegType];
+
+
+export const TrackingRouteLegType = {
+  walk: 'walk',
+  bus: 'bus',
+} as const;
+
+export interface TrackingRouteLeg {
+  type: TrackingRouteLegType;
+  /**
+     * @maxLength 32
+     * @nullable
+     */
+  routeNumber: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  routeName: string | null;
+  boardingStop: TrackingRouteStop;
+  alightingStop: TrackingRouteStop;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     */
+  durationMinutes: number;
+  /**
+     * @minimum 0
+     * @maximum 1440
+     * @nullable
+     */
+  delayMinutes: number | null;
+  /**
+     * @minLength 2
+     * @maxLength 200000
+     */
+  polyline: string;
+}
+
+export type TrackingRouteSource = typeof TrackingRouteSource[keyof typeof TrackingRouteSource];
+
+
+export const TrackingRouteSource = {
+  live: 'live',
+} as const;
+
+export type TrackingRouteMode = typeof TrackingRouteMode[keyof typeof TrackingRouteMode];
+
+
+export const TrackingRouteMode = {
+  walking: 'walking',
+  transit: 'transit',
+} as const;
+
+export interface TrackingRoute {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  routeId: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  startStop: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  destinationStop: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  destination: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  originName: string;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  originLatitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  originLongitude: number;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  destinationLatitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  destinationLongitude: number;
+  source: TrackingRouteSource;
+  mode: TrackingRouteMode;
+  /**
+     * @minimum 1
+     * @maximum 1440
+     */
+  durationMinutes: number;
+  /**
+     * @minItems 1
+     * @maxItems 24
+     */
+  legs: TrackingRouteLeg[];
+}
+
+export interface CreateTrackingJourneyInput {
+  childId: string;
+  route: TrackingRoute;
+}
+
+export type TrackingJourneyEventSource = typeof TrackingJourneyEventSource[keyof typeof TrackingJourneyEventSource];
+
+
+export const TrackingJourneyEventSource = {
+  automatic: 'automatic',
+  manual: 'manual',
+  correction: 'correction',
+  system: 'system',
+} as const;
+
+export interface TrackingJourneyEvent {
+  id: string;
+  /** @maxLength 120 */
+  checkpointKey: string;
+  /** @maxLength 160 */
+  title: string;
+  /** @maxLength 240 */
+  subtitle: string;
+  source: TrackingJourneyEventSource;
+  corrected: boolean;
+  createdAt: string;
+}
+
+export type TrackingJourneyStatus = typeof TrackingJourneyStatus[keyof typeof TrackingJourneyStatus];
+
+
+export const TrackingJourneyStatus = {
+  awaiting_child: 'awaiting_child',
+  active: 'active',
+  arrived: 'arrived',
+  ended: 'ended',
+  expired: 'expired',
+  cancelled: 'cancelled',
+} as const;
+
+export type TrackingJourneyLocationHealth = typeof TrackingJourneyLocationHealth[keyof typeof TrackingJourneyLocationHealth];
+
+
+export const TrackingJourneyLocationHealth = {
+  not_started: 'not_started',
+  on_route: 'on_route',
+  off_route: 'off_route',
+  stale: 'stale',
+  unavailable: 'unavailable',
+} as const;
+
+export interface TrackingJourney {
+  id: string;
+  childId: string;
+  childName: string;
+  route: TrackingRoute;
+  status: TrackingJourneyStatus;
+  /** @minimum 0 */
+  progressMeters: number;
+  /** @minimum 0 */
+  routeMeters: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progressPercent: number;
+  locationHealth: TrackingJourneyLocationHealth;
+  /** @nullable */
+  lastLocationAt: string | null;
+  expiresAt: string;
+  events: TrackingJourneyEvent[];
+}
+
+export type TrackingProfileResponseRole = typeof TrackingProfileResponseRole[keyof typeof TrackingProfileResponseRole];
+
+
+export const TrackingProfileResponseRole = {
+  parent: 'parent',
+  child: 'child',
+} as const;
+
+export interface TrackingProfileResponse {
+  role: TrackingProfileResponseRole;
+  familyId: string;
+  familyName: string;
+  /**
+     * @nullable
+     * @pattern ^[0-9]{10}$
+     */
+  invitationCode: string | null;
+  children: TrackingChild[];
+  journeys: TrackingJourney[];
+}
+
+export interface TrackingJourneyResponse {
+  journey: TrackingJourney;
+}
+
+export interface TrackingLocationSession {
+  journeyId: string;
+  /** @minLength 32 */
+  token: string;
+  expiresAt: string;
+}
+
+export interface TrackingLocationInput {
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  latitude: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  longitude: number;
+  /**
+     * @minimum 0
+     * @maximum 10000
+     */
+  accuracy: number;
+  capturedAt: string;
+}
+
+export type TrackingLocationUpdateResponseStatus = typeof TrackingLocationUpdateResponseStatus[keyof typeof TrackingLocationUpdateResponseStatus];
+
+
+export const TrackingLocationUpdateResponseStatus = {
+  active: 'active',
+  arrived: 'arrived',
+  off_route: 'off_route',
+} as const;
+
+export type TrackingLocationUpdateResponseLocationHealth = typeof TrackingLocationUpdateResponseLocationHealth[keyof typeof TrackingLocationUpdateResponseLocationHealth];
+
+
+export const TrackingLocationUpdateResponseLocationHealth = {
+  on_route: 'on_route',
+  off_route: 'off_route',
+  unavailable: 'unavailable',
+} as const;
+
+export interface TrackingLocationUpdateResponse {
+  status: TrackingLocationUpdateResponseStatus;
+  /** @minimum 0 */
+  progressMeters: number;
+  /** @minimum 0 */
+  routeMeters: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progressPercent: number;
+  locationHealth: TrackingLocationUpdateResponseLocationHealth;
+  events: TrackingJourneyEvent[];
+}
+
+export interface TrackingCheckinInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  checkpointKey: string;
+}
+
 export interface HealthStatus {
   status: string;
 }

@@ -33,9 +33,10 @@ Orivis is a native, family-friendly community safety prototype for Santa Clara C
 - This is intentionally a local-first prototype: AsyncStorage preserves demo state without requiring real accounts or services.
 - Journey uses server-proxied Google Maps transit routes and 511 SF Bay VTA information when the API credentials and upstream services work. The UI clearly labels fallback demo data when they do not.
 - The 511 credential is read server-side from `TRANSIT_511_API_KEY` because Replit secret names cannot begin with a numeral.
-- Location permission is requested only by the Journey page's Use My Location action; exact coordinates are not stored as selected journey state.
+- Journey planning asks for location only when the traveler taps Use My Location. Optional live journey sharing uses distinct Clerk parent/child identities and is never authorized by the shared demo session.
+- Live sharing requires parent approval, explicit child opt-in, and OS foreground/background location permission. It runs only for an active journey, matches provider-supplied geometry, encrypts only the latest temporary fix, and clears it when sharing ends or expires.
 - AI analysis, notifications, rewards, police contact, and SOS behavior remain explicitly simulated.
-- Parents see planned routes and confirmations only; routine live child tracking is intentionally excluded.
+- Parents can view route progress and checkpoint events during an approved, child-opted-in live journey. Exact child coordinates are never returned to the parent.
 
 ## Product
 

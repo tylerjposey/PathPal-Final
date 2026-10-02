@@ -28,6 +28,17 @@
           "resizeMode": "contain",
           "backgroundColor": "#F5F8F7"
         }
+      ],
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "PathPal uses your location to match your route only while you choose to share an active journey.",
+          "locationAlwaysAndWhenInUsePermission": "PathPal shares your location with your approved family only during an active journey.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
       ]
     ],
     "experiments": {

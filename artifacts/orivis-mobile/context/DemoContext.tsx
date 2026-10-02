@@ -42,11 +42,12 @@ export interface SelectedJourneyLeg {
   type: 'walk' | 'bus';
   routeNumber: string | null;
   routeName: string | null;
-  boardingStop: { name: string };
-  alightingStop: { name: string };
+  boardingStop: { name: string; lat?: number; lng?: number };
+  alightingStop: { name: string; lat?: number; lng?: number };
   durationMinutes: number;
   delayMinutes: number | null;
   transferGuidance: string | null;
+  polyline?: string | null;
 }
 
 export interface SelectedJourney {

@@ -6,6 +6,7 @@ import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet
 import { Button, Card, Chip, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
 import { GoogleJourneyMap } from '@/components/GoogleJourneyMap';
 import { JourneyMap } from '@/components/JourneyMap';
+import { LiveTrackingPanel } from '@/components/LiveTrackingPanel';
 import { LocationAutocompleteField, type SelectedPlace } from '@/components/LocationAutocompleteField';
 import { heatScore, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
@@ -177,8 +178,8 @@ export function JourneyScreen() {
       destinationStop: route.destinationStop,
       destination: searchedDestination,
       startingLocation: origin?.name ?? '',
-      originLatitude: origin?.lat ?? 0,
-      originLongitude: origin?.lng ?? 0,
+      originLatitude: origin?.lat,
+      originLongitude: origin?.lng,
       ...(destinationCoordinates
         ? {
           destinationLatitude: destinationCoordinates.lat,
@@ -196,11 +197,20 @@ export function JourneyScreen() {
         type: leg.type,
         routeNumber: leg.routeNumber,
         routeName: leg.routeName,
-        boardingStop: { name: leg.boardingStop.name },
-        alightingStop: { name: leg.alightingStop.name },
+        boardingStop: {
+          name: leg.boardingStop.name,
+          lat: leg.boardingStop.lat ?? undefined,
+          lng: leg.boardingStop.lng ?? undefined,
+        },
+        alightingStop: {
+          name: leg.alightingStop.name,
+          lat: leg.alightingStop.lat ?? undefined,
+          lng: leg.alightingStop.lng ?? undefined,
+        },
         durationMinutes: leg.durationMinutes,
         delayMinutes: leg.delayMinutes,
         transferGuidance: leg.transferGuidance,
+        polyline: leg.polyline,
       })),
     });
   };
@@ -511,7 +521,8 @@ export function JourneyScreen() {
           {journey.data.alerts.map((alert, index) => <Text key={`${index}-${alert}`} style={[styles.small, { color: colors.warning }]}>{alert}</Text>)}
         </>
       ) : null}
-      <Text style={[styles.caption, { color: colors.mutedForeground }]}>Timings and alerts may change. Check the operator before traveling. No regular-use child location tracking.</Text>
+      <LiveTrackingPanel journey={state.selectedJourney} />
+      <Text style={[styles.caption, { color: colors.mutedForeground }]}>Timings and alerts may change. Check the operator before traveling. Sharing is optional and begins only after parent approval and child consent.</Text>
     </ScrollView>
   );
 }

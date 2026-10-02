@@ -595,6 +595,1063 @@ export const JoinFamilyResponse = zod.object({
 
 
 /**
+ * @summary Get the current Clerk account's separate live-tracking profile
+ */
+export const getTrackingProfileResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+export const getTrackingProfileResponseJourneysItemRouteRouteIdMax = 120;
+
+export const getTrackingProfileResponseJourneysItemRouteNameMax = 200;
+
+export const getTrackingProfileResponseJourneysItemRouteStartStopMax = 200;
+
+export const getTrackingProfileResponseJourneysItemRouteDestinationStopMax = 200;
+
+export const getTrackingProfileResponseJourneysItemRouteDestinationMax = 200;
+
+export const getTrackingProfileResponseJourneysItemRouteOriginNameMax = 200;
+
+export const getTrackingProfileResponseJourneysItemRouteOriginLatitudeMin = -90;
+export const getTrackingProfileResponseJourneysItemRouteOriginLatitudeMax = 90;
+
+export const getTrackingProfileResponseJourneysItemRouteOriginLongitudeMin = -180;
+export const getTrackingProfileResponseJourneysItemRouteOriginLongitudeMax = 180;
+
+export const getTrackingProfileResponseJourneysItemRouteDestinationLatitudeMin = -90;
+export const getTrackingProfileResponseJourneysItemRouteDestinationLatitudeMax = 90;
+
+export const getTrackingProfileResponseJourneysItemRouteDestinationLongitudeMin = -180;
+export const getTrackingProfileResponseJourneysItemRouteDestinationLongitudeMax = 180;
+
+export const getTrackingProfileResponseJourneysItemRouteDurationMinutesMax = 1440;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemRouteNumberMax = 32;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemRouteNameMax = 120;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopNameMax = 200;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopLatMin = -90;
+export const getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopLatMax = 90;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopLngMin = -180;
+export const getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopLngMax = 180;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopNameMax = 200;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopLatMin = -90;
+export const getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopLatMax = 90;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopLngMin = -180;
+export const getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopLngMax = 180;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemDurationMinutesMin = 0;
+export const getTrackingProfileResponseJourneysItemRouteLegsItemDurationMinutesMax = 1440;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemDelayMinutesMin = 0;
+export const getTrackingProfileResponseJourneysItemRouteLegsItemDelayMinutesMax = 1440;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsItemPolylineMin = 2;
+export const getTrackingProfileResponseJourneysItemRouteLegsItemPolylineMax = 200000;
+
+export const getTrackingProfileResponseJourneysItemRouteLegsMax = 24;
+
+export const getTrackingProfileResponseJourneysItemProgressMetersMin = 0;
+
+export const getTrackingProfileResponseJourneysItemRouteMetersMin = 0;
+
+export const getTrackingProfileResponseJourneysItemProgressPercentMin = 0;
+export const getTrackingProfileResponseJourneysItemProgressPercentMax = 100;
+
+export const getTrackingProfileResponseJourneysItemEventsItemCheckpointKeyMax = 120;
+
+export const getTrackingProfileResponseJourneysItemEventsItemTitleMax = 160;
+
+export const getTrackingProfileResponseJourneysItemEventsItemSubtitleMax = 240;
+
+
+
+export const GetTrackingProfileResponse = zod.object({
+  "role": zod.enum(['parent', 'child']),
+  "familyId": zod.string().uuid(),
+  "familyName": zod.string(),
+  "invitationCode": zod.string().regex(getTrackingProfileResponseInvitationCodeRegExp).nullable(),
+  "children": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "name": zod.string()
+})),
+  "journeys": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "childId": zod.string().uuid(),
+  "childName": zod.string(),
+  "route": zod.object({
+  "routeId": zod.string().min(1).max(getTrackingProfileResponseJourneysItemRouteRouteIdMax),
+  "name": zod.string().min(1).max(getTrackingProfileResponseJourneysItemRouteNameMax),
+  "startStop": zod.string().min(1).max(getTrackingProfileResponseJourneysItemRouteStartStopMax),
+  "destinationStop": zod.string().min(1).max(getTrackingProfileResponseJourneysItemRouteDestinationStopMax),
+  "destination": zod.string().min(1).max(getTrackingProfileResponseJourneysItemRouteDestinationMax),
+  "originName": zod.string().min(1).max(getTrackingProfileResponseJourneysItemRouteOriginNameMax),
+  "originLatitude": zod.number().min(getTrackingProfileResponseJourneysItemRouteOriginLatitudeMin).max(getTrackingProfileResponseJourneysItemRouteOriginLatitudeMax),
+  "originLongitude": zod.number().min(getTrackingProfileResponseJourneysItemRouteOriginLongitudeMin).max(getTrackingProfileResponseJourneysItemRouteOriginLongitudeMax),
+  "destinationLatitude": zod.number().min(getTrackingProfileResponseJourneysItemRouteDestinationLatitudeMin).max(getTrackingProfileResponseJourneysItemRouteDestinationLatitudeMax),
+  "destinationLongitude": zod.number().min(getTrackingProfileResponseJourneysItemRouteDestinationLongitudeMin).max(getTrackingProfileResponseJourneysItemRouteDestinationLongitudeMax),
+  "source": zod.enum(['live']),
+  "mode": zod.enum(['walking', 'transit']),
+  "durationMinutes": zod.number().int().min(1).max(getTrackingProfileResponseJourneysItemRouteDurationMinutesMax),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().max(getTrackingProfileResponseJourneysItemRouteLegsItemRouteNumberMax).nullable(),
+  "routeName": zod.string().max(getTrackingProfileResponseJourneysItemRouteLegsItemRouteNameMax).nullable(),
+  "boardingStop": zod.object({
+  "name": zod.string().min(1).max(getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopNameMax),
+  "lat": zod.number().min(getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopLatMin).max(getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopLatMax),
+  "lng": zod.number().min(getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopLngMin).max(getTrackingProfileResponseJourneysItemRouteLegsItemBoardingStopLngMax)
+}),
+  "alightingStop": zod.object({
+  "name": zod.string().min(1).max(getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopNameMax),
+  "lat": zod.number().min(getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopLatMin).max(getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopLatMax),
+  "lng": zod.number().min(getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopLngMin).max(getTrackingProfileResponseJourneysItemRouteLegsItemAlightingStopLngMax)
+}),
+  "durationMinutes": zod.number().int().min(getTrackingProfileResponseJourneysItemRouteLegsItemDurationMinutesMin).max(getTrackingProfileResponseJourneysItemRouteLegsItemDurationMinutesMax),
+  "delayMinutes": zod.number().int().min(getTrackingProfileResponseJourneysItemRouteLegsItemDelayMinutesMin).max(getTrackingProfileResponseJourneysItemRouteLegsItemDelayMinutesMax).nullable(),
+  "polyline": zod.string().min(getTrackingProfileResponseJourneysItemRouteLegsItemPolylineMin).max(getTrackingProfileResponseJourneysItemRouteLegsItemPolylineMax)
+})).min(1).max(getTrackingProfileResponseJourneysItemRouteLegsMax)
+}),
+  "status": zod.enum(['awaiting_child', 'active', 'arrived', 'ended', 'expired', 'cancelled']),
+  "progressMeters": zod.number().min(getTrackingProfileResponseJourneysItemProgressMetersMin),
+  "routeMeters": zod.number().min(getTrackingProfileResponseJourneysItemRouteMetersMin),
+  "progressPercent": zod.number().int().min(getTrackingProfileResponseJourneysItemProgressPercentMin).max(getTrackingProfileResponseJourneysItemProgressPercentMax),
+  "locationHealth": zod.enum(['not_started', 'on_route', 'off_route', 'stale', 'unavailable']),
+  "lastLocationAt": zod.coerce.date().nullable(),
+  "expiresAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "checkpointKey": zod.string().max(getTrackingProfileResponseJourneysItemEventsItemCheckpointKeyMax),
+  "title": zod.string().max(getTrackingProfileResponseJourneysItemEventsItemTitleMax),
+  "subtitle": zod.string().max(getTrackingProfileResponseJourneysItemEventsItemSubtitleMax),
+  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
+  "corrected": zod.boolean(),
+  "createdAt": zod.coerce.date()
+}))
+}))
+})
+
+
+/**
+ * @summary Create a family owned by the current Clerk parent account
+ */
+export const createTrackingFamilyBodyFamilyNameMax = 120;
+
+
+
+export const CreateTrackingFamilyBody = zod.object({
+  "familyName": zod.string().min(1).max(createTrackingFamilyBodyFamilyNameMax)
+})
+
+export const createTrackingFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+export const createTrackingFamilyResponseJourneysItemRouteRouteIdMax = 120;
+
+export const createTrackingFamilyResponseJourneysItemRouteNameMax = 200;
+
+export const createTrackingFamilyResponseJourneysItemRouteStartStopMax = 200;
+
+export const createTrackingFamilyResponseJourneysItemRouteDestinationStopMax = 200;
+
+export const createTrackingFamilyResponseJourneysItemRouteDestinationMax = 200;
+
+export const createTrackingFamilyResponseJourneysItemRouteOriginNameMax = 200;
+
+export const createTrackingFamilyResponseJourneysItemRouteOriginLatitudeMin = -90;
+export const createTrackingFamilyResponseJourneysItemRouteOriginLatitudeMax = 90;
+
+export const createTrackingFamilyResponseJourneysItemRouteOriginLongitudeMin = -180;
+export const createTrackingFamilyResponseJourneysItemRouteOriginLongitudeMax = 180;
+
+export const createTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMin = -90;
+export const createTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMax = 90;
+
+export const createTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMin = -180;
+export const createTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMax = 180;
+
+export const createTrackingFamilyResponseJourneysItemRouteDurationMinutesMax = 1440;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemRouteNumberMax = 32;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemRouteNameMax = 120;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopNameMax = 200;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMin = -90;
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMax = 90;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMin = -180;
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMax = 180;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopNameMax = 200;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMin = -90;
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMax = 90;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMin = -180;
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMax = 180;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMin = 0;
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMax = 1440;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMin = 0;
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMax = 1440;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMin = 2;
+export const createTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMax = 200000;
+
+export const createTrackingFamilyResponseJourneysItemRouteLegsMax = 24;
+
+export const createTrackingFamilyResponseJourneysItemProgressMetersMin = 0;
+
+export const createTrackingFamilyResponseJourneysItemRouteMetersMin = 0;
+
+export const createTrackingFamilyResponseJourneysItemProgressPercentMin = 0;
+export const createTrackingFamilyResponseJourneysItemProgressPercentMax = 100;
+
+export const createTrackingFamilyResponseJourneysItemEventsItemCheckpointKeyMax = 120;
+
+export const createTrackingFamilyResponseJourneysItemEventsItemTitleMax = 160;
+
+export const createTrackingFamilyResponseJourneysItemEventsItemSubtitleMax = 240;
+
+
+
+export const CreateTrackingFamilyResponse = zod.object({
+  "role": zod.enum(['parent', 'child']),
+  "familyId": zod.string().uuid(),
+  "familyName": zod.string(),
+  "invitationCode": zod.string().regex(createTrackingFamilyResponseInvitationCodeRegExp).nullable(),
+  "children": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "name": zod.string()
+})),
+  "journeys": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "childId": zod.string().uuid(),
+  "childName": zod.string(),
+  "route": zod.object({
+  "routeId": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteRouteIdMax),
+  "name": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteNameMax),
+  "startStop": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteStartStopMax),
+  "destinationStop": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteDestinationStopMax),
+  "destination": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteDestinationMax),
+  "originName": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteOriginNameMax),
+  "originLatitude": zod.number().min(createTrackingFamilyResponseJourneysItemRouteOriginLatitudeMin).max(createTrackingFamilyResponseJourneysItemRouteOriginLatitudeMax),
+  "originLongitude": zod.number().min(createTrackingFamilyResponseJourneysItemRouteOriginLongitudeMin).max(createTrackingFamilyResponseJourneysItemRouteOriginLongitudeMax),
+  "destinationLatitude": zod.number().min(createTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMin).max(createTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMax),
+  "destinationLongitude": zod.number().min(createTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMin).max(createTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMax),
+  "source": zod.enum(['live']),
+  "mode": zod.enum(['walking', 'transit']),
+  "durationMinutes": zod.number().int().min(1).max(createTrackingFamilyResponseJourneysItemRouteDurationMinutesMax),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().max(createTrackingFamilyResponseJourneysItemRouteLegsItemRouteNumberMax).nullable(),
+  "routeName": zod.string().max(createTrackingFamilyResponseJourneysItemRouteLegsItemRouteNameMax).nullable(),
+  "boardingStop": zod.object({
+  "name": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopNameMax),
+  "lat": zod.number().min(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMax),
+  "lng": zod.number().min(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMax)
+}),
+  "alightingStop": zod.object({
+  "name": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopNameMax),
+  "lat": zod.number().min(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMax),
+  "lng": zod.number().min(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMax)
+}),
+  "durationMinutes": zod.number().int().min(createTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMax),
+  "delayMinutes": zod.number().int().min(createTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMax).nullable(),
+  "polyline": zod.string().min(createTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMax)
+})).min(1).max(createTrackingFamilyResponseJourneysItemRouteLegsMax)
+}),
+  "status": zod.enum(['awaiting_child', 'active', 'arrived', 'ended', 'expired', 'cancelled']),
+  "progressMeters": zod.number().min(createTrackingFamilyResponseJourneysItemProgressMetersMin),
+  "routeMeters": zod.number().min(createTrackingFamilyResponseJourneysItemRouteMetersMin),
+  "progressPercent": zod.number().int().min(createTrackingFamilyResponseJourneysItemProgressPercentMin).max(createTrackingFamilyResponseJourneysItemProgressPercentMax),
+  "locationHealth": zod.enum(['not_started', 'on_route', 'off_route', 'stale', 'unavailable']),
+  "lastLocationAt": zod.coerce.date().nullable(),
+  "expiresAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "checkpointKey": zod.string().max(createTrackingFamilyResponseJourneysItemEventsItemCheckpointKeyMax),
+  "title": zod.string().max(createTrackingFamilyResponseJourneysItemEventsItemTitleMax),
+  "subtitle": zod.string().max(createTrackingFamilyResponseJourneysItemEventsItemSubtitleMax),
+  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
+  "corrected": zod.boolean(),
+  "createdAt": zod.coerce.date()
+}))
+}))
+})
+
+
+/**
+ * @summary Join a tracking family as a distinct Clerk child account
+ */
+export const joinTrackingFamilyBodyInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+export const joinTrackingFamilyBodyDisplayNameMax = 120;
+
+
+
+export const JoinTrackingFamilyBody = zod.object({
+  "invitationCode": zod.string().regex(joinTrackingFamilyBodyInvitationCodeRegExp),
+  "displayName": zod.string().min(1).max(joinTrackingFamilyBodyDisplayNameMax)
+})
+
+export const joinTrackingFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+export const joinTrackingFamilyResponseJourneysItemRouteRouteIdMax = 120;
+
+export const joinTrackingFamilyResponseJourneysItemRouteNameMax = 200;
+
+export const joinTrackingFamilyResponseJourneysItemRouteStartStopMax = 200;
+
+export const joinTrackingFamilyResponseJourneysItemRouteDestinationStopMax = 200;
+
+export const joinTrackingFamilyResponseJourneysItemRouteDestinationMax = 200;
+
+export const joinTrackingFamilyResponseJourneysItemRouteOriginNameMax = 200;
+
+export const joinTrackingFamilyResponseJourneysItemRouteOriginLatitudeMin = -90;
+export const joinTrackingFamilyResponseJourneysItemRouteOriginLatitudeMax = 90;
+
+export const joinTrackingFamilyResponseJourneysItemRouteOriginLongitudeMin = -180;
+export const joinTrackingFamilyResponseJourneysItemRouteOriginLongitudeMax = 180;
+
+export const joinTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMin = -90;
+export const joinTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMax = 90;
+
+export const joinTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMin = -180;
+export const joinTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMax = 180;
+
+export const joinTrackingFamilyResponseJourneysItemRouteDurationMinutesMax = 1440;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemRouteNumberMax = 32;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemRouteNameMax = 120;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopNameMax = 200;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMin = -90;
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMax = 90;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMin = -180;
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMax = 180;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopNameMax = 200;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMin = -90;
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMax = 90;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMin = -180;
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMax = 180;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMin = 0;
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMax = 1440;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMin = 0;
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMax = 1440;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMin = 2;
+export const joinTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMax = 200000;
+
+export const joinTrackingFamilyResponseJourneysItemRouteLegsMax = 24;
+
+export const joinTrackingFamilyResponseJourneysItemProgressMetersMin = 0;
+
+export const joinTrackingFamilyResponseJourneysItemRouteMetersMin = 0;
+
+export const joinTrackingFamilyResponseJourneysItemProgressPercentMin = 0;
+export const joinTrackingFamilyResponseJourneysItemProgressPercentMax = 100;
+
+export const joinTrackingFamilyResponseJourneysItemEventsItemCheckpointKeyMax = 120;
+
+export const joinTrackingFamilyResponseJourneysItemEventsItemTitleMax = 160;
+
+export const joinTrackingFamilyResponseJourneysItemEventsItemSubtitleMax = 240;
+
+
+
+export const JoinTrackingFamilyResponse = zod.object({
+  "role": zod.enum(['parent', 'child']),
+  "familyId": zod.string().uuid(),
+  "familyName": zod.string(),
+  "invitationCode": zod.string().regex(joinTrackingFamilyResponseInvitationCodeRegExp).nullable(),
+  "children": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "name": zod.string()
+})),
+  "journeys": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "childId": zod.string().uuid(),
+  "childName": zod.string(),
+  "route": zod.object({
+  "routeId": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteRouteIdMax),
+  "name": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteNameMax),
+  "startStop": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteStartStopMax),
+  "destinationStop": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteDestinationStopMax),
+  "destination": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteDestinationMax),
+  "originName": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteOriginNameMax),
+  "originLatitude": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteOriginLatitudeMin).max(joinTrackingFamilyResponseJourneysItemRouteOriginLatitudeMax),
+  "originLongitude": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteOriginLongitudeMin).max(joinTrackingFamilyResponseJourneysItemRouteOriginLongitudeMax),
+  "destinationLatitude": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMin).max(joinTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMax),
+  "destinationLongitude": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMin).max(joinTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMax),
+  "source": zod.enum(['live']),
+  "mode": zod.enum(['walking', 'transit']),
+  "durationMinutes": zod.number().int().min(1).max(joinTrackingFamilyResponseJourneysItemRouteDurationMinutesMax),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().max(joinTrackingFamilyResponseJourneysItemRouteLegsItemRouteNumberMax).nullable(),
+  "routeName": zod.string().max(joinTrackingFamilyResponseJourneysItemRouteLegsItemRouteNameMax).nullable(),
+  "boardingStop": zod.object({
+  "name": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopNameMax),
+  "lat": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMax),
+  "lng": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMax)
+}),
+  "alightingStop": zod.object({
+  "name": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopNameMax),
+  "lat": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMax),
+  "lng": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMax)
+}),
+  "durationMinutes": zod.number().int().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMax),
+  "delayMinutes": zod.number().int().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMax).nullable(),
+  "polyline": zod.string().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMax)
+})).min(1).max(joinTrackingFamilyResponseJourneysItemRouteLegsMax)
+}),
+  "status": zod.enum(['awaiting_child', 'active', 'arrived', 'ended', 'expired', 'cancelled']),
+  "progressMeters": zod.number().min(joinTrackingFamilyResponseJourneysItemProgressMetersMin),
+  "routeMeters": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteMetersMin),
+  "progressPercent": zod.number().int().min(joinTrackingFamilyResponseJourneysItemProgressPercentMin).max(joinTrackingFamilyResponseJourneysItemProgressPercentMax),
+  "locationHealth": zod.enum(['not_started', 'on_route', 'off_route', 'stale', 'unavailable']),
+  "lastLocationAt": zod.coerce.date().nullable(),
+  "expiresAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "checkpointKey": zod.string().max(joinTrackingFamilyResponseJourneysItemEventsItemCheckpointKeyMax),
+  "title": zod.string().max(joinTrackingFamilyResponseJourneysItemEventsItemTitleMax),
+  "subtitle": zod.string().max(joinTrackingFamilyResponseJourneysItemEventsItemSubtitleMax),
+  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
+  "corrected": zod.boolean(),
+  "createdAt": zod.coerce.date()
+}))
+}))
+})
+
+
+/**
+ * @summary Parent-approve a provider-routed journey for a child to opt into
+ */
+export const createTrackingJourneyBodyRouteRouteIdMax = 120;
+
+export const createTrackingJourneyBodyRouteNameMax = 200;
+
+export const createTrackingJourneyBodyRouteStartStopMax = 200;
+
+export const createTrackingJourneyBodyRouteDestinationStopMax = 200;
+
+export const createTrackingJourneyBodyRouteDestinationMax = 200;
+
+export const createTrackingJourneyBodyRouteOriginNameMax = 200;
+
+export const createTrackingJourneyBodyRouteOriginLatitudeMin = -90;
+export const createTrackingJourneyBodyRouteOriginLatitudeMax = 90;
+
+export const createTrackingJourneyBodyRouteOriginLongitudeMin = -180;
+export const createTrackingJourneyBodyRouteOriginLongitudeMax = 180;
+
+export const createTrackingJourneyBodyRouteDestinationLatitudeMin = -90;
+export const createTrackingJourneyBodyRouteDestinationLatitudeMax = 90;
+
+export const createTrackingJourneyBodyRouteDestinationLongitudeMin = -180;
+export const createTrackingJourneyBodyRouteDestinationLongitudeMax = 180;
+
+export const createTrackingJourneyBodyRouteDurationMinutesMax = 1440;
+
+export const createTrackingJourneyBodyRouteLegsItemRouteNumberMax = 32;
+
+export const createTrackingJourneyBodyRouteLegsItemRouteNameMax = 120;
+
+export const createTrackingJourneyBodyRouteLegsItemBoardingStopNameMax = 200;
+
+export const createTrackingJourneyBodyRouteLegsItemBoardingStopLatMin = -90;
+export const createTrackingJourneyBodyRouteLegsItemBoardingStopLatMax = 90;
+
+export const createTrackingJourneyBodyRouteLegsItemBoardingStopLngMin = -180;
+export const createTrackingJourneyBodyRouteLegsItemBoardingStopLngMax = 180;
+
+export const createTrackingJourneyBodyRouteLegsItemAlightingStopNameMax = 200;
+
+export const createTrackingJourneyBodyRouteLegsItemAlightingStopLatMin = -90;
+export const createTrackingJourneyBodyRouteLegsItemAlightingStopLatMax = 90;
+
+export const createTrackingJourneyBodyRouteLegsItemAlightingStopLngMin = -180;
+export const createTrackingJourneyBodyRouteLegsItemAlightingStopLngMax = 180;
+
+export const createTrackingJourneyBodyRouteLegsItemDurationMinutesMin = 0;
+export const createTrackingJourneyBodyRouteLegsItemDurationMinutesMax = 1440;
+
+export const createTrackingJourneyBodyRouteLegsItemDelayMinutesMin = 0;
+export const createTrackingJourneyBodyRouteLegsItemDelayMinutesMax = 1440;
+
+export const createTrackingJourneyBodyRouteLegsItemPolylineMin = 2;
+export const createTrackingJourneyBodyRouteLegsItemPolylineMax = 200000;
+
+export const createTrackingJourneyBodyRouteLegsMax = 24;
+
+
+
+export const CreateTrackingJourneyBody = zod.object({
+  "childId": zod.string().uuid(),
+  "route": zod.object({
+  "routeId": zod.string().min(1).max(createTrackingJourneyBodyRouteRouteIdMax),
+  "name": zod.string().min(1).max(createTrackingJourneyBodyRouteNameMax),
+  "startStop": zod.string().min(1).max(createTrackingJourneyBodyRouteStartStopMax),
+  "destinationStop": zod.string().min(1).max(createTrackingJourneyBodyRouteDestinationStopMax),
+  "destination": zod.string().min(1).max(createTrackingJourneyBodyRouteDestinationMax),
+  "originName": zod.string().min(1).max(createTrackingJourneyBodyRouteOriginNameMax),
+  "originLatitude": zod.number().min(createTrackingJourneyBodyRouteOriginLatitudeMin).max(createTrackingJourneyBodyRouteOriginLatitudeMax),
+  "originLongitude": zod.number().min(createTrackingJourneyBodyRouteOriginLongitudeMin).max(createTrackingJourneyBodyRouteOriginLongitudeMax),
+  "destinationLatitude": zod.number().min(createTrackingJourneyBodyRouteDestinationLatitudeMin).max(createTrackingJourneyBodyRouteDestinationLatitudeMax),
+  "destinationLongitude": zod.number().min(createTrackingJourneyBodyRouteDestinationLongitudeMin).max(createTrackingJourneyBodyRouteDestinationLongitudeMax),
+  "source": zod.enum(['live']),
+  "mode": zod.enum(['walking', 'transit']),
+  "durationMinutes": zod.number().int().min(1).max(createTrackingJourneyBodyRouteDurationMinutesMax),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().max(createTrackingJourneyBodyRouteLegsItemRouteNumberMax).nullable(),
+  "routeName": zod.string().max(createTrackingJourneyBodyRouteLegsItemRouteNameMax).nullable(),
+  "boardingStop": zod.object({
+  "name": zod.string().min(1).max(createTrackingJourneyBodyRouteLegsItemBoardingStopNameMax),
+  "lat": zod.number().min(createTrackingJourneyBodyRouteLegsItemBoardingStopLatMin).max(createTrackingJourneyBodyRouteLegsItemBoardingStopLatMax),
+  "lng": zod.number().min(createTrackingJourneyBodyRouteLegsItemBoardingStopLngMin).max(createTrackingJourneyBodyRouteLegsItemBoardingStopLngMax)
+}),
+  "alightingStop": zod.object({
+  "name": zod.string().min(1).max(createTrackingJourneyBodyRouteLegsItemAlightingStopNameMax),
+  "lat": zod.number().min(createTrackingJourneyBodyRouteLegsItemAlightingStopLatMin).max(createTrackingJourneyBodyRouteLegsItemAlightingStopLatMax),
+  "lng": zod.number().min(createTrackingJourneyBodyRouteLegsItemAlightingStopLngMin).max(createTrackingJourneyBodyRouteLegsItemAlightingStopLngMax)
+}),
+  "durationMinutes": zod.number().int().min(createTrackingJourneyBodyRouteLegsItemDurationMinutesMin).max(createTrackingJourneyBodyRouteLegsItemDurationMinutesMax),
+  "delayMinutes": zod.number().int().min(createTrackingJourneyBodyRouteLegsItemDelayMinutesMin).max(createTrackingJourneyBodyRouteLegsItemDelayMinutesMax).nullable(),
+  "polyline": zod.string().min(createTrackingJourneyBodyRouteLegsItemPolylineMin).max(createTrackingJourneyBodyRouteLegsItemPolylineMax)
+})).min(1).max(createTrackingJourneyBodyRouteLegsMax)
+})
+})
+
+export const createTrackingJourneyResponseJourneyRouteRouteIdMax = 120;
+
+export const createTrackingJourneyResponseJourneyRouteNameMax = 200;
+
+export const createTrackingJourneyResponseJourneyRouteStartStopMax = 200;
+
+export const createTrackingJourneyResponseJourneyRouteDestinationStopMax = 200;
+
+export const createTrackingJourneyResponseJourneyRouteDestinationMax = 200;
+
+export const createTrackingJourneyResponseJourneyRouteOriginNameMax = 200;
+
+export const createTrackingJourneyResponseJourneyRouteOriginLatitudeMin = -90;
+export const createTrackingJourneyResponseJourneyRouteOriginLatitudeMax = 90;
+
+export const createTrackingJourneyResponseJourneyRouteOriginLongitudeMin = -180;
+export const createTrackingJourneyResponseJourneyRouteOriginLongitudeMax = 180;
+
+export const createTrackingJourneyResponseJourneyRouteDestinationLatitudeMin = -90;
+export const createTrackingJourneyResponseJourneyRouteDestinationLatitudeMax = 90;
+
+export const createTrackingJourneyResponseJourneyRouteDestinationLongitudeMin = -180;
+export const createTrackingJourneyResponseJourneyRouteDestinationLongitudeMax = 180;
+
+export const createTrackingJourneyResponseJourneyRouteDurationMinutesMax = 1440;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemRouteNumberMax = 32;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemRouteNameMax = 120;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopNameMax = 200;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLatMin = -90;
+export const createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLatMax = 90;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLngMin = -180;
+export const createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLngMax = 180;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopNameMax = 200;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLatMin = -90;
+export const createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLatMax = 90;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLngMin = -180;
+export const createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLngMax = 180;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemDurationMinutesMin = 0;
+export const createTrackingJourneyResponseJourneyRouteLegsItemDurationMinutesMax = 1440;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemDelayMinutesMin = 0;
+export const createTrackingJourneyResponseJourneyRouteLegsItemDelayMinutesMax = 1440;
+
+export const createTrackingJourneyResponseJourneyRouteLegsItemPolylineMin = 2;
+export const createTrackingJourneyResponseJourneyRouteLegsItemPolylineMax = 200000;
+
+export const createTrackingJourneyResponseJourneyRouteLegsMax = 24;
+
+export const createTrackingJourneyResponseJourneyProgressMetersMin = 0;
+
+export const createTrackingJourneyResponseJourneyRouteMetersMin = 0;
+
+export const createTrackingJourneyResponseJourneyProgressPercentMin = 0;
+export const createTrackingJourneyResponseJourneyProgressPercentMax = 100;
+
+export const createTrackingJourneyResponseJourneyEventsItemCheckpointKeyMax = 120;
+
+export const createTrackingJourneyResponseJourneyEventsItemTitleMax = 160;
+
+export const createTrackingJourneyResponseJourneyEventsItemSubtitleMax = 240;
+
+
+
+export const CreateTrackingJourneyResponse = zod.object({
+  "journey": zod.object({
+  "id": zod.string().uuid(),
+  "childId": zod.string().uuid(),
+  "childName": zod.string(),
+  "route": zod.object({
+  "routeId": zod.string().min(1).max(createTrackingJourneyResponseJourneyRouteRouteIdMax),
+  "name": zod.string().min(1).max(createTrackingJourneyResponseJourneyRouteNameMax),
+  "startStop": zod.string().min(1).max(createTrackingJourneyResponseJourneyRouteStartStopMax),
+  "destinationStop": zod.string().min(1).max(createTrackingJourneyResponseJourneyRouteDestinationStopMax),
+  "destination": zod.string().min(1).max(createTrackingJourneyResponseJourneyRouteDestinationMax),
+  "originName": zod.string().min(1).max(createTrackingJourneyResponseJourneyRouteOriginNameMax),
+  "originLatitude": zod.number().min(createTrackingJourneyResponseJourneyRouteOriginLatitudeMin).max(createTrackingJourneyResponseJourneyRouteOriginLatitudeMax),
+  "originLongitude": zod.number().min(createTrackingJourneyResponseJourneyRouteOriginLongitudeMin).max(createTrackingJourneyResponseJourneyRouteOriginLongitudeMax),
+  "destinationLatitude": zod.number().min(createTrackingJourneyResponseJourneyRouteDestinationLatitudeMin).max(createTrackingJourneyResponseJourneyRouteDestinationLatitudeMax),
+  "destinationLongitude": zod.number().min(createTrackingJourneyResponseJourneyRouteDestinationLongitudeMin).max(createTrackingJourneyResponseJourneyRouteDestinationLongitudeMax),
+  "source": zod.enum(['live']),
+  "mode": zod.enum(['walking', 'transit']),
+  "durationMinutes": zod.number().int().min(1).max(createTrackingJourneyResponseJourneyRouteDurationMinutesMax),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().max(createTrackingJourneyResponseJourneyRouteLegsItemRouteNumberMax).nullable(),
+  "routeName": zod.string().max(createTrackingJourneyResponseJourneyRouteLegsItemRouteNameMax).nullable(),
+  "boardingStop": zod.object({
+  "name": zod.string().min(1).max(createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopNameMax),
+  "lat": zod.number().min(createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLatMin).max(createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLatMax),
+  "lng": zod.number().min(createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLngMin).max(createTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLngMax)
+}),
+  "alightingStop": zod.object({
+  "name": zod.string().min(1).max(createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopNameMax),
+  "lat": zod.number().min(createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLatMin).max(createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLatMax),
+  "lng": zod.number().min(createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLngMin).max(createTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLngMax)
+}),
+  "durationMinutes": zod.number().int().min(createTrackingJourneyResponseJourneyRouteLegsItemDurationMinutesMin).max(createTrackingJourneyResponseJourneyRouteLegsItemDurationMinutesMax),
+  "delayMinutes": zod.number().int().min(createTrackingJourneyResponseJourneyRouteLegsItemDelayMinutesMin).max(createTrackingJourneyResponseJourneyRouteLegsItemDelayMinutesMax).nullable(),
+  "polyline": zod.string().min(createTrackingJourneyResponseJourneyRouteLegsItemPolylineMin).max(createTrackingJourneyResponseJourneyRouteLegsItemPolylineMax)
+})).min(1).max(createTrackingJourneyResponseJourneyRouteLegsMax)
+}),
+  "status": zod.enum(['awaiting_child', 'active', 'arrived', 'ended', 'expired', 'cancelled']),
+  "progressMeters": zod.number().min(createTrackingJourneyResponseJourneyProgressMetersMin),
+  "routeMeters": zod.number().min(createTrackingJourneyResponseJourneyRouteMetersMin),
+  "progressPercent": zod.number().int().min(createTrackingJourneyResponseJourneyProgressPercentMin).max(createTrackingJourneyResponseJourneyProgressPercentMax),
+  "locationHealth": zod.enum(['not_started', 'on_route', 'off_route', 'stale', 'unavailable']),
+  "lastLocationAt": zod.coerce.date().nullable(),
+  "expiresAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "checkpointKey": zod.string().max(createTrackingJourneyResponseJourneyEventsItemCheckpointKeyMax),
+  "title": zod.string().max(createTrackingJourneyResponseJourneyEventsItemTitleMax),
+  "subtitle": zod.string().max(createTrackingJourneyResponseJourneyEventsItemSubtitleMax),
+  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
+  "corrected": zod.boolean(),
+  "createdAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * @summary Record child consent and issue a short-lived journey-scoped location token
+ */
+export const OptInToTrackingJourneyParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const optInToTrackingJourneyResponseTokenMin = 32;
+
+
+
+export const OptInToTrackingJourneyResponse = zod.object({
+  "journeyId": zod.string().uuid(),
+  "token": zod.string().min(optInToTrackingJourneyResponseTokenMin),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Match one active location fix against the selected provider route
+ */
+export const UpdateTrackingLocationParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const updateTrackingLocationBodyLatitudeMin = -90;
+export const updateTrackingLocationBodyLatitudeMax = 90;
+
+export const updateTrackingLocationBodyLongitudeMin = -180;
+export const updateTrackingLocationBodyLongitudeMax = 180;
+
+export const updateTrackingLocationBodyAccuracyMin = 0;
+export const updateTrackingLocationBodyAccuracyMax = 10000;
+
+
+
+export const UpdateTrackingLocationBody = zod.object({
+  "latitude": zod.number().min(updateTrackingLocationBodyLatitudeMin).max(updateTrackingLocationBodyLatitudeMax),
+  "longitude": zod.number().min(updateTrackingLocationBodyLongitudeMin).max(updateTrackingLocationBodyLongitudeMax),
+  "accuracy": zod.number().min(updateTrackingLocationBodyAccuracyMin).max(updateTrackingLocationBodyAccuracyMax),
+  "capturedAt": zod.coerce.date()
+})
+
+export const updateTrackingLocationResponseProgressMetersMin = 0;
+
+export const updateTrackingLocationResponseRouteMetersMin = 0;
+
+export const updateTrackingLocationResponseProgressPercentMin = 0;
+export const updateTrackingLocationResponseProgressPercentMax = 100;
+
+export const updateTrackingLocationResponseEventsItemCheckpointKeyMax = 120;
+
+export const updateTrackingLocationResponseEventsItemTitleMax = 160;
+
+export const updateTrackingLocationResponseEventsItemSubtitleMax = 240;
+
+
+
+export const UpdateTrackingLocationResponse = zod.object({
+  "status": zod.enum(['active', 'arrived', 'off_route']),
+  "progressMeters": zod.number().min(updateTrackingLocationResponseProgressMetersMin),
+  "routeMeters": zod.number().min(updateTrackingLocationResponseRouteMetersMin),
+  "progressPercent": zod.number().int().min(updateTrackingLocationResponseProgressPercentMin).max(updateTrackingLocationResponseProgressPercentMax),
+  "locationHealth": zod.enum(['on_route', 'off_route', 'unavailable']),
+  "events": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "checkpointKey": zod.string().max(updateTrackingLocationResponseEventsItemCheckpointKeyMax),
+  "title": zod.string().max(updateTrackingLocationResponseEventsItemTitleMax),
+  "subtitle": zod.string().max(updateTrackingLocationResponseEventsItemSubtitleMax),
+  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
+  "corrected": zod.boolean(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Record a child-confirmed route checkpoint without requiring GPS
+ */
+export const RecordTrackingCheckinParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const recordTrackingCheckinBodyCheckpointKeyMax = 120;
+
+
+
+export const RecordTrackingCheckinBody = zod.object({
+  "checkpointKey": zod.string().min(1).max(recordTrackingCheckinBodyCheckpointKeyMax)
+})
+
+export const recordTrackingCheckinResponseCheckpointKeyMax = 120;
+
+export const recordTrackingCheckinResponseTitleMax = 160;
+
+export const recordTrackingCheckinResponseSubtitleMax = 240;
+
+
+
+export const RecordTrackingCheckinResponse = zod.object({
+  "id": zod.string().uuid(),
+  "checkpointKey": zod.string().max(recordTrackingCheckinResponseCheckpointKeyMax),
+  "title": zod.string().max(recordTrackingCheckinResponseTitleMax),
+  "subtitle": zod.string().max(recordTrackingCheckinResponseSubtitleMax),
+  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
+  "corrected": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Correct a false automatic arrival while preserving its audit event
+ */
+export const CorrectTrackingArrivalParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const correctTrackingArrivalResponseJourneyRouteRouteIdMax = 120;
+
+export const correctTrackingArrivalResponseJourneyRouteNameMax = 200;
+
+export const correctTrackingArrivalResponseJourneyRouteStartStopMax = 200;
+
+export const correctTrackingArrivalResponseJourneyRouteDestinationStopMax = 200;
+
+export const correctTrackingArrivalResponseJourneyRouteDestinationMax = 200;
+
+export const correctTrackingArrivalResponseJourneyRouteOriginNameMax = 200;
+
+export const correctTrackingArrivalResponseJourneyRouteOriginLatitudeMin = -90;
+export const correctTrackingArrivalResponseJourneyRouteOriginLatitudeMax = 90;
+
+export const correctTrackingArrivalResponseJourneyRouteOriginLongitudeMin = -180;
+export const correctTrackingArrivalResponseJourneyRouteOriginLongitudeMax = 180;
+
+export const correctTrackingArrivalResponseJourneyRouteDestinationLatitudeMin = -90;
+export const correctTrackingArrivalResponseJourneyRouteDestinationLatitudeMax = 90;
+
+export const correctTrackingArrivalResponseJourneyRouteDestinationLongitudeMin = -180;
+export const correctTrackingArrivalResponseJourneyRouteDestinationLongitudeMax = 180;
+
+export const correctTrackingArrivalResponseJourneyRouteDurationMinutesMax = 1440;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemRouteNumberMax = 32;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemRouteNameMax = 120;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopNameMax = 200;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopLatMin = -90;
+export const correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopLatMax = 90;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopLngMin = -180;
+export const correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopLngMax = 180;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopNameMax = 200;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopLatMin = -90;
+export const correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopLatMax = 90;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopLngMin = -180;
+export const correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopLngMax = 180;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemDurationMinutesMin = 0;
+export const correctTrackingArrivalResponseJourneyRouteLegsItemDurationMinutesMax = 1440;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemDelayMinutesMin = 0;
+export const correctTrackingArrivalResponseJourneyRouteLegsItemDelayMinutesMax = 1440;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsItemPolylineMin = 2;
+export const correctTrackingArrivalResponseJourneyRouteLegsItemPolylineMax = 200000;
+
+export const correctTrackingArrivalResponseJourneyRouteLegsMax = 24;
+
+export const correctTrackingArrivalResponseJourneyProgressMetersMin = 0;
+
+export const correctTrackingArrivalResponseJourneyRouteMetersMin = 0;
+
+export const correctTrackingArrivalResponseJourneyProgressPercentMin = 0;
+export const correctTrackingArrivalResponseJourneyProgressPercentMax = 100;
+
+export const correctTrackingArrivalResponseJourneyEventsItemCheckpointKeyMax = 120;
+
+export const correctTrackingArrivalResponseJourneyEventsItemTitleMax = 160;
+
+export const correctTrackingArrivalResponseJourneyEventsItemSubtitleMax = 240;
+
+
+
+export const CorrectTrackingArrivalResponse = zod.object({
+  "journey": zod.object({
+  "id": zod.string().uuid(),
+  "childId": zod.string().uuid(),
+  "childName": zod.string(),
+  "route": zod.object({
+  "routeId": zod.string().min(1).max(correctTrackingArrivalResponseJourneyRouteRouteIdMax),
+  "name": zod.string().min(1).max(correctTrackingArrivalResponseJourneyRouteNameMax),
+  "startStop": zod.string().min(1).max(correctTrackingArrivalResponseJourneyRouteStartStopMax),
+  "destinationStop": zod.string().min(1).max(correctTrackingArrivalResponseJourneyRouteDestinationStopMax),
+  "destination": zod.string().min(1).max(correctTrackingArrivalResponseJourneyRouteDestinationMax),
+  "originName": zod.string().min(1).max(correctTrackingArrivalResponseJourneyRouteOriginNameMax),
+  "originLatitude": zod.number().min(correctTrackingArrivalResponseJourneyRouteOriginLatitudeMin).max(correctTrackingArrivalResponseJourneyRouteOriginLatitudeMax),
+  "originLongitude": zod.number().min(correctTrackingArrivalResponseJourneyRouteOriginLongitudeMin).max(correctTrackingArrivalResponseJourneyRouteOriginLongitudeMax),
+  "destinationLatitude": zod.number().min(correctTrackingArrivalResponseJourneyRouteDestinationLatitudeMin).max(correctTrackingArrivalResponseJourneyRouteDestinationLatitudeMax),
+  "destinationLongitude": zod.number().min(correctTrackingArrivalResponseJourneyRouteDestinationLongitudeMin).max(correctTrackingArrivalResponseJourneyRouteDestinationLongitudeMax),
+  "source": zod.enum(['live']),
+  "mode": zod.enum(['walking', 'transit']),
+  "durationMinutes": zod.number().int().min(1).max(correctTrackingArrivalResponseJourneyRouteDurationMinutesMax),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().max(correctTrackingArrivalResponseJourneyRouteLegsItemRouteNumberMax).nullable(),
+  "routeName": zod.string().max(correctTrackingArrivalResponseJourneyRouteLegsItemRouteNameMax).nullable(),
+  "boardingStop": zod.object({
+  "name": zod.string().min(1).max(correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopNameMax),
+  "lat": zod.number().min(correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopLatMin).max(correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopLatMax),
+  "lng": zod.number().min(correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopLngMin).max(correctTrackingArrivalResponseJourneyRouteLegsItemBoardingStopLngMax)
+}),
+  "alightingStop": zod.object({
+  "name": zod.string().min(1).max(correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopNameMax),
+  "lat": zod.number().min(correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopLatMin).max(correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopLatMax),
+  "lng": zod.number().min(correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopLngMin).max(correctTrackingArrivalResponseJourneyRouteLegsItemAlightingStopLngMax)
+}),
+  "durationMinutes": zod.number().int().min(correctTrackingArrivalResponseJourneyRouteLegsItemDurationMinutesMin).max(correctTrackingArrivalResponseJourneyRouteLegsItemDurationMinutesMax),
+  "delayMinutes": zod.number().int().min(correctTrackingArrivalResponseJourneyRouteLegsItemDelayMinutesMin).max(correctTrackingArrivalResponseJourneyRouteLegsItemDelayMinutesMax).nullable(),
+  "polyline": zod.string().min(correctTrackingArrivalResponseJourneyRouteLegsItemPolylineMin).max(correctTrackingArrivalResponseJourneyRouteLegsItemPolylineMax)
+})).min(1).max(correctTrackingArrivalResponseJourneyRouteLegsMax)
+}),
+  "status": zod.enum(['awaiting_child', 'active', 'arrived', 'ended', 'expired', 'cancelled']),
+  "progressMeters": zod.number().min(correctTrackingArrivalResponseJourneyProgressMetersMin),
+  "routeMeters": zod.number().min(correctTrackingArrivalResponseJourneyRouteMetersMin),
+  "progressPercent": zod.number().int().min(correctTrackingArrivalResponseJourneyProgressPercentMin).max(correctTrackingArrivalResponseJourneyProgressPercentMax),
+  "locationHealth": zod.enum(['not_started', 'on_route', 'off_route', 'stale', 'unavailable']),
+  "lastLocationAt": zod.coerce.date().nullable(),
+  "expiresAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "checkpointKey": zod.string().max(correctTrackingArrivalResponseJourneyEventsItemCheckpointKeyMax),
+  "title": zod.string().max(correctTrackingArrivalResponseJourneyEventsItemTitleMax),
+  "subtitle": zod.string().max(correctTrackingArrivalResponseJourneyEventsItemSubtitleMax),
+  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
+  "corrected": zod.boolean(),
+  "createdAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * @summary End sharing and immediately clear the temporary encrypted location
+ */
+export const EndTrackingJourneyParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const endTrackingJourneyResponseJourneyRouteRouteIdMax = 120;
+
+export const endTrackingJourneyResponseJourneyRouteNameMax = 200;
+
+export const endTrackingJourneyResponseJourneyRouteStartStopMax = 200;
+
+export const endTrackingJourneyResponseJourneyRouteDestinationStopMax = 200;
+
+export const endTrackingJourneyResponseJourneyRouteDestinationMax = 200;
+
+export const endTrackingJourneyResponseJourneyRouteOriginNameMax = 200;
+
+export const endTrackingJourneyResponseJourneyRouteOriginLatitudeMin = -90;
+export const endTrackingJourneyResponseJourneyRouteOriginLatitudeMax = 90;
+
+export const endTrackingJourneyResponseJourneyRouteOriginLongitudeMin = -180;
+export const endTrackingJourneyResponseJourneyRouteOriginLongitudeMax = 180;
+
+export const endTrackingJourneyResponseJourneyRouteDestinationLatitudeMin = -90;
+export const endTrackingJourneyResponseJourneyRouteDestinationLatitudeMax = 90;
+
+export const endTrackingJourneyResponseJourneyRouteDestinationLongitudeMin = -180;
+export const endTrackingJourneyResponseJourneyRouteDestinationLongitudeMax = 180;
+
+export const endTrackingJourneyResponseJourneyRouteDurationMinutesMax = 1440;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemRouteNumberMax = 32;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemRouteNameMax = 120;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopNameMax = 200;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLatMin = -90;
+export const endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLatMax = 90;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLngMin = -180;
+export const endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLngMax = 180;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopNameMax = 200;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLatMin = -90;
+export const endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLatMax = 90;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLngMin = -180;
+export const endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLngMax = 180;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemDurationMinutesMin = 0;
+export const endTrackingJourneyResponseJourneyRouteLegsItemDurationMinutesMax = 1440;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemDelayMinutesMin = 0;
+export const endTrackingJourneyResponseJourneyRouteLegsItemDelayMinutesMax = 1440;
+
+export const endTrackingJourneyResponseJourneyRouteLegsItemPolylineMin = 2;
+export const endTrackingJourneyResponseJourneyRouteLegsItemPolylineMax = 200000;
+
+export const endTrackingJourneyResponseJourneyRouteLegsMax = 24;
+
+export const endTrackingJourneyResponseJourneyProgressMetersMin = 0;
+
+export const endTrackingJourneyResponseJourneyRouteMetersMin = 0;
+
+export const endTrackingJourneyResponseJourneyProgressPercentMin = 0;
+export const endTrackingJourneyResponseJourneyProgressPercentMax = 100;
+
+export const endTrackingJourneyResponseJourneyEventsItemCheckpointKeyMax = 120;
+
+export const endTrackingJourneyResponseJourneyEventsItemTitleMax = 160;
+
+export const endTrackingJourneyResponseJourneyEventsItemSubtitleMax = 240;
+
+
+
+export const EndTrackingJourneyResponse = zod.object({
+  "journey": zod.object({
+  "id": zod.string().uuid(),
+  "childId": zod.string().uuid(),
+  "childName": zod.string(),
+  "route": zod.object({
+  "routeId": zod.string().min(1).max(endTrackingJourneyResponseJourneyRouteRouteIdMax),
+  "name": zod.string().min(1).max(endTrackingJourneyResponseJourneyRouteNameMax),
+  "startStop": zod.string().min(1).max(endTrackingJourneyResponseJourneyRouteStartStopMax),
+  "destinationStop": zod.string().min(1).max(endTrackingJourneyResponseJourneyRouteDestinationStopMax),
+  "destination": zod.string().min(1).max(endTrackingJourneyResponseJourneyRouteDestinationMax),
+  "originName": zod.string().min(1).max(endTrackingJourneyResponseJourneyRouteOriginNameMax),
+  "originLatitude": zod.number().min(endTrackingJourneyResponseJourneyRouteOriginLatitudeMin).max(endTrackingJourneyResponseJourneyRouteOriginLatitudeMax),
+  "originLongitude": zod.number().min(endTrackingJourneyResponseJourneyRouteOriginLongitudeMin).max(endTrackingJourneyResponseJourneyRouteOriginLongitudeMax),
+  "destinationLatitude": zod.number().min(endTrackingJourneyResponseJourneyRouteDestinationLatitudeMin).max(endTrackingJourneyResponseJourneyRouteDestinationLatitudeMax),
+  "destinationLongitude": zod.number().min(endTrackingJourneyResponseJourneyRouteDestinationLongitudeMin).max(endTrackingJourneyResponseJourneyRouteDestinationLongitudeMax),
+  "source": zod.enum(['live']),
+  "mode": zod.enum(['walking', 'transit']),
+  "durationMinutes": zod.number().int().min(1).max(endTrackingJourneyResponseJourneyRouteDurationMinutesMax),
+  "legs": zod.array(zod.object({
+  "type": zod.enum(['walk', 'bus']),
+  "routeNumber": zod.string().max(endTrackingJourneyResponseJourneyRouteLegsItemRouteNumberMax).nullable(),
+  "routeName": zod.string().max(endTrackingJourneyResponseJourneyRouteLegsItemRouteNameMax).nullable(),
+  "boardingStop": zod.object({
+  "name": zod.string().min(1).max(endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopNameMax),
+  "lat": zod.number().min(endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLatMin).max(endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLatMax),
+  "lng": zod.number().min(endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLngMin).max(endTrackingJourneyResponseJourneyRouteLegsItemBoardingStopLngMax)
+}),
+  "alightingStop": zod.object({
+  "name": zod.string().min(1).max(endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopNameMax),
+  "lat": zod.number().min(endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLatMin).max(endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLatMax),
+  "lng": zod.number().min(endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLngMin).max(endTrackingJourneyResponseJourneyRouteLegsItemAlightingStopLngMax)
+}),
+  "durationMinutes": zod.number().int().min(endTrackingJourneyResponseJourneyRouteLegsItemDurationMinutesMin).max(endTrackingJourneyResponseJourneyRouteLegsItemDurationMinutesMax),
+  "delayMinutes": zod.number().int().min(endTrackingJourneyResponseJourneyRouteLegsItemDelayMinutesMin).max(endTrackingJourneyResponseJourneyRouteLegsItemDelayMinutesMax).nullable(),
+  "polyline": zod.string().min(endTrackingJourneyResponseJourneyRouteLegsItemPolylineMin).max(endTrackingJourneyResponseJourneyRouteLegsItemPolylineMax)
+})).min(1).max(endTrackingJourneyResponseJourneyRouteLegsMax)
+}),
+  "status": zod.enum(['awaiting_child', 'active', 'arrived', 'ended', 'expired', 'cancelled']),
+  "progressMeters": zod.number().min(endTrackingJourneyResponseJourneyProgressMetersMin),
+  "routeMeters": zod.number().min(endTrackingJourneyResponseJourneyRouteMetersMin),
+  "progressPercent": zod.number().int().min(endTrackingJourneyResponseJourneyProgressPercentMin).max(endTrackingJourneyResponseJourneyProgressPercentMax),
+  "locationHealth": zod.enum(['not_started', 'on_route', 'off_route', 'stale', 'unavailable']),
+  "lastLocationAt": zod.coerce.date().nullable(),
+  "expiresAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "checkpointKey": zod.string().max(endTrackingJourneyResponseJourneyEventsItemCheckpointKeyMax),
+  "title": zod.string().max(endTrackingJourneyResponseJourneyEventsItemTitleMax),
+  "subtitle": zod.string().max(endTrackingJourneyResponseJourneyEventsItemSubtitleMax),
+  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
+  "corrected": zod.boolean(),
+  "createdAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
  * @summary Get complete report details and status history
  */
 export const getReportPathIdMax = 80;

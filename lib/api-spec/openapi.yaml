@@ -436,6 +436,274 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /tracking/me:
+    get:
+      operationId: getTrackingProfile
+      tags: [tracking]
+      summary: Get the current Clerk account's separate live-tracking profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Account-backed family profile and active journey summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingProfileResponse"
+        "401":
+          description: Missing or invalid Clerk session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: The account has not joined a tracking family
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tracking/family:
+    post:
+      operationId: createTrackingFamily
+      tags: [tracking]
+      summary: Create a family owned by the current Clerk parent account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackingFamilyInput"
+      responses:
+        "201":
+          description: New account-backed tracking family and invitation code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingProfileResponse"
+        "400":
+          description: Invalid family name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This account already belongs to a tracking family
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tracking/family/join:
+    post:
+      operationId: joinTrackingFamily
+      tags: [tracking]
+      summary: Join a tracking family as a distinct Clerk child account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackingFamilyJoinInput"
+      responses:
+        "200":
+          description: Joined account-backed tracking family
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingProfileResponse"
+        "400":
+          description: Invalid invitation code or child name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Invitation code was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: This account is already a family member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tracking/journeys:
+    post:
+      operationId: createTrackingJourney
+      tags: [tracking]
+      summary: Parent-approve a provider-routed journey for a child to opt into
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrackingJourneyInput"
+      responses:
+        "201":
+          description: Journey request awaiting explicit child consent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingJourneyResponse"
+        "400":
+          description: Journey route is missing provider geometry or valid endpoints
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Only a parent in this tracking family can approve a journey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tracking/journeys/{id}/opt-in:
+    post:
+      operationId: optInToTrackingJourney
+      tags: [tracking]
+      summary: Record child consent and issue a short-lived journey-scoped location token
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TrackingJourneyId"
+      responses:
+        "200":
+          description: Child consent recorded and location session issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingLocationSession"
+        "403":
+          description: Only the child assigned to this journey can opt in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Journey is no longer available for sharing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tracking/journeys/{id}/locations:
+    post:
+      operationId: updateTrackingLocation
+      tags: [tracking]
+      summary: Match one active location fix against the selected provider route
+      security:
+        - trackingSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TrackingJourneyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackingLocationInput"
+      responses:
+        "200":
+          description: Route progress and any newly generated checkpoints
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingLocationUpdateResponse"
+        "401":
+          description: Invalid or expired journey-scoped location session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Sharing has ended or the journey has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tracking/journeys/{id}/check-ins:
+    post:
+      operationId: recordTrackingCheckin
+      tags: [tracking]
+      summary: Record a child-confirmed route checkpoint without requiring GPS
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TrackingJourneyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackingCheckinInput"
+      responses:
+        "200":
+          description: Checkpoint recorded or existing duplicate returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingJourneyEvent"
+        "403":
+          description: Only the assigned child can record manual check-ins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tracking/journeys/{id}/correct-arrival:
+    post:
+      operationId: correctTrackingArrival
+      tags: [tracking]
+      summary: Correct a false automatic arrival while preserving its audit event
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TrackingJourneyId"
+      responses:
+        "200":
+          description: Journey reopened with location sharing stopped pending renewed consent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingJourneyResponse"
+        "403":
+          description: Only the assigned child can correct arrival
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Journey has no correctable automatic arrival
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /tracking/journeys/{id}/end:
+    post:
+      operationId: endTrackingJourney
+      tags: [tracking]
+      summary: End sharing and immediately clear the temporary encrypted location
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TrackingJourneyId"
+      responses:
+        "200":
+          description: Journey ended and location sharing credentials revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackingJourneyResponse"
+        "403":
+          description: Account is not the parent or child assigned to this journey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /reports/{id}:
     get:
       operationId: getReport
@@ -681,6 +949,13 @@ components:
         type: string
         minLength: 1
         maxLength: 80
+    TrackingJourneyId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
     FamilyChild:
       type: object
@@ -712,6 +987,150 @@ components:
         childName: { type: string, minLength: 1, maxLength: 120 }
         username: { type: string, minLength: 3, maxLength: 60 }
       required: [invitationCode, childName, username]
+    TrackingFamilyInput:
+      type: object
+      properties:
+        familyName: { type: string, minLength: 1, maxLength: 120 }
+      required: [familyName]
+    TrackingFamilyJoinInput:
+      type: object
+      properties:
+        invitationCode: { type: string, pattern: "^[0-9]{10}$" }
+        displayName: { type: string, minLength: 1, maxLength: 120 }
+      required: [invitationCode, displayName]
+    TrackingChild:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+      required: [id, name]
+    TrackingRouteStop:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+      required: [name, lat, lng]
+    TrackingRouteLeg:
+      type: object
+      properties:
+        type: { type: string, enum: [walk, bus] }
+        routeNumber: { type: ["string", "null"], maxLength: 32 }
+        routeName: { type: ["string", "null"], maxLength: 120 }
+        boardingStop: { $ref: "#/components/schemas/TrackingRouteStop" }
+        alightingStop: { $ref: "#/components/schemas/TrackingRouteStop" }
+        durationMinutes: { type: integer, minimum: 0, maximum: 1440 }
+        delayMinutes: { type: ["integer", "null"], minimum: 0, maximum: 1440 }
+        polyline: { type: string, minLength: 2, maxLength: 200000 }
+      required: [type, routeNumber, routeName, boardingStop, alightingStop, durationMinutes, delayMinutes, polyline]
+    TrackingRoute:
+      type: object
+      properties:
+        routeId: { type: string, minLength: 1, maxLength: 120 }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        startStop: { type: string, minLength: 1, maxLength: 200 }
+        destinationStop: { type: string, minLength: 1, maxLength: 200 }
+        destination: { type: string, minLength: 1, maxLength: 200 }
+        originName: { type: string, minLength: 1, maxLength: 200 }
+        originLatitude: { type: number, minimum: -90, maximum: 90 }
+        originLongitude: { type: number, minimum: -180, maximum: 180 }
+        destinationLatitude: { type: number, minimum: -90, maximum: 90 }
+        destinationLongitude: { type: number, minimum: -180, maximum: 180 }
+        source: { type: string, enum: [live] }
+        mode: { type: string, enum: [walking, transit] }
+        durationMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        legs:
+          type: array
+          minItems: 1
+          maxItems: 24
+          items: { $ref: "#/components/schemas/TrackingRouteLeg" }
+      required: [routeId, name, startStop, destinationStop, destination, originName, originLatitude, originLongitude, destinationLatitude, destinationLongitude, source, mode, durationMinutes, legs]
+    CreateTrackingJourneyInput:
+      type: object
+      properties:
+        childId: { type: string, format: uuid }
+        route: { $ref: "#/components/schemas/TrackingRoute" }
+      required: [childId, route]
+    TrackingJourneyEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        checkpointKey: { type: string, maxLength: 120 }
+        title: { type: string, maxLength: 160 }
+        subtitle: { type: string, maxLength: 240 }
+        source: { type: string, enum: [automatic, manual, correction, system] }
+        corrected: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, checkpointKey, title, subtitle, source, corrected, createdAt]
+    TrackingJourney:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        childId: { type: string, format: uuid }
+        childName: { type: string }
+        route: { $ref: "#/components/schemas/TrackingRoute" }
+        status: { type: string, enum: [awaiting_child, active, arrived, ended, expired, cancelled] }
+        progressMeters: { type: number, minimum: 0 }
+        routeMeters: { type: number, minimum: 0 }
+        progressPercent: { type: integer, minimum: 0, maximum: 100 }
+        locationHealth: { type: string, enum: [not_started, on_route, off_route, stale, unavailable] }
+        lastLocationAt: { type: ["string", "null"], format: date-time }
+        expiresAt: { type: string, format: date-time }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/TrackingJourneyEvent" }
+      required: [id, childId, childName, route, status, progressMeters, routeMeters, progressPercent, locationHealth, lastLocationAt, expiresAt, events]
+    TrackingProfileResponse:
+      type: object
+      properties:
+        role: { type: string, enum: [parent, child] }
+        familyId: { type: string, format: uuid }
+        familyName: { type: string }
+        invitationCode: { type: ["string", "null"], pattern: "^[0-9]{10}$" }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/TrackingChild" }
+        journeys:
+          type: array
+          items: { $ref: "#/components/schemas/TrackingJourney" }
+      required: [role, familyId, familyName, invitationCode, children, journeys]
+    TrackingJourneyResponse:
+      type: object
+      properties:
+        journey: { $ref: "#/components/schemas/TrackingJourney" }
+      required: [journey]
+    TrackingLocationSession:
+      type: object
+      properties:
+        journeyId: { type: string, format: uuid }
+        token: { type: string, minLength: 32 }
+        expiresAt: { type: string, format: date-time }
+      required: [journeyId, token, expiresAt]
+    TrackingLocationInput:
+      type: object
+      properties:
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        accuracy: { type: number, minimum: 0, maximum: 10000 }
+        capturedAt: { type: string, format: date-time }
+      required: [latitude, longitude, accuracy, capturedAt]
+    TrackingLocationUpdateResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [active, arrived, off_route] }
+        progressMeters: { type: number, minimum: 0 }
+        routeMeters: { type: number, minimum: 0 }
+        progressPercent: { type: integer, minimum: 0, maximum: 100 }
+        locationHealth: { type: string, enum: [on_route, off_route, unavailable] }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/TrackingJourneyEvent" }
+      required: [status, progressMeters, routeMeters, progressPercent, locationHealth, events]
+    TrackingCheckinInput:
+      type: object
+      properties:
+        checkpointKey: { type: string, minLength: 1, maxLength: 120 }
+      required: [checkpointKey]
     HealthStatus:
       type: object
       properties:

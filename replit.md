@@ -33,10 +33,10 @@ Orivis is a native, family-friendly community safety prototype for Santa Clara C
 - This is intentionally a local-first prototype: AsyncStorage preserves demo state without requiring real accounts or services.
 - Journey uses server-proxied Google Maps transit routes and 511 SF Bay VTA information when the API credentials and upstream services work. The UI clearly labels fallback demo data when they do not.
 - The 511 credential is read server-side from `TRANSIT_511_API_KEY` because Replit secret names cannot begin with a numeral.
-- Journey planning asks for location only when the traveler taps Use My Location. Optional live journey sharing uses distinct Clerk parent/child identities and is never authorized by the shared demo session.
-- Live sharing requires parent approval, explicit child opt-in, and OS foreground/background location permission. It runs only for an active journey, matches provider-supplied geometry, encrypts only the latest temporary fix, and clears it when sharing ends or expires.
+- Journey planning asks for location only when the traveler taps Use My Location. Optional live journey sharing uses the existing PathPal parent/child sign-in; it does not add a separate tracking login.
+- The parent enables live tracking for the family in More, then the child chooses whether to share each current journey from Home. OS foreground/background location permission is still required for automatic updates. Sharing runs only for an active journey, matches provider-supplied geometry, encrypts only the latest temporary fix, and clears it when sharing ends or expires.
 - AI analysis, notifications, rewards, police contact, and SOS behavior remain explicitly simulated.
-- Parents can view route progress and checkpoint events during an approved, child-opted-in live journey. Exact child coordinates are never returned to the parent.
+- Parents can view route progress and checkpoint events after the child opts in to a journey. Exact child coordinates are never returned to the parent.
 
 ## Product
 

@@ -16,6 +16,7 @@ import {
   ScreenHeader,
   SectionTitle,
 } from '@/components/OrivisUI';
+import { updateTrackingSettings, useGetTrackingProfile } from '@workspace/api-client-react';
 import {
   DEFAULT_DEMO_JOURNEY,
   type ChildProfile,
@@ -25,6 +26,7 @@ import {
 } from '@/context/DemoContext';
 import { useThemePreference } from '@/context/ThemeContext';
 import { useColors } from '@/hooks/useColors';
+import { trackingProfileQueryKey } from '@/lib/reportApi';
 
 type MoreSection = 'home' | 'hierarchy' | 'profiles' | 'family' | 'notifications' | 'delete';
 type PreferenceKey = keyof NotificationPreferences;
@@ -41,6 +43,16 @@ function formatFamilyDisplayName(familyName: string) {
   return normalized ? `${normalized} Family` : familyName;
 }
 
+function trackingErrorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'data' in error) {
+    const data = (error as { data?: unknown }).data;
+    if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+      return data.error;
+    }
+  }
+  return error instanceof Error ? error.message : 'Live tracking settings could not be saved.';
+}
+
 export function FamilySettings() {
   const colors = useColors();
   const { isDarkMode, setDarkModeEnabled } = useThemePreference();
@@ -52,6 +64,13 @@ export function FamilySettings() {
     saveChildProfile,
     saveNotificationPreferences,
   } = useDemo();
+  const trackingProfile = useGetTrackingProfile({
+    query: {
+      queryKey: trackingProfileQueryKey(state.account),
+      enabled: state.account?.role === 'parent',
+      retry: false,
+    },
+  });
   const [section, setSection] = useState<MoreSection>('home');
   const [parentDraft, setParentDraft] = useState<ParentProfile>(() => ({ ...state.parentProfile }));
   const [childDrafts, setChildDrafts] = useState<Record<string, ChildProfile>>(() =>
@@ -138,6 +157,22 @@ export function FamilySettings() {
     }
   };
 
+  const toggleLiveTracking = async (enabled: boolean) => {
+    setSaving(true);
+    clearFeedback();
+    try {
+      await updateTrackingSettings({ enabled });
+      await trackingProfile.refetch();
+      setFeedback(enabled
+        ? 'Live tracking is enabled. Your child can opt in to a current trip from Home.'
+        : 'Live tracking is off. Any active sharing has ended.');
+    } catch (trackingError) {
+      setError(trackingErrorMessage(trackingError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const backToMore = () => {
     setSection('home');
     clearFeedback();
@@ -199,6 +234,54 @@ export function FamilySettings() {
           />
 
           <SectionTitle title="Preferences" titleStyle={styles.familySectionTitle} />
+          {state.account?.role === 'parent' ? (
+            <View
+              style={[
+                styles.menuRow,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <View style={[styles.menuIcon, { backgroundColor: colors.secondary }]}>
+                <Feather name="navigation" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.accountCopy}>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>Child live tracking</Text>
+                <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+                  Allow the child to opt in for a current trip. You see progress, not exact location.
+                </Text>
+                {trackingProfile.isLoading ? (
+                  <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+                    Loading family tracking settings…
+                  </Text>
+                ) : trackingProfile.isError ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    testID="retry-live-tracking-settings"
+                    onPress={() => { void trackingProfile.refetch(); }}
+                  >
+                    <Text style={[styles.cardBody, { color: colors.warning }]}>
+                      {trackingErrorMessage(trackingProfile.error)} Tap to retry.
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <Switch
+                testID="child-live-tracking-toggle"
+                accessibilityLabel="Enable child live tracking"
+                value={trackingProfile.data?.liveTrackingEnabled ?? false}
+                disabled={
+                  saving ||
+                  trackingProfile.isLoading ||
+                  trackingProfile.isError ||
+                  !trackingProfile.data?.children.length
+                }
+                onValueChange={(enabled) => { void toggleLiveTracking(enabled); }}
+                trackColor={{ false: colors.muted, true: colors.primary }}
+                thumbColor={trackingProfile.data?.liveTrackingEnabled ? colors.primaryForeground : colors.card}
+                ios_backgroundColor={colors.muted}
+              />
+            </View>
+          ) : null}
           <View
             style={[
               styles.menuRow,

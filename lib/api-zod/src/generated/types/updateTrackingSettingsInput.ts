@@ -6,10 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface TrackingFamilyInput {
-  /**
-     * @minLength 1
-     * @maxLength 120
-     */
-  familyName: string;
+export interface UpdateTrackingSettingsInput {
+  enabled: boolean;
 }

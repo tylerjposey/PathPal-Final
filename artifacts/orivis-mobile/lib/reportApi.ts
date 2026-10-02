@@ -1,5 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getListReportsQueryKey, getReportPhoto, setAuthTokenGetter, type CommunityReport, type ReportSession } from '@workspace/api-client-react';
+import {
+  getGetTrackingProfileQueryKey,
+  getListReportsQueryKey,
+  getReportPhoto,
+  setAuthTokenGetter,
+  type CommunityReport,
+  type ReportSession,
+} from '@workspace/api-client-react';
 import type { SafetyReport } from '@/context/DemoContext';
 
 const SESSION_KEY = 'orivis-report-session';
@@ -10,6 +17,14 @@ export function reportAccountScope(account: { role: string; username: string }) 
 
 export function reportListQueryKey(scope: string) {
   return [...getListReportsQueryKey(), 'account', scope] as const;
+}
+
+export function trackingProfileQueryKey(account: { role: string; username: string } | null | undefined) {
+  return [
+    ...getGetTrackingProfileQueryKey(),
+    'account',
+    account ? reportAccountScope(account) : 'signed-out',
+  ] as const;
 }
 
 // These prototype sessions share role demo identities; they are not secure personal accounts.

@@ -17,6 +17,7 @@ export const trackingFamiliesTable = pgTable("tracking_families", {
   ownerUserId: varchar("owner_user_id", { length: 255 }).notNull(),
   familyName: varchar("family_name", { length: 120 }).notNull(),
   invitationCode: varchar("invitation_code", { length: 10 }).notNull(),
+  liveTrackingEnabled: boolean("live_tracking_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("tracking_families_owner_user_uq").on(table.ownerUserId),

@@ -7,21 +7,18 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
-import { clerkMiddleware, getAuth } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
 import { and, asc, eq, inArray, lt } from "drizzle-orm";
 import {
-  CreateTrackingFamilyBody,
   CreateTrackingJourneyBody,
   CreateTrackingJourneyResponse,
   GetTrackingProfileResponse,
-  JoinTrackingFamilyBody,
   OptInToTrackingJourneyResponse,
   OptInToTrackingJourneyParams,
   RecordTrackingCheckinResponse,
   RecordTrackingCheckinBody,
   UpdateTrackingLocationResponse,
   UpdateTrackingLocationBody,
+  UpdateTrackingSettingsBody,
 } from "@workspace/api-zod";
 import type {
   TrackingJourneyEvent,
@@ -30,6 +27,8 @@ import type {
 } from "@workspace/api-zod";
 import {
   db,
+  familyAccountsTable,
+  familyChildrenTable,
   trackingChildrenTable,
   trackingFamiliesTable,
   trackingJourneyEventsTable,
@@ -37,7 +36,7 @@ import {
   type TrackingJourneyRow,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { getClerkProxyHost } from "../middlewares/clerkProxyMiddleware";
+import { authenticate, HttpError, type Claims } from "../lib/report-session";
 import {
   distanceBetween,
   matchRoutePosition,
@@ -49,25 +48,8 @@ const router: IRouter = Router();
 const MAX_JOURNEY_AGE_MS = 48 * 60 * 60 * 1000;
 const STALE_AFTER_MS = 5 * 60 * 1000;
 const ARRIVAL_EVENT_PREFIX = "arrival:";
-
-const clerkAuthMiddleware = clerkMiddleware((req) => ({
-  publishableKey: publishableKeyFromHost(
-    getClerkProxyHost(req) ?? "",
-    process.env.CLERK_PUBLISHABLE_KEY,
-  ),
-}));
-
-router.use((req, res, next) => {
-  const requestPath = req.originalUrl.split("?")[0];
-  const isLocationSessionUpload =
-    req.method === "POST" &&
-    /\/tracking\/journeys\/[^/]+\/locations\/?$/.test(requestPath);
-  if (isLocationSessionUpload) {
-    next();
-    return;
-  }
-  clerkAuthMiddleware(req, res, next);
-});
+const DEMO_PARENT_SUB = "demo-family-parent-ai4sg";
+const DEMO_CHILD_SUB = "demo-family-child-ai4sg";
 
 class TrackingError extends Error {
   constructor(readonly status: number, message: string) {
@@ -89,10 +71,22 @@ function handleError(error: unknown, req: Request, res: Response): void {
   res.status(500).json({ error: "Live journey sharing is unavailable." });
 }
 
-function requireClerkUser(req: Request): string {
-  const userId = getAuth(req).userId;
-  if (!userId) fail(401, "Sign in to your separate PathPal tracking account.");
-  return userId;
+function requireTrackingClaims(req: Request, requiredRole?: "parent" | "child"): Claims {
+  try {
+    const claims = authenticate(req);
+    if (claims.role !== "parent" && claims.role !== "child") {
+      fail(403, "Live journey sharing is available to family accounts only.");
+    }
+    if (requiredRole && claims.role !== requiredRole) {
+      fail(403, requiredRole === "parent"
+        ? "Only the parent can change this family setting."
+        : "Only the child can opt in to a live journey.");
+    }
+    return claims;
+  } catch (error) {
+    if (error instanceof HttpError) fail(error.status, error.message);
+    throw error;
+  }
 }
 
 function journeyIdFrom(req: Request): string {
@@ -272,21 +266,113 @@ async function expireJourneys(): Promise<void> {
     ));
 }
 
-async function profileForUser(userId: string) {
-  await expireJourneys();
+async function sourceFamilyForClaims(claims: Claims) {
+  const ownerDemoSub = claims.role === "parent" ? claims.sub : DEMO_PARENT_SUB;
+  const [familyAccount] = await db
+    .select()
+    .from(familyAccountsTable)
+    .where(eq(familyAccountsTable.ownerDemoSub, ownerDemoSub))
+    .limit(1);
+  if (!familyAccount) fail(404, "A parent must set up the family before live tracking can be used.");
 
-  const [family] = await db
+  const sourceChildren = await db
+    .select()
+    .from(familyChildrenTable)
+    .where(eq(familyChildrenTable.familyId, familyAccount.id))
+    .orderBy(asc(familyChildrenTable.createdAt));
+  if (!sourceChildren.length) fail(404, "Add a child to the family before enabling live tracking.");
+  return { familyAccount, sourceChildren };
+}
+
+async function ensureTrackingFamily(familyName: string, ownerDemoSub: string) {
+  let [family] = await db
     .select()
     .from(trackingFamiliesTable)
-    .where(eq(trackingFamiliesTable.ownerUserId, userId))
+    .where(eq(trackingFamiliesTable.ownerUserId, ownerDemoSub))
     .limit(1);
 
-  if (family) {
-    const children = await db
+  if (!family) {
+    [family] = await db
+      .insert(trackingFamiliesTable)
+      .values({
+        ownerUserId: ownerDemoSub,
+        familyName,
+        invitationCode: createInvitationCode(),
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (!family) {
+      [family] = await db
+        .select()
+        .from(trackingFamiliesTable)
+        .where(eq(trackingFamiliesTable.ownerUserId, ownerDemoSub))
+        .limit(1);
+    }
+  }
+  if (!family) fail(503, "The family tracking setting could not be saved.");
+
+  if (family.familyName !== familyName) {
+    const [updated] = await db
+      .update(trackingFamiliesTable)
+      .set({ familyName })
+      .where(eq(trackingFamiliesTable.id, family.id))
+      .returning();
+    family = updated ?? family;
+  }
+  return family;
+}
+
+async function ensureTrackingChildren(
+  familyId: string,
+  sourceChildren: Array<{ id: string; name: string }>,
+) {
+  const children = [];
+  for (const [index, sourceChild] of sourceChildren.entries()) {
+    // The existing prototype has one shared child role. Keep it attached to the
+    // first family child; later family members remain visible to the parent.
+    const userId = index === 0 ? DEMO_CHILD_SUB : `demo-family-child-${sourceChild.id}`;
+    let [child] = await db
       .select()
       .from(trackingChildrenTable)
-      .where(eq(trackingChildrenTable.familyId, family.id))
-      .orderBy(asc(trackingChildrenTable.createdAt));
+      .where(eq(trackingChildrenTable.userId, userId))
+      .limit(1);
+
+    if (child) {
+      if (child.familyId !== familyId || child.displayName !== sourceChild.name) {
+        const [updated] = await db
+          .update(trackingChildrenTable)
+          .set({ familyId, displayName: sourceChild.name })
+          .where(eq(trackingChildrenTable.id, child.id))
+          .returning();
+        child = updated ?? child;
+      }
+    } else {
+      [child] = await db
+        .insert(trackingChildrenTable)
+        .values({ familyId, userId, displayName: sourceChild.name })
+        .onConflictDoNothing()
+        .returning();
+      if (!child) {
+        [child] = await db
+          .select()
+          .from(trackingChildrenTable)
+          .where(eq(trackingChildrenTable.userId, userId))
+          .limit(1);
+      }
+    }
+    if (!child) fail(503, "The family child could not be linked to live tracking.");
+    children.push(child);
+  }
+  return children;
+}
+
+async function profileForClaims(claims: Claims) {
+  await expireJourneys();
+  const { familyAccount, sourceChildren } = await sourceFamilyForClaims(claims);
+  const family = await ensureTrackingFamily(familyAccount.familyName, familyAccount.ownerDemoSub);
+  const children = await ensureTrackingChildren(family.id, sourceChildren);
+
+  if (claims.role === "parent") {
     const journeys = await db
       .select()
       .from(trackingJourneysTable)
@@ -302,26 +388,14 @@ async function profileForUser(userId: string) {
       role: "parent",
       familyId: family.id,
       familyName: family.familyName,
-      invitationCode: family.invitationCode,
+      liveTrackingEnabled: family.liveTrackingEnabled,
       children: children.map(({ id, displayName }) => ({ id, name: displayName })),
       journeys: summaries.map(({ journey }) => journey),
     });
   }
 
-  const [child] = await db
-    .select()
-    .from(trackingChildrenTable)
-    .where(eq(trackingChildrenTable.userId, userId))
-    .limit(1);
-  if (!child) fail(404, "This tracking account has not joined a family yet.");
-
-  const [childFamily] = await db
-    .select()
-    .from(trackingFamiliesTable)
-    .where(eq(trackingFamiliesTable.id, child.familyId))
-    .limit(1);
-  if (!childFamily) fail(404, "The tracking family is no longer available.");
-
+  const child = children.find(({ userId }) => userId === claims.sub);
+  if (!child) fail(403, "This child session is not linked to the family.");
   const journeys = await db
     .select()
     .from(trackingJourneysTable)
@@ -332,10 +406,10 @@ async function profileForUser(userId: string) {
   );
   return GetTrackingProfileResponse.parse({
     role: "child",
-    familyId: childFamily.id,
-    familyName: childFamily.familyName,
-    invitationCode: null,
-    children: [],
+    familyId: family.id,
+    familyName: family.familyName,
+    liveTrackingEnabled: family.liveTrackingEnabled,
+    children: [{ id: child.id, name: child.displayName }],
     journeys: summaries.map(({ journey }) => journey),
   });
 }
@@ -367,7 +441,7 @@ async function addEvent(
 
 async function getJourneyForUser(
   journeyId: string,
-  userId: string,
+  claims: Claims,
   allowedRole: "parent" | "child" | "either",
 ) {
   const [journey] = await db
@@ -389,8 +463,8 @@ async function getJourneyForUser(
     .limit(1);
   if (!child) fail(404, "Assigned child was not found.");
 
-  const isParent = family.ownerUserId === userId;
-  const isChild = child.userId === userId;
+  const isParent = claims.role === "parent" && family.ownerUserId === claims.sub;
+  const isChild = claims.role === "child" && child.userId === claims.sub;
   if (
     !isParent && !isChild ||
     (allowedRole === "parent" && !isParent) ||
@@ -403,87 +477,59 @@ async function getJourneyForUser(
 
 router.get("/tracking/me", async (req, res): Promise<void> => {
   try {
-    res.json(await profileForUser(requireClerkUser(req)));
+    res.json(await profileForClaims(requireTrackingClaims(req)));
   } catch (error) {
     handleError(error, req, res);
   }
 });
 
-router.post("/tracking/family", async (req, res): Promise<void> => {
-  const parsed = CreateTrackingFamilyBody.safeParse(req.body);
-  if (!parsed.success || !parsed.data.familyName.trim()) {
-    res.status(400).json({ error: "Enter a valid family name." });
+router.patch("/tracking/settings", async (req, res): Promise<void> => {
+  const parsed = UpdateTrackingSettingsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Choose whether child live tracking is enabled." });
     return;
   }
   try {
-    const userId = requireClerkUser(req);
-    const [existingParent] = await db.select({ id: trackingFamiliesTable.id })
-      .from(trackingFamiliesTable)
-      .where(eq(trackingFamiliesTable.ownerUserId, userId))
-      .limit(1);
-    const [existingChild] = await db.select({ id: trackingChildrenTable.id })
-      .from(trackingChildrenTable)
-      .where(eq(trackingChildrenTable.userId, userId))
-      .limit(1);
-    if (existingParent || existingChild) {
-      fail(409, "This tracking account already belongs to a family.");
-    }
+    const claims = requireTrackingClaims(req, "parent");
+    const profile = await profileForClaims(claims);
+    await db
+      .update(trackingFamiliesTable)
+      .set({ liveTrackingEnabled: parsed.data.enabled })
+      .where(eq(trackingFamiliesTable.id, profile.familyId));
 
-    let family: typeof trackingFamiliesTable.$inferSelect | undefined;
-    for (let attempt = 0; attempt < 8 && !family; attempt += 1) {
-      [family] = await db
-        .insert(trackingFamiliesTable)
-        .values({
-          ownerUserId: userId,
-          familyName: parsed.data.familyName.trim(),
-          invitationCode: createInvitationCode(),
+    if (!parsed.data.enabled) {
+      const activeJourneys = await db
+        .select()
+        .from(trackingJourneysTable)
+        .where(and(
+          eq(trackingJourneysTable.familyId, profile.familyId),
+          inArray(trackingJourneysTable.status, ["active", "awaiting_child"]),
+        ));
+      await db
+        .update(trackingJourneysTable)
+        .set({
+          status: "ended",
+          endedAt: new Date(),
+          encryptedLatestLocation: null,
+          locationTokenHash: null,
+          locationHealth: "unavailable",
         })
-        .onConflictDoNothing()
-        .returning();
+        .where(and(
+          eq(trackingJourneysTable.familyId, profile.familyId),
+          inArray(trackingJourneysTable.status, ["active", "awaiting_child"]),
+        ));
+      await Promise.all(activeJourneys.map((journey) =>
+        addEvent(
+          journey.id,
+          `sharing-disabled:${journey.id}`,
+          "Live tracking disabled",
+          "The parent turned off live tracking for this family.",
+          "system",
+        ),
+      ));
     }
-    if (!family) fail(503, "A unique family invitation could not be generated.");
-    res.status(201).json(await profileForUser(userId));
-  } catch (error) {
-    handleError(error, req, res);
-  }
-});
 
-router.post("/tracking/family/join", async (req, res): Promise<void> => {
-  const parsed = JoinTrackingFamilyBody.safeParse(req.body);
-  if (!parsed.success || !parsed.data.invitationCode.trim() || !parsed.data.displayName.trim()) {
-    res.status(400).json({ error: "Enter the family code and your display name." });
-    return;
-  }
-  try {
-    const userId = requireClerkUser(req);
-    const [alreadyParent] = await db.select({ id: trackingFamiliesTable.id })
-      .from(trackingFamiliesTable)
-      .where(eq(trackingFamiliesTable.ownerUserId, userId))
-      .limit(1);
-    const [alreadyChild] = await db.select({ id: trackingChildrenTable.id })
-      .from(trackingChildrenTable)
-      .where(eq(trackingChildrenTable.userId, userId))
-      .limit(1);
-    if (alreadyParent || alreadyChild) fail(409, "This tracking account already belongs to a family.");
-
-    const [family] = await db
-      .select()
-      .from(trackingFamiliesTable)
-      .where(eq(trackingFamiliesTable.invitationCode, parsed.data.invitationCode.trim()))
-      .limit(1);
-    if (!family) fail(404, "That tracking family invitation was not found.");
-
-    const [child] = await db
-      .insert(trackingChildrenTable)
-      .values({
-        familyId: family.id,
-        userId,
-        displayName: parsed.data.displayName.trim(),
-      })
-      .onConflictDoNothing()
-      .returning();
-    if (!child) fail(409, "This account could not be added as a child member.");
-    res.json(await profileForUser(userId));
+    res.json(await profileForClaims(claims));
   } catch (error) {
     handleError(error, req, res);
   }
@@ -496,22 +542,32 @@ router.post("/tracking/journeys", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const userId = requireClerkUser(req);
-    const [family] = await db
-      .select()
-      .from(trackingFamiliesTable)
-      .where(eq(trackingFamiliesTable.ownerUserId, userId))
-      .limit(1);
-    if (!family) fail(403, "Only the parent account can approve a live journey.");
+    const claims = requireTrackingClaims(req, "child");
+    const profile = await profileForClaims(claims);
+    if (!profile.liveTrackingEnabled) {
+      fail(403, "Ask your parent to enable live tracking in More.");
+    }
+    const childProfile = profile.children.find(({ id }) => id === parsed.data.childId);
+    if (!childProfile) fail(403, "This journey does not belong to the signed-in child.");
     const [child] = await db
       .select()
       .from(trackingChildrenTable)
       .where(and(
-        eq(trackingChildrenTable.id, parsed.data.childId),
-        eq(trackingChildrenTable.familyId, family.id),
+        eq(trackingChildrenTable.id, childProfile.id),
+        eq(trackingChildrenTable.familyId, profile.familyId),
       ))
       .limit(1);
-    if (!child) fail(403, "Choose a child in this tracking family.");
+    if (!child) fail(404, "The signed-in child is no longer in this family.");
+
+    const [currentJourney] = await db
+      .select({ id: trackingJourneysTable.id })
+      .from(trackingJourneysTable)
+      .where(and(
+        eq(trackingJourneysTable.childId, child.id),
+        inArray(trackingJourneysTable.status, ["active", "awaiting_child"]),
+      ))
+      .limit(1);
+    if (currentJourney) fail(409, "End the current shared journey before starting another.");
 
     const route = CreateTrackingJourneyBody.shape.route.safeParse(parsed.data.route);
     if (!route.success || route.data.source !== "live") {
@@ -544,7 +600,7 @@ router.post("/tracking/journeys", async (req, res): Promise<void> => {
     const [journey] = await db
       .insert(trackingJourneysTable)
       .values({
-        familyId: family.id,
+        familyId: profile.familyId,
         childId: child.id,
         routeData: route.data,
         status: "awaiting_child",
@@ -555,9 +611,9 @@ router.post("/tracking/journeys", async (req, res): Promise<void> => {
       .returning();
     await addEvent(
       journey.id,
-      "parent-approved",
-      "Journey approved",
-      `Waiting for ${child.displayName} to opt in.`,
+      "family-tracking-enabled",
+      "Live tracking available",
+      `Waiting for ${child.displayName} to confirm sharing for this journey.`,
       "system",
     );
     res.status(201).json(await journeyResponse(journey, child.displayName));
@@ -569,8 +625,9 @@ router.post("/tracking/journeys", async (req, res): Promise<void> => {
 router.post("/tracking/journeys/:id/opt-in", async (req, res): Promise<void> => {
   try {
     const journeyId = journeyIdFrom(req);
-    const userId = requireClerkUser(req);
-    const { journey, child } = await getJourneyForUser(journeyId, userId, "child");
+    const claims = requireTrackingClaims(req, "child");
+    const { journey, child, family } = await getJourneyForUser(journeyId, claims, "child");
+    if (!family.liveTrackingEnabled) fail(403, "Live tracking was disabled by the parent.");
     if (journey.expiresAt.getTime() <= Date.now()) {
       await expireJourneys();
       fail(410, "This journey invitation has expired.");
@@ -754,8 +811,8 @@ router.post("/tracking/journeys/:id/check-ins", async (req, res): Promise<void> 
   }
   try {
     const journeyId = journeyIdFrom(req);
-    const userId = requireClerkUser(req);
-    const { journey, child } = await getJourneyForUser(journeyId, userId, "child");
+    const claims = requireTrackingClaims(req, "child");
+    const { journey, child } = await getJourneyForUser(journeyId, claims, "child");
     const route = CreateTrackingJourneyBody.shape.route.parse(journey.routeData);
     const milestone = routeMilestones(route).find(({ key }) => key === parsed.data.checkpointKey);
     if (!milestone) fail(400, "That checkpoint is not part of this provider route.");
@@ -806,8 +863,8 @@ router.post("/tracking/journeys/:id/check-ins", async (req, res): Promise<void> 
 router.post("/tracking/journeys/:id/correct-arrival", async (req, res): Promise<void> => {
   try {
     const journeyId = journeyIdFrom(req);
-    const userId = requireClerkUser(req);
-    const { journey, child } = await getJourneyForUser(journeyId, userId, "child");
+    const claims = requireTrackingClaims(req, "child");
+    const { journey, child } = await getJourneyForUser(journeyId, claims, "child");
     if (journey.status !== "arrived") fail(409, "This journey has no arrival to correct.");
     const arrivalKey = `${ARRIVAL_EVENT_PREFIX}${journey.arrivalAttempt}`;
     const [arrival] = await db
@@ -855,8 +912,8 @@ router.post("/tracking/journeys/:id/correct-arrival", async (req, res): Promise<
 router.post("/tracking/journeys/:id/end", async (req, res): Promise<void> => {
   try {
     const journeyId = journeyIdFrom(req);
-    const userId = requireClerkUser(req);
-    const { journey, child } = await getJourneyForUser(journeyId, userId, "either");
+    const claims = requireTrackingClaims(req);
+    const { journey, child } = await getJourneyForUser(journeyId, claims, "either");
     if (journey.status !== "ended" && journey.status !== "expired") {
       await addEvent(
         journey.id,

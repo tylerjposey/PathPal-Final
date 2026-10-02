@@ -7,6 +7,8 @@ For Orivis report workflows, retain the existing shared demo sign-in rather than
 
 For family invitations, store family records, globally unique invitation codes, and child membership centrally so a child can join from another device. Central persistence does not make the shared demo identity private.
 
-**Why:** The user kept shared demo access for existing report features but requested real, distinct parent and child identities for optional trip sharing. Shared credentials cannot provide per-person consent or privacy.
+For live journey sharing, use the existing PathPal parent/child sign-in and never introduce a separate tracking login. The parent enables the feature in More; the child opts in for each current journey from Home. Keep the explicit per-trip consent even though the prototype roles are shared.
 
-**How to apply:** Keep report access prototype-scoped. For live journey sharing, follow the separate-identity boundary documented in `replit.md`; never authorize private tracking from a demo session or report token.
+**Why:** The user clarified that live journey sharing must use the app's existing sign-in rather than adding another sign-in option. The existing shared demo roles remain a prototype and do not identify individual people.
+
+**How to apply:** Reuse existing report-session claims and family records for role scoping. Require the parent's family-level enablement and the child's separate opt-in for each current journey; do not treat demo sign-in as verified personal identity.

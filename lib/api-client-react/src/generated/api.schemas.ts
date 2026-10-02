@@ -48,22 +48,8 @@ export interface JoinFamilyInput {
   username: string;
 }
 
-export interface TrackingFamilyInput {
-  /**
-     * @minLength 1
-     * @maxLength 120
-     */
-  familyName: string;
-}
-
-export interface TrackingFamilyJoinInput {
-  /** @pattern ^[0-9]{10}$ */
-  invitationCode: string;
-  /**
-     * @minLength 1
-     * @maxLength 120
-     */
-  displayName: string;
+export interface UpdateTrackingSettingsInput {
+  enabled: boolean;
 }
 
 export interface TrackingChild {
@@ -294,11 +280,7 @@ export interface TrackingProfileResponse {
   role: TrackingProfileResponseRole;
   familyId: string;
   familyName: string;
-  /**
-     * @nullable
-     * @pattern ^[0-9]{10}$
-     */
-  invitationCode: string | null;
+  liveTrackingEnabled: boolean;
   children: TrackingChild[];
   journeys: TrackingJourney[];
 }

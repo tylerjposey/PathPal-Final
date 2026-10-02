@@ -1,32 +1,27 @@
 import {
   correctTrackingArrival,
-  createTrackingFamily,
   createTrackingJourney,
   endTrackingJourney,
-  getTrackingProfile,
-  joinTrackingFamily,
   optInToTrackingJourney,
   recordTrackingCheckin,
+  useGetTrackingProfile,
   type TrackingJourney,
   type TrackingProfileResponse,
   type TrackingRoute,
 } from '@workspace/api-client-react';
-import { useAuth, useClerk } from '@clerk/expo';
 import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { Button, Card, ScreenHeader } from '@/components/OrivisUI';
-import { TrackingAuthPanel } from '@/components/TrackingAuthPanel';
+import { Button, Card, SectionTitle } from '@/components/OrivisUI';
 import { useColors } from '@/hooks/useColors';
-import type { SelectedJourney } from '@/context/DemoContext';
+import { useDemo, type SelectedJourney } from '@/context/DemoContext';
+import { trackingProfileQueryKey } from '@/lib/reportApi';
 import {
   ACTIVE_TRACKING_SESSION_KEY,
   LIVE_LOCATION_TASK,
@@ -150,16 +145,73 @@ function latestAutomaticEvent(profile: TrackingProfileResponse | null) {
   return automatic?.[0];
 }
 
+async function beginJourneySharing(journeyId: string) {
+  let foregroundGranted = false;
+  let backgroundGranted = false;
+  if (Platform.OS !== 'web') {
+    try {
+      const foreground = await Location.requestForegroundPermissionsAsync();
+      foregroundGranted = foreground.granted;
+      if (foregroundGranted) {
+        const background = await Location.requestBackgroundPermissionsAsync();
+        backgroundGranted = background.granted;
+      }
+    } catch {
+      foregroundGranted = false;
+      backgroundGranted = false;
+    }
+  }
+
+  const session = await optInToTrackingJourney(journeyId);
+  if (Platform.OS !== 'web') {
+    await SecureStore.setItemAsync(ACTIVE_TRACKING_SESSION_KEY, JSON.stringify(session));
+  }
+
+  if (Platform.OS !== 'web' && foregroundGranted) {
+    try {
+      if (await Location.hasStartedLocationUpdatesAsync(LIVE_LOCATION_TASK)) {
+        await Location.stopLocationUpdatesAsync(LIVE_LOCATION_TASK);
+      }
+      await Location.startLocationUpdatesAsync(LIVE_LOCATION_TASK, {
+        accuracy: Location.Accuracy.Balanced,
+        timeInterval: 60_000,
+        distanceInterval: 75,
+        pausesUpdatesAutomatically: true,
+        activityType: Location.ActivityType.Fitness,
+        showsBackgroundLocationIndicator: true,
+        foregroundService: {
+          notificationTitle: 'PathPal journey sharing is active',
+          notificationBody: 'Location is used only for this active trip.',
+        },
+      });
+      return {
+        localLocationAvailable: true,
+        message: backgroundGranted
+          ? 'Location sharing is on for this journey.'
+          : 'Location is available while the app is open. Allow Always access for background updates.',
+      };
+    } catch {
+      return {
+        localLocationAvailable: false,
+        message: 'Location could not start. Manual check-ins are still available.',
+      };
+    }
+  }
+
+  return {
+    localLocationAvailable: false,
+    message: 'Location is unavailable. Manual check-ins are still available.',
+  };
+}
+
 function ProfileJourneyCard({
   journey,
   profile,
-  getHeaders,
   onChanged,
   selectedJourneyId,
 }: {
   journey: TrackingJourney;
   profile: TrackingProfileResponse;
-  getHeaders: () => Promise<{ headers: { Authorization: string } }>;
   onChanged: () => Promise<void>;
   selectedJourneyId: string | null;
 }) {
@@ -193,8 +245,7 @@ function ProfileJourneyCard({
         }
       }
 
-      const auth = await getHeaders();
-      const session = await optInToTrackingJourney(journey.id, auth);
+      const session = await optInToTrackingJourney(journey.id);
       if (Platform.OS !== 'web') {
         await SecureStore.setItemAsync(ACTIVE_TRACKING_SESSION_KEY, JSON.stringify(session));
       }
@@ -241,8 +292,7 @@ function ProfileJourneyCard({
     setBusy(true);
     setMessage('');
     try {
-      const auth = await getHeaders();
-      await endTrackingJourney(journey.id, auth);
+      await endTrackingJourney(journey.id);
       if (Platform.OS !== 'web') {
         const stored = await SecureStore.getItemAsync(ACTIVE_TRACKING_SESSION_KEY);
         if (stored) {
@@ -267,8 +317,7 @@ function ProfileJourneyCard({
     setBusy(true);
     setMessage('');
     try {
-      const auth = await getHeaders();
-      await recordTrackingCheckin(journey.id, { checkpointKey }, auth);
+      await recordTrackingCheckin(journey.id, { checkpointKey });
       await onChanged();
     } catch (error) {
       setMessage(errorMessage(error));
@@ -281,8 +330,7 @@ function ProfileJourneyCard({
     setBusy(true);
     setMessage('');
     try {
-      const auth = await getHeaders();
-      await correctTrackingArrival(journey.id, auth);
+      await correctTrackingArrival(journey.id);
       await onChanged();
     } catch (error) {
       setMessage(errorMessage(error));
@@ -355,7 +403,7 @@ function ProfileJourneyCard({
       {canShare ? (
         <>
           <Text style={[styles.privacyNote, { color: colors.mutedForeground }]}>
-            Your parent approved this route. Agreeing starts sharing only for this trip. If location permission is unavailable, you can still check in manually.
+            Your parent enabled live tracking for the family. Starting is optional for this trip; exact location is not shown to the parent.
           </Text>
           <Button label="I agree — start sharing" icon="map-pin" onPress={() => { void optIn(); }} loading={busy} />
         </>
@@ -417,65 +465,60 @@ function ProfileJourneyCard({
 
 export function LiveTrackingPanel({ journey }: { journey: SelectedJourney | null }) {
   const colors = useColors();
-  const { isLoaded, isSignedIn, getToken } = useAuth();
-  const { signOut } = useClerk();
-  const [profile, setProfile] = useState<TrackingProfileResponse | null>(null);
-  const [familyMissing, setFamilyMissing] = useState(false);
-  const [profileLoaded, setProfileLoaded] = useState(false);
-  const [familyName, setFamilyName] = useState('');
-  const [childName, setChildName] = useState('');
-  const [invitationCode, setInvitationCode] = useState('');
-  const [selectedChildId, setSelectedChildId] = useState('');
+  const { state } = useDemo();
+  const profileQuery = useGetTrackingProfile({
+    query: {
+      queryKey: trackingProfileQueryKey(state.account),
+      enabled: state.account?.role === 'child',
+      refetchInterval: 20_000,
+      retry: false,
+    },
+  });
+  const profile = profileQuery.data ?? null;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [checkpointNotice, setCheckpointNotice] = useState('');
   const seenEventId = useRef<string | null>(null);
 
-  const getHeaders = useCallback(async () => {
-    const token = await getToken();
-    if (!token) throw new Error('Your live-tracking account needs a fresh sign-in.');
-    return { headers: { Authorization: `Bearer ${token}` } };
-  }, [getToken]);
-
   const refreshProfile = useCallback(async () => {
-    if (!isSignedIn) return;
-    try {
-      const nextProfile = await getTrackingProfile(await getHeaders());
-      const latestEvent = latestAutomaticEvent(nextProfile);
-      if (seenEventId.current && latestEvent && latestEvent.id !== seenEventId.current) {
-        setCheckpointNotice(`${latestEvent.title}: ${latestEvent.subtitle}`);
-      }
-      seenEventId.current = latestEvent?.id ?? seenEventId.current;
-      setProfile(nextProfile);
-      setFamilyMissing(false);
-      setMessage('');
-    } catch (error) {
-      if (errorStatus(error) === 404) {
-        setProfile(null);
-        setFamilyMissing(true);
-        setMessage('');
-      } else {
-        setMessage(errorMessage(error));
-      }
-    } finally {
-      setProfileLoaded(true);
-    }
-  }, [getHeaders, isSignedIn]);
+    await profileQuery.refetch();
+  }, [profileQuery.refetch]);
 
   useEffect(() => {
-    if (!isLoaded) return;
-    if (!isSignedIn) {
-      setProfile(null);
-      setFamilyMissing(false);
-      setProfileLoaded(true);
-      return;
+    const latestEvent = latestAutomaticEvent(profile);
+    if (seenEventId.current && latestEvent && latestEvent.id !== seenEventId.current) {
+      setCheckpointNotice(`${latestEvent.title}: ${latestEvent.subtitle}`);
     }
-    void refreshProfile();
-    const timer = setInterval(() => { void refreshProfile(); }, 20_000);
-    return () => clearInterval(timer);
-  }, [isLoaded, isSignedIn, refreshProfile]);
+    seenEventId.current = latestEvent?.id ?? seenEventId.current;
+  }, [profile]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || !profile) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const stored = await SecureStore.getItemAsync(ACTIVE_TRACKING_SESSION_KEY);
+        if (!stored || cancelled) return;
+        const session = JSON.parse(stored) as { journeyId?: string };
+        const sharing = profile.journeys.some(
+          (item) => item.id === session.journeyId && item.status === 'active',
+        );
+        if (sharing) return;
+        if (await Location.hasStartedLocationUpdatesAsync(LIVE_LOCATION_TASK)) {
+          await Location.stopLocationUpdatesAsync(LIVE_LOCATION_TASK);
+        }
+        await SecureStore.deleteItemAsync(ACTIVE_TRACKING_SESSION_KEY);
+      } catch (error) {
+        if (!cancelled) setMessage(errorMessage(error));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [profile]);
 
   const routeForSharing = useMemo(() => toTrackingRoute(journey), [journey]);
+  const activeJourney = profile?.journeys.find(
+    (item) => item.status === 'active' || item.status === 'awaiting_child',
+  );
 
   const withBusy = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -490,242 +533,131 @@ export function LiveTrackingPanel({ journey }: { journey: SelectedJourney | null
     }
   };
 
-  const createFamily = async () => {
-    await createTrackingFamily({ familyName: familyName.trim() }, await getHeaders());
-    setFamilyName('');
-  };
-
-  const joinFamily = async () => {
-    await joinTrackingFamily(
-      { invitationCode: invitationCode.trim(), displayName: childName.trim() },
-      await getHeaders(),
-    );
-    setInvitationCode('');
-    setChildName('');
-  };
-
-  const approveJourney = async () => {
-    if (!routeForSharing || !selectedChild) {
-      throw new Error('Choose a child and a live route with provider geometry.');
+  const startCurrentJourney = async () => {
+    if (!profile?.liveTrackingEnabled) {
+      throw new Error('Ask your parent to enable live tracking in More.');
     }
-    await createTrackingJourney(
-      { childId: selectedChild.id, route: routeForSharing },
-      await getHeaders(),
-    );
-  };
-
-  const activeJourney = profile?.journeys.find(
-    (item) => item.status === 'active' || item.status === 'awaiting_child',
-  );
-  const selectedChild = profile?.children.find(({ id }) => id === selectedChildId) ?? profile?.children[0];
-  const signOutTrackingAccount = async () => {
-    setBusy(true);
-    setMessage('');
-    try {
-      if (profile?.role === 'child') {
-        const sharingJourney = profile.journeys.find((item) => item.status === 'active');
-        if (sharingJourney) {
-          await endTrackingJourney(sharingJourney.id, await getHeaders());
-        }
-        if (Platform.OS !== 'web') {
-          if (await Location.hasStartedLocationUpdatesAsync(LIVE_LOCATION_TASK)) {
-            await Location.stopLocationUpdatesAsync(LIVE_LOCATION_TASK);
-          }
-          await SecureStore.deleteItemAsync(ACTIVE_TRACKING_SESSION_KEY);
-        }
-      }
-      await signOut();
-    } catch (error) {
-      setMessage(errorMessage(error));
-    } finally {
-      setBusy(false);
+    if (!routeForSharing) {
+      throw new Error('Choose a live provider route with geometry before opting in.');
     }
+    const child = profile.children[0];
+    if (!child) throw new Error('Your child profile is not linked to this family.');
+
+    const created = await createTrackingJourney({
+      childId: child.id,
+      route: routeForSharing,
+    });
+    const sharing = await beginJourneySharing(created.journey.id);
+    setMessage(sharing.message);
   };
 
-  if (!isLoaded || (isSignedIn && !profileLoaded)) {
+  if (profileQuery.isLoading && !profile) {
     return (
       <Card>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Private journey sharing</Text>
-        <Text style={[styles.muted, { color: colors.mutedForeground }]}>Loading your separate tracking account…</Text>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Live journey sharing</Text>
+        <Text style={[styles.muted, { color: colors.mutedForeground }]}>Loading family settings…</Text>
       </Card>
     );
   }
 
+  if (!profile) {
+    const detail = errorStatus(profileQuery.error) === 404
+      ? 'Your family is not set up for live tracking yet. Ask your parent to check Family in More.'
+      : errorMessage(profileQuery.error);
+    return (
+      <Card>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Live journey sharing</Text>
+        <Text style={[styles.muted, { color: colors.mutedForeground }]}>{detail}</Text>
+        <Button
+          label="Retry"
+          variant="secondary"
+          onPress={() => { void profileQuery.refetch(); }}
+          testID="retry-live-tracking-profile"
+        />
+      </Card>
+    );
+  }
+
+  if (profile.role !== 'child') return null;
+
   return (
     <View style={styles.container}>
-      <ScreenHeader
-        eyebrow="Family safety"
-        title="Live journey sharing"
-        subtitle="Optional, temporary route progress. Exact location is never shown to the parent."
-      />
+      <SectionTitle title="Live journey sharing" />
       <Card tone="soft">
-        <View style={styles.privacyRow}>
-          <Text style={[styles.privacyText, { color: colors.mutedForeground }]}>
-            Parent and child accounts are separate from shared demo sign-in. The server stores only an encrypted current fix while sharing; stopping or expiry clears it, while checkpoint history remains.
-          </Text>
-        </View>
+        <Text style={[styles.privacyText, { color: colors.mutedForeground }]}>
+          This uses your existing PathPal account. Sharing is optional for each trip; the parent sees route progress and checkpoints, never your exact location. The latest location is encrypted and cleared when sharing ends or expires.
+        </Text>
       </Card>
 
-      {!isSignedIn ? <TrackingAuthPanel /> : null}
-
-      {isSignedIn && familyMissing ? (
-        <Card>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Connect a tracking family</Text>
-          <Text style={[styles.muted, { color: colors.mutedForeground }]}>
-            A parent creates the family. The child signs in with a separate account and joins with the invitation code.
-          </Text>
-          <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: 6 }]}>Parent setup</Text>
-          <TextInput
-            value={familyName}
-            onChangeText={setFamilyName}
-            placeholder="Family name"
-            placeholderTextColor={colors.mutedForeground}
-            style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
-          />
-          <Button
-            label="Create tracking family"
-            icon="users"
-            onPress={() => { void withBusy(createFamily); }}
-            disabled={!familyName.trim()}
-            loading={busy}
-          />
-          <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: 10 }]}>Child setup</Text>
-          <TextInput
-            value={childName}
-            onChangeText={setChildName}
-            placeholder="Child's display name"
-            placeholderTextColor={colors.mutedForeground}
-            style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
-          />
-          <TextInput
-            value={invitationCode}
-            onChangeText={(value) => setInvitationCode(value.replace(/\D/g, '').slice(0, 10))}
-            keyboardType="number-pad"
-            placeholder="10-digit family code"
-            placeholderTextColor={colors.mutedForeground}
-            style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border }]}
-          />
-          <Button
-            label="Join family as child"
-            icon="user-plus"
-            variant="secondary"
-            onPress={() => { void withBusy(joinFamily); }}
-            disabled={!childName.trim() || invitationCode.length !== 10}
-            loading={busy}
-          />
-          {message ? <Text accessibilityRole="alert" style={[styles.message, { color: colors.warning }]}>{message}</Text> : null}
+      {checkpointNotice ? (
+        <Card tone="soft" style={styles.noticeCard}>
+          <Text style={[styles.noticeLabel, { color: colors.primary }]}>New automatic journey update</Text>
+          <Text style={[styles.noticeText, { color: colors.foreground }]}>{checkpointNotice}</Text>
         </Card>
       ) : null}
 
-      {profile ? (
-        <>
-          <Card>
-            <View style={styles.row}>
-              <View style={styles.flex}>
-                <Text style={[styles.accountTitle, { color: colors.foreground }]}>
-                  {profile.familyName} · {profile.role === 'parent' ? 'Parent account' : 'Child account'}
-                </Text>
-                <Text style={[styles.muted, { color: colors.mutedForeground }]}>
-                  Separate live-tracking identity
-                </Text>
-              </View>
-              <Pressable onPress={() => { void signOutTrackingAccount(); }} accessibilityRole="button" hitSlop={8}>
-                <Text style={[styles.link, { color: colors.primary }]}>Sign out</Text>
-              </Pressable>
-            </View>
-            {profile.role === 'parent' && profile.invitationCode ? (
-              <View style={[styles.codeBox, { backgroundColor: colors.secondary }]}>
-                <Text style={[styles.muted, { color: colors.mutedForeground }]}>Child invitation code</Text>
-                <Text selectable style={[styles.invitationCode, { color: colors.foreground }]}>{profile.invitationCode}</Text>
-              </View>
-            ) : null}
-          </Card>
+      <Card style={styles.journeyCard}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your current trip</Text>
+        {routeForSharing ? (
+          <View style={styles.routePreview}>
+            <Text style={[styles.eventTitle, { color: colors.foreground }]}>{routeForSharing.name}</Text>
+            <Text style={[styles.muted, { color: colors.mutedForeground }]}>
+              {routeForSharing.startStop} to {routeForSharing.destinationStop}
+            </Text>
+          </View>
+        ) : (
+          <Text style={[styles.muted, { color: colors.warning }]}>
+            Choose a live provider route with geometry in Journey Planner before sharing. Demo routes cannot be shared.
+          </Text>
+        )}
 
-          {checkpointNotice ? (
-            <Card tone="soft" style={styles.noticeCard}>
-              <Text style={[styles.noticeLabel, { color: colors.primary }]}>New automatic journey update</Text>
-              <Text style={[styles.noticeText, { color: colors.foreground }]}>{checkpointNotice}</Text>
-            </Card>
-          ) : null}
+        {profile.liveTrackingEnabled ? (
+          <Button
+            label="Opt in to live tracking"
+            icon="map-pin"
+            onPress={() => { void withBusy(startCurrentJourney); }}
+            disabled={!routeForSharing || Boolean(activeJourney) || busy}
+            loading={busy}
+            testID="child-live-tracking-opt-in"
+          />
+        ) : (
+          <Text style={[styles.muted, { color: colors.mutedForeground }]}>
+            Live tracking is off. Ask your parent to enable it in More.
+          </Text>
+        )}
+        {activeJourney ? (
+          <Text style={[styles.muted, { color: colors.mutedForeground }]}>
+            Finish or stop your current shared trip before starting another.
+          </Text>
+        ) : null}
+      </Card>
 
-          {profile.role === 'parent' ? (
-            <Card>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Approve a journey</Text>
-              {profile.children.length ? (
-                <View style={styles.childList}>
-                  {profile.children.map((child) => (
-                    <Pressable
-                      key={child.id}
-                      onPress={() => setSelectedChildId(child.id)}
-                      style={[
-                        styles.childChoice,
-                        {
-                          backgroundColor: (selectedChild?.id ?? '') === child.id ? colors.accent : colors.background,
-                          borderColor: (selectedChild?.id ?? '') === child.id ? colors.primary : colors.border,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.childChoiceText, { color: colors.foreground }]}>{child.name}</Text>
-                      {(selectedChild?.id ?? '') === child.id ? <Text style={{ color: colors.primary }}>Selected</Text> : null}
-                    </Pressable>
-                  ))}
-                </View>
-              ) : (
-                <Text style={[styles.muted, { color: colors.mutedForeground }]}>A child must join with their own account before you can approve a trip.</Text>
-              )}
-              {routeForSharing ? (
-                <View style={styles.routePreview}>
-                  <Text style={[styles.eventTitle, { color: colors.foreground }]}>{routeForSharing.name}</Text>
-                  <Text style={[styles.muted, { color: colors.mutedForeground }]}>{routeForSharing.startStop} to {routeForSharing.destinationStop}</Text>
-                </View>
-              ) : (
-                <Text style={[styles.muted, { color: colors.warning }]}>
-                  Select a live route with provider geometry and endpoint coordinates in Journey Planner. Demo routes cannot be shared.
-                </Text>
-              )}
-              <Button
-                label="Approve and send to child"
-                icon="send"
-                onPress={() => { void withBusy(approveJourney); }}
-                disabled={!selectedChild || !routeForSharing || Boolean(activeJourney)}
-                loading={busy}
-              />
-              {activeJourney ? (
-                <Text style={[styles.muted, { color: colors.mutedForeground }]}>
-                  Finish or cancel the current trip before approving another one.
-                </Text>
-              ) : null}
-            </Card>
-          ) : null}
-
-          {profile.journeys.length ? (
-            <View style={styles.journeyList}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                {profile.role === 'parent' ? 'Family journeys' : 'Your journeys'}
-              </Text>
-              {profile.journeys.slice().reverse().map((item) => (
-                <ProfileJourneyCard
-                  key={item.id}
-                  journey={item}
-                  profile={profile}
-                  getHeaders={getHeaders}
-                  onChanged={refreshProfile}
-                  selectedJourneyId={journey?.id ?? null}
-                />
-              ))}
-            </View>
-          ) : (
-            <Card>
-              <Text style={[styles.muted, { color: colors.mutedForeground }]}>
-                {profile.role === 'parent'
-                  ? 'No family journeys yet. Choose a live provider route above to send an approval request.'
-                  : 'No trip requests yet. Your parent can approve a provider-routed trip.'}
-              </Text>
-            </Card>
-          )}
-          {message ? <Text accessibilityRole="alert" style={[styles.message, { color: colors.warning }]}>{message}</Text> : null}
-        </>
+      {profile.journeys.length ? (
+        <View style={styles.journeyList}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your journeys</Text>
+          {profile.journeys.slice().reverse().map((item) => (
+            <ProfileJourneyCard
+              key={item.id}
+              journey={item}
+              profile={profile}
+              onChanged={refreshProfile}
+              selectedJourneyId={journey?.id ?? null}
+            />
+          ))}
+        </View>
+      ) : (
+        <Card>
+          <Text style={[styles.muted, { color: colors.mutedForeground }]}>
+            No shared trips yet. Choose a live route above and opt in when you are ready.
+          </Text>
+        </Card>
+      )}
+      {profileQuery.isError ? (
+        <Text accessibilityRole="alert" style={[styles.message, { color: colors.warning }]}>
+          The latest journey update could not be loaded.
+        </Text>
       ) : null}
+      {message ? <Text accessibilityRole="alert" style={[styles.message, { color: colors.warning }]}>{message}</Text> : null}
     </View>
   );
 }

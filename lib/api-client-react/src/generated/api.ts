@@ -46,14 +46,13 @@ import type {
   ReportSession,
   ReportSessionInput,
   TrackingCheckinInput,
-  TrackingFamilyInput,
-  TrackingFamilyJoinInput,
   TrackingJourneyEvent,
   TrackingJourneyResponse,
   TrackingLocationInput,
   TrackingLocationSession,
   TrackingLocationUpdateResponse,
-  TrackingProfileResponse
+  TrackingProfileResponse,
+  UpdateTrackingSettingsInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1264,7 +1263,7 @@ export const getGetTrackingProfileUrl = () => {
 }
 
 /**
- * @summary Get the current Clerk account's separate live-tracking profile
+ * @summary Get the current parent or child live-tracking profile
  */
 export const getTrackingProfile = async ( options?: Parameters<typeof customFetch>[1]): Promise<TrackingProfileResponse> => {
 
@@ -1311,7 +1310,7 @@ export type GetTrackingProfileQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get the current Clerk account's separate live-tracking profile
+ * @summary Get the current parent or child live-tracking profile
  */
 
 export function useGetTrackingProfile<TData = Awaited<ReturnType<typeof getTrackingProfile>>, TError = ErrorType<ErrorResponse>>(
@@ -1332,18 +1331,18 @@ export function useGetTrackingProfile<TData = Awaited<ReturnType<typeof getTrack
 
 
 
-export const getCreateTrackingFamilyUrl = () => {
+export const getUpdateTrackingSettingsUrl = () => {
 
 
 
 
-  return `/api/tracking/family`
+  return `/api/tracking/settings`
 }
 
 /**
- * @summary Create a family owned by the current Clerk parent account
+ * @summary Enable or disable child live tracking for the existing family
  */
-export const createTrackingFamily = async (trackingFamilyInput: TrackingFamilyInput, options?: Parameters<typeof customFetch>[1]): Promise<TrackingProfileResponse> => {
+export const updateTrackingSettings = async (updateTrackingSettingsInput: UpdateTrackingSettingsInput, options?: Parameters<typeof customFetch>[1]): Promise<TrackingProfileResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1359,12 +1358,12 @@ export const createTrackingFamily = async (trackingFamilyInput: TrackingFamilyIn
     }
     return headers;
   };
-return customFetch<TrackingProfileResponse>(getCreateTrackingFamilyUrl(),
+return customFetch<TrackingProfileResponse>(getUpdateTrackingSettingsUrl(),
   {
     ...options,
-    method: 'POST',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(trackingFamilyInput)
+    body: JSON.stringify(updateTrackingSettingsInput)
   }
 );}
 
@@ -1372,13 +1371,13 @@ return customFetch<TrackingProfileResponse>(getCreateTrackingFamilyUrl(),
 
 
 
-export const getCreateTrackingFamilyMutationKey = () => ['createTrackingFamily'] as const;
+export const getUpdateTrackingSettingsMutationKey = () => ['updateTrackingSettings'] as const;
 
-export const getCreateTrackingFamilyMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrackingFamily>>, TError,CreateTrackingFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createTrackingFamily>>, TError,CreateTrackingFamilyMutationVariables, TContext> => {
+export const getUpdateTrackingSettingsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrackingSettings>>, TError,UpdateTrackingSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTrackingSettings>>, TError,UpdateTrackingSettingsMutationVariables, TContext> => {
 
-const mutationKey = getCreateTrackingFamilyMutationKey();
+const mutationKey = getUpdateTrackingSettingsMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1388,10 +1387,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTrackingFamily>>, CreateTrackingFamilyMutationVariables> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTrackingSettings>>, UpdateTrackingSettingsMutationVariables> = (props) => {
           const {data} = props ?? {};
 
-          return  createTrackingFamily(data,requestOptions)
+          return  updateTrackingSettings(data,requestOptions)
         }
 
 
@@ -1401,111 +1400,23 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type CreateTrackingFamilyMutationResult = NonNullable<Awaited<ReturnType<typeof createTrackingFamily>>>
-    export type CreateTrackingFamilyMutationBody = BodyType<TrackingFamilyInput>
-    export type CreateTrackingFamilyMutationError = ErrorType<ErrorResponse>
-    export type CreateTrackingFamilyMutationVariables = {data: BodyType<TrackingFamilyInput>}
+    export type UpdateTrackingSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateTrackingSettings>>>
+    export type UpdateTrackingSettingsMutationBody = BodyType<UpdateTrackingSettingsInput>
+    export type UpdateTrackingSettingsMutationError = ErrorType<ErrorResponse>
+    export type UpdateTrackingSettingsMutationVariables = {data: BodyType<UpdateTrackingSettingsInput>}
 
     /**
- * @summary Create a family owned by the current Clerk parent account
+ * @summary Enable or disable child live tracking for the existing family
  */
-export const useCreateTrackingFamily = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrackingFamily>>, TError,CreateTrackingFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useUpdateTrackingSettings = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTrackingSettings>>, TError,UpdateTrackingSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof createTrackingFamily>>,
+        Awaited<ReturnType<typeof updateTrackingSettings>>,
         TError,
-        CreateTrackingFamilyMutationVariables,
+        UpdateTrackingSettingsMutationVariables,
         TContext
       > => {
-      return useMutation(getCreateTrackingFamilyMutationOptions(options));
-    }
-
-export const getJoinTrackingFamilyUrl = () => {
-
-
-
-
-  return `/api/tracking/family/join`
-}
-
-/**
- * @summary Join a tracking family as a distinct Clerk child account
- */
-export const joinTrackingFamily = async (trackingFamilyJoinInput: TrackingFamilyJoinInput, options?: Parameters<typeof customFetch>[1]): Promise<TrackingProfileResponse> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return customFetch<TrackingProfileResponse>(getJoinTrackingFamilyUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(trackingFamilyJoinInput)
-  }
-);}
-
-
-
-
-
-export const getJoinTrackingFamilyMutationKey = () => ['joinTrackingFamily'] as const;
-
-export const getJoinTrackingFamilyMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinTrackingFamily>>, TError,JoinTrackingFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof joinTrackingFamily>>, TError,JoinTrackingFamilyMutationVariables, TContext> => {
-
-const mutationKey = getJoinTrackingFamilyMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinTrackingFamily>>, JoinTrackingFamilyMutationVariables> = (props) => {
-          const {data} = props ?? {};
-
-          return  joinTrackingFamily(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type JoinTrackingFamilyMutationResult = NonNullable<Awaited<ReturnType<typeof joinTrackingFamily>>>
-    export type JoinTrackingFamilyMutationBody = BodyType<TrackingFamilyJoinInput>
-    export type JoinTrackingFamilyMutationError = ErrorType<ErrorResponse>
-    export type JoinTrackingFamilyMutationVariables = {data: BodyType<TrackingFamilyJoinInput>}
-
-    /**
- * @summary Join a tracking family as a distinct Clerk child account
- */
-export const useJoinTrackingFamily = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinTrackingFamily>>, TError,JoinTrackingFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof joinTrackingFamily>>,
-        TError,
-        JoinTrackingFamilyMutationVariables,
-        TContext
-      > => {
-      return useMutation(getJoinTrackingFamilyMutationOptions(options));
+      return useMutation(getUpdateTrackingSettingsMutationOptions(options));
     }
 
 export const getCreateTrackingJourneyUrl = () => {
@@ -1517,7 +1428,7 @@ export const getCreateTrackingJourneyUrl = () => {
 }
 
 /**
- * @summary Parent-approve a provider-routed journey for a child to opt into
+ * @summary Create a current child journey after the parent has enabled live tracking
  */
 export const createTrackingJourney = async (createTrackingJourneyInput: CreateTrackingJourneyInput, options?: Parameters<typeof customFetch>[1]): Promise<TrackingJourneyResponse> => {
 
@@ -1583,7 +1494,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateTrackingJourneyMutationVariables = {data: BodyType<CreateTrackingJourneyInput>}
 
     /**
- * @summary Parent-approve a provider-routed journey for a child to opt into
+ * @summary Create a current child journey after the parent has enabled live tracking
  */
 export const useCreateTrackingJourney = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTrackingJourney>>, TError,CreateTrackingJourneyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}

@@ -595,9 +595,8 @@ export const JoinFamilyResponse = zod.object({
 
 
 /**
- * @summary Get the current Clerk account's separate live-tracking profile
+ * @summary Get the current parent or child live-tracking profile
  */
-export const getTrackingProfileResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
 export const getTrackingProfileResponseJourneysItemRouteRouteIdMax = 120;
 
 export const getTrackingProfileResponseJourneysItemRouteNameMax = 200;
@@ -674,7 +673,7 @@ export const GetTrackingProfileResponse = zod.object({
   "role": zod.enum(['parent', 'child']),
   "familyId": zod.string().uuid(),
   "familyName": zod.string(),
-  "invitationCode": zod.string().regex(getTrackingProfileResponseInvitationCodeRegExp).nullable(),
+  "liveTrackingEnabled": zod.boolean(),
   "children": zod.array(zod.object({
   "id": zod.string().uuid(),
   "name": zod.string()
@@ -737,94 +736,89 @@ export const GetTrackingProfileResponse = zod.object({
 
 
 /**
- * @summary Create a family owned by the current Clerk parent account
+ * @summary Enable or disable child live tracking for the existing family
  */
-export const createTrackingFamilyBodyFamilyNameMax = 120;
-
-
-
-export const CreateTrackingFamilyBody = zod.object({
-  "familyName": zod.string().min(1).max(createTrackingFamilyBodyFamilyNameMax)
+export const UpdateTrackingSettingsBody = zod.object({
+  "enabled": zod.boolean()
 })
 
-export const createTrackingFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
-export const createTrackingFamilyResponseJourneysItemRouteRouteIdMax = 120;
+export const updateTrackingSettingsResponseJourneysItemRouteRouteIdMax = 120;
 
-export const createTrackingFamilyResponseJourneysItemRouteNameMax = 200;
+export const updateTrackingSettingsResponseJourneysItemRouteNameMax = 200;
 
-export const createTrackingFamilyResponseJourneysItemRouteStartStopMax = 200;
+export const updateTrackingSettingsResponseJourneysItemRouteStartStopMax = 200;
 
-export const createTrackingFamilyResponseJourneysItemRouteDestinationStopMax = 200;
+export const updateTrackingSettingsResponseJourneysItemRouteDestinationStopMax = 200;
 
-export const createTrackingFamilyResponseJourneysItemRouteDestinationMax = 200;
+export const updateTrackingSettingsResponseJourneysItemRouteDestinationMax = 200;
 
-export const createTrackingFamilyResponseJourneysItemRouteOriginNameMax = 200;
+export const updateTrackingSettingsResponseJourneysItemRouteOriginNameMax = 200;
 
-export const createTrackingFamilyResponseJourneysItemRouteOriginLatitudeMin = -90;
-export const createTrackingFamilyResponseJourneysItemRouteOriginLatitudeMax = 90;
+export const updateTrackingSettingsResponseJourneysItemRouteOriginLatitudeMin = -90;
+export const updateTrackingSettingsResponseJourneysItemRouteOriginLatitudeMax = 90;
 
-export const createTrackingFamilyResponseJourneysItemRouteOriginLongitudeMin = -180;
-export const createTrackingFamilyResponseJourneysItemRouteOriginLongitudeMax = 180;
+export const updateTrackingSettingsResponseJourneysItemRouteOriginLongitudeMin = -180;
+export const updateTrackingSettingsResponseJourneysItemRouteOriginLongitudeMax = 180;
 
-export const createTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMin = -90;
-export const createTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMax = 90;
+export const updateTrackingSettingsResponseJourneysItemRouteDestinationLatitudeMin = -90;
+export const updateTrackingSettingsResponseJourneysItemRouteDestinationLatitudeMax = 90;
 
-export const createTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMin = -180;
-export const createTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMax = 180;
+export const updateTrackingSettingsResponseJourneysItemRouteDestinationLongitudeMin = -180;
+export const updateTrackingSettingsResponseJourneysItemRouteDestinationLongitudeMax = 180;
 
-export const createTrackingFamilyResponseJourneysItemRouteDurationMinutesMax = 1440;
+export const updateTrackingSettingsResponseJourneysItemRouteDurationMinutesMax = 1440;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemRouteNumberMax = 32;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemRouteNumberMax = 32;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemRouteNameMax = 120;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemRouteNameMax = 120;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopNameMax = 200;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopNameMax = 200;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMin = -90;
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMax = 90;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopLatMin = -90;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopLatMax = 90;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMin = -180;
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMax = 180;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopLngMin = -180;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopLngMax = 180;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopNameMax = 200;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopNameMax = 200;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMin = -90;
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMax = 90;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopLatMin = -90;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopLatMax = 90;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMin = -180;
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMax = 180;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopLngMin = -180;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopLngMax = 180;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMin = 0;
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMax = 1440;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemDurationMinutesMin = 0;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemDurationMinutesMax = 1440;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMin = 0;
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMax = 1440;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemDelayMinutesMin = 0;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemDelayMinutesMax = 1440;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMin = 2;
-export const createTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMax = 200000;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemPolylineMin = 2;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsItemPolylineMax = 200000;
 
-export const createTrackingFamilyResponseJourneysItemRouteLegsMax = 24;
+export const updateTrackingSettingsResponseJourneysItemRouteLegsMax = 24;
 
-export const createTrackingFamilyResponseJourneysItemProgressMetersMin = 0;
+export const updateTrackingSettingsResponseJourneysItemProgressMetersMin = 0;
 
-export const createTrackingFamilyResponseJourneysItemRouteMetersMin = 0;
+export const updateTrackingSettingsResponseJourneysItemRouteMetersMin = 0;
 
-export const createTrackingFamilyResponseJourneysItemProgressPercentMin = 0;
-export const createTrackingFamilyResponseJourneysItemProgressPercentMax = 100;
+export const updateTrackingSettingsResponseJourneysItemProgressPercentMin = 0;
+export const updateTrackingSettingsResponseJourneysItemProgressPercentMax = 100;
 
-export const createTrackingFamilyResponseJourneysItemEventsItemCheckpointKeyMax = 120;
+export const updateTrackingSettingsResponseJourneysItemEventsItemCheckpointKeyMax = 120;
 
-export const createTrackingFamilyResponseJourneysItemEventsItemTitleMax = 160;
+export const updateTrackingSettingsResponseJourneysItemEventsItemTitleMax = 160;
 
-export const createTrackingFamilyResponseJourneysItemEventsItemSubtitleMax = 240;
-
+export const updateTrackingSettingsResponseJourneysItemEventsItemSubtitleMax = 240;
 
 
-export const CreateTrackingFamilyResponse = zod.object({
+
+export const UpdateTrackingSettingsResponse = zod.object({
   "role": zod.enum(['parent', 'child']),
   "familyId": zod.string().uuid(),
   "familyName": zod.string(),
-  "invitationCode": zod.string().regex(createTrackingFamilyResponseInvitationCodeRegExp).nullable(),
+  "liveTrackingEnabled": zod.boolean(),
   "children": zod.array(zod.object({
   "id": zod.string().uuid(),
   "name": zod.string()
@@ -834,50 +828,50 @@ export const CreateTrackingFamilyResponse = zod.object({
   "childId": zod.string().uuid(),
   "childName": zod.string(),
   "route": zod.object({
-  "routeId": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteRouteIdMax),
-  "name": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteNameMax),
-  "startStop": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteStartStopMax),
-  "destinationStop": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteDestinationStopMax),
-  "destination": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteDestinationMax),
-  "originName": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteOriginNameMax),
-  "originLatitude": zod.number().min(createTrackingFamilyResponseJourneysItemRouteOriginLatitudeMin).max(createTrackingFamilyResponseJourneysItemRouteOriginLatitudeMax),
-  "originLongitude": zod.number().min(createTrackingFamilyResponseJourneysItemRouteOriginLongitudeMin).max(createTrackingFamilyResponseJourneysItemRouteOriginLongitudeMax),
-  "destinationLatitude": zod.number().min(createTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMin).max(createTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMax),
-  "destinationLongitude": zod.number().min(createTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMin).max(createTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMax),
+  "routeId": zod.string().min(1).max(updateTrackingSettingsResponseJourneysItemRouteRouteIdMax),
+  "name": zod.string().min(1).max(updateTrackingSettingsResponseJourneysItemRouteNameMax),
+  "startStop": zod.string().min(1).max(updateTrackingSettingsResponseJourneysItemRouteStartStopMax),
+  "destinationStop": zod.string().min(1).max(updateTrackingSettingsResponseJourneysItemRouteDestinationStopMax),
+  "destination": zod.string().min(1).max(updateTrackingSettingsResponseJourneysItemRouteDestinationMax),
+  "originName": zod.string().min(1).max(updateTrackingSettingsResponseJourneysItemRouteOriginNameMax),
+  "originLatitude": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteOriginLatitudeMin).max(updateTrackingSettingsResponseJourneysItemRouteOriginLatitudeMax),
+  "originLongitude": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteOriginLongitudeMin).max(updateTrackingSettingsResponseJourneysItemRouteOriginLongitudeMax),
+  "destinationLatitude": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteDestinationLatitudeMin).max(updateTrackingSettingsResponseJourneysItemRouteDestinationLatitudeMax),
+  "destinationLongitude": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteDestinationLongitudeMin).max(updateTrackingSettingsResponseJourneysItemRouteDestinationLongitudeMax),
   "source": zod.enum(['live']),
   "mode": zod.enum(['walking', 'transit']),
-  "durationMinutes": zod.number().int().min(1).max(createTrackingFamilyResponseJourneysItemRouteDurationMinutesMax),
+  "durationMinutes": zod.number().int().min(1).max(updateTrackingSettingsResponseJourneysItemRouteDurationMinutesMax),
   "legs": zod.array(zod.object({
   "type": zod.enum(['walk', 'bus']),
-  "routeNumber": zod.string().max(createTrackingFamilyResponseJourneysItemRouteLegsItemRouteNumberMax).nullable(),
-  "routeName": zod.string().max(createTrackingFamilyResponseJourneysItemRouteLegsItemRouteNameMax).nullable(),
+  "routeNumber": zod.string().max(updateTrackingSettingsResponseJourneysItemRouteLegsItemRouteNumberMax).nullable(),
+  "routeName": zod.string().max(updateTrackingSettingsResponseJourneysItemRouteLegsItemRouteNameMax).nullable(),
   "boardingStop": zod.object({
-  "name": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopNameMax),
-  "lat": zod.number().min(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMax),
-  "lng": zod.number().min(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMax)
+  "name": zod.string().min(1).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopNameMax),
+  "lat": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopLatMin).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopLatMax),
+  "lng": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopLngMin).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemBoardingStopLngMax)
 }),
   "alightingStop": zod.object({
-  "name": zod.string().min(1).max(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopNameMax),
-  "lat": zod.number().min(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMax),
-  "lng": zod.number().min(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMax)
+  "name": zod.string().min(1).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopNameMax),
+  "lat": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopLatMin).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopLatMax),
+  "lng": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopLngMin).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemAlightingStopLngMax)
 }),
-  "durationMinutes": zod.number().int().min(createTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMax),
-  "delayMinutes": zod.number().int().min(createTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMax).nullable(),
-  "polyline": zod.string().min(createTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMin).max(createTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMax)
-})).min(1).max(createTrackingFamilyResponseJourneysItemRouteLegsMax)
+  "durationMinutes": zod.number().int().min(updateTrackingSettingsResponseJourneysItemRouteLegsItemDurationMinutesMin).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemDurationMinutesMax),
+  "delayMinutes": zod.number().int().min(updateTrackingSettingsResponseJourneysItemRouteLegsItemDelayMinutesMin).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemDelayMinutesMax).nullable(),
+  "polyline": zod.string().min(updateTrackingSettingsResponseJourneysItemRouteLegsItemPolylineMin).max(updateTrackingSettingsResponseJourneysItemRouteLegsItemPolylineMax)
+})).min(1).max(updateTrackingSettingsResponseJourneysItemRouteLegsMax)
 }),
   "status": zod.enum(['awaiting_child', 'active', 'arrived', 'ended', 'expired', 'cancelled']),
-  "progressMeters": zod.number().min(createTrackingFamilyResponseJourneysItemProgressMetersMin),
-  "routeMeters": zod.number().min(createTrackingFamilyResponseJourneysItemRouteMetersMin),
-  "progressPercent": zod.number().int().min(createTrackingFamilyResponseJourneysItemProgressPercentMin).max(createTrackingFamilyResponseJourneysItemProgressPercentMax),
+  "progressMeters": zod.number().min(updateTrackingSettingsResponseJourneysItemProgressMetersMin),
+  "routeMeters": zod.number().min(updateTrackingSettingsResponseJourneysItemRouteMetersMin),
+  "progressPercent": zod.number().int().min(updateTrackingSettingsResponseJourneysItemProgressPercentMin).max(updateTrackingSettingsResponseJourneysItemProgressPercentMax),
   "locationHealth": zod.enum(['not_started', 'on_route', 'off_route', 'stale', 'unavailable']),
   "lastLocationAt": zod.coerce.date().nullable(),
   "expiresAt": zod.coerce.date(),
   "events": zod.array(zod.object({
   "id": zod.string().uuid(),
-  "checkpointKey": zod.string().max(createTrackingFamilyResponseJourneysItemEventsItemCheckpointKeyMax),
-  "title": zod.string().max(createTrackingFamilyResponseJourneysItemEventsItemTitleMax),
-  "subtitle": zod.string().max(createTrackingFamilyResponseJourneysItemEventsItemSubtitleMax),
+  "checkpointKey": zod.string().max(updateTrackingSettingsResponseJourneysItemEventsItemCheckpointKeyMax),
+  "title": zod.string().max(updateTrackingSettingsResponseJourneysItemEventsItemTitleMax),
+  "subtitle": zod.string().max(updateTrackingSettingsResponseJourneysItemEventsItemSubtitleMax),
   "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
   "corrected": zod.boolean(),
   "createdAt": zod.coerce.date()
@@ -887,159 +881,7 @@ export const CreateTrackingFamilyResponse = zod.object({
 
 
 /**
- * @summary Join a tracking family as a distinct Clerk child account
- */
-export const joinTrackingFamilyBodyInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
-export const joinTrackingFamilyBodyDisplayNameMax = 120;
-
-
-
-export const JoinTrackingFamilyBody = zod.object({
-  "invitationCode": zod.string().regex(joinTrackingFamilyBodyInvitationCodeRegExp),
-  "displayName": zod.string().min(1).max(joinTrackingFamilyBodyDisplayNameMax)
-})
-
-export const joinTrackingFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
-export const joinTrackingFamilyResponseJourneysItemRouteRouteIdMax = 120;
-
-export const joinTrackingFamilyResponseJourneysItemRouteNameMax = 200;
-
-export const joinTrackingFamilyResponseJourneysItemRouteStartStopMax = 200;
-
-export const joinTrackingFamilyResponseJourneysItemRouteDestinationStopMax = 200;
-
-export const joinTrackingFamilyResponseJourneysItemRouteDestinationMax = 200;
-
-export const joinTrackingFamilyResponseJourneysItemRouteOriginNameMax = 200;
-
-export const joinTrackingFamilyResponseJourneysItemRouteOriginLatitudeMin = -90;
-export const joinTrackingFamilyResponseJourneysItemRouteOriginLatitudeMax = 90;
-
-export const joinTrackingFamilyResponseJourneysItemRouteOriginLongitudeMin = -180;
-export const joinTrackingFamilyResponseJourneysItemRouteOriginLongitudeMax = 180;
-
-export const joinTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMin = -90;
-export const joinTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMax = 90;
-
-export const joinTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMin = -180;
-export const joinTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMax = 180;
-
-export const joinTrackingFamilyResponseJourneysItemRouteDurationMinutesMax = 1440;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemRouteNumberMax = 32;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemRouteNameMax = 120;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopNameMax = 200;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMin = -90;
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMax = 90;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMin = -180;
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMax = 180;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopNameMax = 200;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMin = -90;
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMax = 90;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMin = -180;
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMax = 180;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMin = 0;
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMax = 1440;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMin = 0;
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMax = 1440;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMin = 2;
-export const joinTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMax = 200000;
-
-export const joinTrackingFamilyResponseJourneysItemRouteLegsMax = 24;
-
-export const joinTrackingFamilyResponseJourneysItemProgressMetersMin = 0;
-
-export const joinTrackingFamilyResponseJourneysItemRouteMetersMin = 0;
-
-export const joinTrackingFamilyResponseJourneysItemProgressPercentMin = 0;
-export const joinTrackingFamilyResponseJourneysItemProgressPercentMax = 100;
-
-export const joinTrackingFamilyResponseJourneysItemEventsItemCheckpointKeyMax = 120;
-
-export const joinTrackingFamilyResponseJourneysItemEventsItemTitleMax = 160;
-
-export const joinTrackingFamilyResponseJourneysItemEventsItemSubtitleMax = 240;
-
-
-
-export const JoinTrackingFamilyResponse = zod.object({
-  "role": zod.enum(['parent', 'child']),
-  "familyId": zod.string().uuid(),
-  "familyName": zod.string(),
-  "invitationCode": zod.string().regex(joinTrackingFamilyResponseInvitationCodeRegExp).nullable(),
-  "children": zod.array(zod.object({
-  "id": zod.string().uuid(),
-  "name": zod.string()
-})),
-  "journeys": zod.array(zod.object({
-  "id": zod.string().uuid(),
-  "childId": zod.string().uuid(),
-  "childName": zod.string(),
-  "route": zod.object({
-  "routeId": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteRouteIdMax),
-  "name": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteNameMax),
-  "startStop": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteStartStopMax),
-  "destinationStop": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteDestinationStopMax),
-  "destination": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteDestinationMax),
-  "originName": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteOriginNameMax),
-  "originLatitude": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteOriginLatitudeMin).max(joinTrackingFamilyResponseJourneysItemRouteOriginLatitudeMax),
-  "originLongitude": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteOriginLongitudeMin).max(joinTrackingFamilyResponseJourneysItemRouteOriginLongitudeMax),
-  "destinationLatitude": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMin).max(joinTrackingFamilyResponseJourneysItemRouteDestinationLatitudeMax),
-  "destinationLongitude": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMin).max(joinTrackingFamilyResponseJourneysItemRouteDestinationLongitudeMax),
-  "source": zod.enum(['live']),
-  "mode": zod.enum(['walking', 'transit']),
-  "durationMinutes": zod.number().int().min(1).max(joinTrackingFamilyResponseJourneysItemRouteDurationMinutesMax),
-  "legs": zod.array(zod.object({
-  "type": zod.enum(['walk', 'bus']),
-  "routeNumber": zod.string().max(joinTrackingFamilyResponseJourneysItemRouteLegsItemRouteNumberMax).nullable(),
-  "routeName": zod.string().max(joinTrackingFamilyResponseJourneysItemRouteLegsItemRouteNameMax).nullable(),
-  "boardingStop": zod.object({
-  "name": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopNameMax),
-  "lat": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLatMax),
-  "lng": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemBoardingStopLngMax)
-}),
-  "alightingStop": zod.object({
-  "name": zod.string().min(1).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopNameMax),
-  "lat": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLatMax),
-  "lng": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemAlightingStopLngMax)
-}),
-  "durationMinutes": zod.number().int().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemDurationMinutesMax),
-  "delayMinutes": zod.number().int().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemDelayMinutesMax).nullable(),
-  "polyline": zod.string().min(joinTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMin).max(joinTrackingFamilyResponseJourneysItemRouteLegsItemPolylineMax)
-})).min(1).max(joinTrackingFamilyResponseJourneysItemRouteLegsMax)
-}),
-  "status": zod.enum(['awaiting_child', 'active', 'arrived', 'ended', 'expired', 'cancelled']),
-  "progressMeters": zod.number().min(joinTrackingFamilyResponseJourneysItemProgressMetersMin),
-  "routeMeters": zod.number().min(joinTrackingFamilyResponseJourneysItemRouteMetersMin),
-  "progressPercent": zod.number().int().min(joinTrackingFamilyResponseJourneysItemProgressPercentMin).max(joinTrackingFamilyResponseJourneysItemProgressPercentMax),
-  "locationHealth": zod.enum(['not_started', 'on_route', 'off_route', 'stale', 'unavailable']),
-  "lastLocationAt": zod.coerce.date().nullable(),
-  "expiresAt": zod.coerce.date(),
-  "events": zod.array(zod.object({
-  "id": zod.string().uuid(),
-  "checkpointKey": zod.string().max(joinTrackingFamilyResponseJourneysItemEventsItemCheckpointKeyMax),
-  "title": zod.string().max(joinTrackingFamilyResponseJourneysItemEventsItemTitleMax),
-  "subtitle": zod.string().max(joinTrackingFamilyResponseJourneysItemEventsItemSubtitleMax),
-  "source": zod.enum(['automatic', 'manual', 'correction', 'system']),
-  "corrected": zod.boolean(),
-  "createdAt": zod.coerce.date()
-}))
-}))
-})
-
-
-/**
- * @summary Parent-approve a provider-routed journey for a child to opt into
+ * @summary Create a current child journey after the parent has enabled live tracking
  */
 export const createTrackingJourneyBodyRouteRouteIdMax = 120;
 

@@ -6,7 +6,6 @@ import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet
 import { Button, Card, Chip, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
 import { GoogleJourneyMap } from '@/components/GoogleJourneyMap';
 import { JourneyMap } from '@/components/JourneyMap';
-import { LiveTrackingPanel } from '@/components/LiveTrackingPanel';
 import { LocationAutocompleteField, type SelectedPlace } from '@/components/LocationAutocompleteField';
 import { heatScore, useDemo } from '@/context/DemoContext';
 import { useColors } from '@/hooks/useColors';
@@ -521,8 +520,7 @@ export function JourneyScreen() {
           {journey.data.alerts.map((alert, index) => <Text key={`${index}-${alert}`} style={[styles.small, { color: colors.warning }]}>{alert}</Text>)}
         </>
       ) : null}
-      <LiveTrackingPanel journey={state.selectedJourney} />
-      <Text style={[styles.caption, { color: colors.mutedForeground }]}>Timings and alerts may change. Check the operator before traveling. Sharing is optional and begins only after parent approval and child consent.</Text>
+      <Text style={[styles.caption, { color: colors.mutedForeground }]}>Timings and alerts may change. Check the operator before traveling. If your parent enables live tracking in More, you can opt in to sharing this current trip from Home.</Text>
     </ScrollView>
   );
 }

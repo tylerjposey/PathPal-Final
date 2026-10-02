@@ -27,11 +27,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteMap } from '@/components/RouteMap';
 import { JourneyScreen } from '@/components/JourneyScreen';
 import { FamilySettings } from '@/components/FamilySettings';
+import { LiveTrackingPanel } from '@/components/LiveTrackingPanel';
 import {
   getGetReportQueryKey,
+  useGetTrackingProfile,
   useGetReport,
   useListReports,
   type CommunityReport,
+  type TrackingJourney,
 } from '@workspace/api-client-react';
 import {
   BrandMark,
@@ -67,6 +70,7 @@ import {
   reportAccountScope,
   reportError,
   reportListQueryKey,
+  trackingProfileQueryKey,
   toSafetyReport,
 } from '@/lib/reportApi';
 
@@ -194,6 +198,56 @@ function JourneyProgressTrack({
         <Feather name="user" size={12} color={colors.primary} />
       </Animated.View>
     </View>
+  );
+}
+
+function LiveSharedJourneyCard({ journey }: { journey: TrackingJourney }) {
+  const colors = useColors();
+  const latestEvent = journey.events.at(-1);
+
+  return (
+    <>
+      <SectionTitle title={`${journey.childName}’s live journey`} />
+      <Card>
+        <View style={styles.liveJourneyHeader}>
+          <View style={[styles.liveJourneyIcon, { backgroundColor: colors.secondary }]}>
+            <Feather name="navigation" size={18} color={colors.primary} />
+          </View>
+          <View style={styles.flex}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>{journey.route.name}</Text>
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+              {journey.route.startStop} to {journey.route.destinationStop}
+            </Text>
+          </View>
+          <Text style={[styles.liveJourneyPercent, { color: colors.primary }]}>
+            {journey.progressPercent}%
+          </Text>
+        </View>
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel={`${journey.childName}’s shared journey progress`}
+          accessibilityValue={{ min: 0, max: 100, now: journey.progressPercent }}
+          style={[styles.liveJourneyTrack, { backgroundColor: colors.secondary }]}
+        >
+          <View
+            style={[
+              styles.liveJourneyFill,
+              { width: `${journey.progressPercent}%`, backgroundColor: colors.success },
+            ]}
+          />
+        </View>
+        {latestEvent ? (
+          <View>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>{latestEvent.title}</Text>
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{latestEvent.subtitle}</Text>
+          </View>
+        ) : null}
+        <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+          Parents see route progress and checkpoints, not the child’s exact location.
+        </Text>
+      </Card>
+    </>
   );
 }
 
@@ -406,6 +460,19 @@ function Home({
 }) {
   const colors = useColors();
   const { state, confirmMilestone, reportBusDelay } = useDemo();
+  const trackingProfile = useGetTrackingProfile({
+    query: {
+      queryKey: trackingProfileQueryKey(state.account),
+      enabled: role === 'parent' || role === 'child',
+      refetchInterval: 20_000,
+      retry: false,
+    },
+  });
+  const liveJourney = role === 'parent'
+    ? [...(trackingProfile.data?.journeys ?? [])].reverse().find(
+      (item) => item.status === 'active' || item.status === 'arrived',
+    )
+    : undefined;
   const nowGreeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
   if (role === 'manager') return <ManagerHome onCase={onCase} />;
   if (role === 'worker') return <WorkerHome onCase={onCase} />;
@@ -449,17 +516,23 @@ function Home({
   const currentIndex = state.milestoneIndex;
   const isComplete = currentIndex >= milestones.length - 1;
   const nextMilestone = milestones[Math.min(currentIndex + 1, milestones.length - 1)];
-  const homeSubtitle = isComplete
+  const homeSubtitle = liveJourney
+    ? liveJourney.status === 'arrived'
+      ? `${liveJourney.childName} reached the destination.`
+      : `${liveJourney.childName} is sharing route progress.`
+    : isComplete
     ? role === 'parent'
       ? `${state.child.name} reached the destination.`
       : 'You reached your destination.'
     : role === 'parent'
       ? `${state.child.name}’s planned trip is ready.`
       : 'Your route is ready. Check in at each step.';
-  const routeName = journey.name;
-  const startStop = journey.startStop;
-  const destinationStop = journey.destinationStop;
-  const delay = Math.max(journey.delayMinutes ?? 0, state.busDelayed ? 8 : 0);
+  const routeName = liveJourney?.route.name ?? journey.name;
+  const startStop = liveJourney?.route.startStop ?? journey.startStop;
+  const destinationStop = liveJourney?.route.destinationStop ?? journey.destinationStop;
+  const delay = liveJourney
+    ? Math.max(0, ...liveJourney.route.legs.map((leg) => leg.delayMinutes ?? 0))
+    : Math.max(journey.delayMinutes ?? 0, state.busDelayed ? 8 : 0);
   return (
     <ScreenScroll>
       <ScreenHeader
@@ -481,18 +554,50 @@ function Home({
           ) : null}
         </View>
          <Text style={[styles.heroTitle, { color: colors.primaryForeground }]} numberOfLines={2}>{startStop}</Text>
-        <JourneyProgressTrack
-          milestones={milestones}
-          currentIndex={currentIndex}
-          travelerName={state.child.name}
-        />
-         <Text style={[styles.heroDestination, { color: colors.primaryForeground }]}>{destinationStop} · {journey.durationMinutes} min</Text>
+        {liveJourney ? (
+          <View style={styles.heroLiveProgress}>
+            <View
+              accessible
+              accessibilityRole="progressbar"
+              accessibilityLabel={`${liveJourney.childName}’s shared route progress`}
+              accessibilityValue={{ min: 0, max: 100, now: liveJourney.progressPercent }}
+              style={[styles.heroLiveProgressTrack, { backgroundColor: colors.secondary }]}
+            >
+              <View
+                style={[
+                  styles.heroLiveProgressFill,
+                  { width: `${liveJourney.progressPercent}%`, backgroundColor: colors.success },
+                ]}
+              />
+            </View>
+            <Text style={[styles.heroSub, { color: colors.primaryForeground }]}>
+              {liveJourney.progressPercent}% route progress · exact location stays private
+            </Text>
+          </View>
+        ) : (
+          <JourneyProgressTrack
+            milestones={milestones}
+            currentIndex={currentIndex}
+            travelerName={state.child.name}
+          />
+        )}
+        <Text style={[styles.heroDestination, { color: colors.primaryForeground }]}>
+          {destinationStop} · {liveJourney?.route.durationMinutes ?? journey.durationMinutes} min
+        </Text>
         <View style={styles.heroFooter}>
           <View>
             <Text style={[styles.heroMeta, { color: colors.primaryForeground }]}>
-              {currentIndex < 0 ? 'Awaiting first check-in' : `${milestones[currentIndex].title} confirmed`}
+              {liveJourney
+                ? liveJourney.status === 'arrived'
+                  ? 'Destination confirmed'
+                  : `${liveJourney.progressPercent}% of the route complete`
+                : currentIndex < 0
+                  ? 'Awaiting first check-in'
+                  : `${milestones[currentIndex].title} confirmed`}
             </Text>
-            <Text style={[styles.heroSub, { color: colors.primaryForeground }]}>Planned route only · no live tracking</Text>
+            <Text style={[styles.heroSub, { color: colors.primaryForeground }]}>
+              {liveJourney ? 'Route progress and checkpoints only' : 'Planned route only · no live tracking'}
+            </Text>
              {state.tripUpdatedAt ? <Text style={[styles.heroSub, { color: colors.primaryForeground }]}>Updated {formatTime(state.tripUpdatedAt)}</Text> : null}
           </View>
           <Pressable onPress={() => onNavigate('map')} style={[styles.mapIcon, { backgroundColor: colors.primaryForeground }]}>
@@ -540,6 +645,7 @@ function Home({
               <Text style={[styles.quickSub, { color: colors.mutedForeground }]}>Notify your family</Text>
             </Pressable>
           </View>
+          <LiveTrackingPanel journey={state.selectedJourney ?? null} />
           <Pressable onPress={onSOS} style={[styles.sosCard, { backgroundColor: colors.destructive }]}>
             <View style={styles.sosCopy}>
               <Text style={[styles.sosTitle, { color: colors.destructiveForeground }]}>Need help?</Text>
@@ -552,28 +658,38 @@ function Home({
         </>
       ) : (
         <>
-          <SectionTitle title={`${state.child.name}’s progress`} />
-          <Card>
-            {milestones.map((milestone, index) => {
-              const complete = index <= currentIndex;
-              const current = index === currentIndex + 1 && !isComplete;
-              return (
-                <View key={milestone.key} style={styles.timelineRow}>
-                  <View style={styles.timelineVisual}>
-                    <View style={[styles.timelineDot, { backgroundColor: complete ? colors.success : current ? colors.primary : colors.muted, borderColor: current ? colors.primary : colors.border }]}>
-                      {complete ? <Feather name="check" size={11} color={colors.primaryForeground} /> : null}
+          {liveJourney ? (
+            <LiveSharedJourneyCard journey={liveJourney} />
+          ) : (
+            <>
+              <SectionTitle title={`${state.child.name}’s progress`} />
+              <Card>
+                {milestones.map((milestone, index) => {
+                  const complete = index <= currentIndex;
+                  const current = index === currentIndex + 1 && !isComplete;
+                  return (
+                    <View key={milestone.key} style={styles.timelineRow}>
+                      <View style={styles.timelineVisual}>
+                        <View style={[styles.timelineDot, { backgroundColor: complete ? colors.success : current ? colors.primary : colors.muted, borderColor: current ? colors.primary : colors.border }]}>
+                          {complete ? <Feather name="check" size={11} color={colors.primaryForeground} /> : null}
+                        </View>
+                        {index < milestones.length - 1 ? <View style={[styles.timelineBar, { backgroundColor: complete ? colors.success : colors.border }]} /> : null}
+                      </View>
+                      <View style={[styles.timelineCopy, index < milestones.length - 1 ? { paddingBottom: 17 } : null]}>
+                        <Text style={[styles.timelineTitle, { color: colors.foreground }]}>{milestone.title}</Text>
+                        <Text style={[styles.timelineSub, { color: colors.mutedForeground }]}>{milestone.subtitle}{milestone.delayMinutes ? ` · ${milestone.delayMinutes} min delay` : ''}</Text>
+                      </View>
                     </View>
-                    {index < milestones.length - 1 ? <View style={[styles.timelineBar, { backgroundColor: complete ? colors.success : colors.border }]} /> : null}
-                  </View>
-                  <View style={[styles.timelineCopy, index < milestones.length - 1 ? { paddingBottom: 17 } : null]}>
-                    <Text style={[styles.timelineTitle, { color: colors.foreground }]}>{milestone.title}</Text>
-                     <Text style={[styles.timelineSub, { color: colors.mutedForeground }]}>{milestone.subtitle}{milestone.delayMinutes ? ` · ${milestone.delayMinutes} min delay` : ''}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </Card>
-           {state.tripUpdatedAt && currentIndex >= 0 ? <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Latest child update: {formatTime(state.tripUpdatedAt)} · {milestones[currentIndex]?.title}</Text> : null}
+                  );
+                })}
+              </Card>
+              {state.tripUpdatedAt && currentIndex >= 0 ? (
+                <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+                  Latest child update: {formatTime(state.tripUpdatedAt)} · {milestones[currentIndex]?.title}
+                </Text>
+              ) : null}
+            </>
+          )}
           <SectionTitle title="Family snapshot" />
           <Card>
             <View style={styles.metrics}>
@@ -1754,6 +1870,9 @@ const styles = StyleSheet.create({
   delayText: { fontFamily: 'Inter_700Bold', fontSize: 9 },
   heroTitle: { fontFamily: 'Inter_700Bold', fontSize: 24, letterSpacing: -0.5, marginTop: 25 },
   journeyProgressTrack: { height: 52, marginVertical: 10, position: 'relative', overflow: 'visible' },
+  heroLiveProgress: { gap: 4, marginVertical: 14 },
+  heroLiveProgressTrack: { height: 7, borderRadius: 4, overflow: 'hidden' },
+  heroLiveProgressFill: { height: '100%', borderRadius: 4 },
   journeyProgressBase: { position: 'absolute', left: journeyProgressInset, right: journeyProgressInset, top: 33, height: 2, borderRadius: 1, opacity: 0.42 },
   journeyProgressFill: { position: 'absolute', left: journeyProgressInset, top: 33, height: 2, borderRadius: 1 },
   journeyCheckpoint: { position: 'absolute', top: 25, width: journeyCheckpointSize, height: journeyCheckpointSize, borderWidth: 1.5, borderRadius: journeyCheckpointSize / 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
@@ -1769,6 +1888,11 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   cardTitle: { fontFamily: 'Inter_700Bold', fontSize: 15, lineHeight: 20 },
   cardBody: { fontFamily: 'Inter_400Regular', fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  liveJourneyHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  liveJourneyIcon: { width: 40, height: 40, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  liveJourneyPercent: { fontFamily: 'Inter_700Bold', fontSize: 15 },
+  liveJourneyTrack: { height: 8, borderRadius: 8, overflow: 'hidden', marginVertical: 6 },
+  liveJourneyFill: { height: '100%', borderRadius: 8 },
   twoColumns: { flexDirection: 'row', gap: 12, marginTop: 16 },
   quickCard: { flex: 1, borderWidth: 1, borderRadius: 21, padding: 15, minHeight: 145 },
   quickIcon: { width: 43, height: 43, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },

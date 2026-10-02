@@ -261,7 +261,8 @@ test("unauthenticated, forged, and expired sessions cannot read or mutate report
   const reportId = createdIds[0];
   assert.ok(reportId, "A test report should exist.");
   const expiredToken = signedToken("manager", "authorization-test-expired", 1);
-  const forgedToken = `${managerToken.slice(0, -1)}${managerToken.endsWith("a") ? "b" : "a"}`;
+  const signatureStart = managerToken.indexOf(".") + 1;
+  const forgedToken = `${managerToken.slice(0, signatureStart)}${managerToken[signatureStart] === "a" ? "b" : "a"}${managerToken.slice(signatureStart + 1)}`;
 
   for (const token of [undefined, forgedToken, expiredToken]) {
     assert.equal((await api("/reports", token)).status, 401);

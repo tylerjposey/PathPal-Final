@@ -440,33 +440,39 @@ paths:
     get:
       operationId: getTrackingProfile
       tags: [tracking]
-      summary: Get the current Clerk account's separate live-tracking profile
+      summary: Get the current parent or child live-tracking profile
       security:
         - bearerAuth: []
       responses:
         "200":
-          description: Account-backed family profile and active journey summaries
+          description: Existing app account's family setting and journey summaries
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TrackingProfileResponse"
         "401":
-          description: Missing or invalid Clerk session
+          description: Missing or invalid app session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The session is not a parent or child account
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: The account has not joined a tracking family
+          description: A family has not been created for this demo account
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /tracking/family:
-    post:
-      operationId: createTrackingFamily
+  /tracking/settings:
+    patch:
+      operationId: updateTrackingSettings
       tags: [tracking]
-      summary: Create a family owned by the current Clerk parent account
+      summary: Enable or disable child live tracking for the existing family
       security:
         - bearerAuth: []
       requestBody:
@@ -474,60 +480,22 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TrackingFamilyInput"
-      responses:
-        "201":
-          description: New account-backed tracking family and invitation code
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TrackingProfileResponse"
-        "400":
-          description: Invalid family name
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: This account already belongs to a tracking family
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /tracking/family/join:
-    post:
-      operationId: joinTrackingFamily
-      tags: [tracking]
-      summary: Join a tracking family as a distinct Clerk child account
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TrackingFamilyJoinInput"
+              $ref: "#/components/schemas/UpdateTrackingSettingsInput"
       responses:
         "200":
-          description: Joined account-backed tracking family
+          description: Updated family live-tracking setting
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TrackingProfileResponse"
-        "400":
-          description: Invalid invitation code or child name
+        "401":
+          description: Missing or invalid app session
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Invitation code was not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: This account is already a family member
+        "403":
+          description: Only the parent account can change family tracking settings
           content:
             application/json:
               schema:
@@ -536,7 +504,7 @@ paths:
     post:
       operationId: createTrackingJourney
       tags: [tracking]
-      summary: Parent-approve a provider-routed journey for a child to opt into
+      summary: Create a current child journey after the parent has enabled live tracking
       security:
         - bearerAuth: []
       requestBody:
@@ -559,7 +527,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Only a parent in this tracking family can approve a journey
+          description: The family has not enabled live tracking or the session is not the child
           content:
             application/json:
               schema:
@@ -987,17 +955,11 @@ components:
         childName: { type: string, minLength: 1, maxLength: 120 }
         username: { type: string, minLength: 3, maxLength: 60 }
       required: [invitationCode, childName, username]
-    TrackingFamilyInput:
+    UpdateTrackingSettingsInput:
       type: object
       properties:
-        familyName: { type: string, minLength: 1, maxLength: 120 }
-      required: [familyName]
-    TrackingFamilyJoinInput:
-      type: object
-      properties:
-        invitationCode: { type: string, pattern: "^[0-9]{10}$" }
-        displayName: { type: string, minLength: 1, maxLength: 120 }
-      required: [invitationCode, displayName]
+        enabled: { type: boolean }
+      required: [enabled]
     TrackingChild:
       type: object
       properties:
@@ -1086,14 +1048,14 @@ components:
         role: { type: string, enum: [parent, child] }
         familyId: { type: string, format: uuid }
         familyName: { type: string }
-        invitationCode: { type: ["string", "null"], pattern: "^[0-9]{10}$" }
+        liveTrackingEnabled: { type: boolean }
         children:
           type: array
           items: { $ref: "#/components/schemas/TrackingChild" }
         journeys:
           type: array
           items: { $ref: "#/components/schemas/TrackingJourney" }
-      required: [role, familyId, familyName, invitationCode, children, journeys]
+      required: [role, familyId, familyName, liveTrackingEnabled, children, journeys]
     TrackingJourneyResponse:
       type: object
       properties:

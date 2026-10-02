@@ -13,11 +13,7 @@ export interface TrackingProfileResponse {
   role: TrackingProfileResponseRole;
   familyId: string;
   familyName: string;
-  /**
-     * @nullable
-     * @pattern ^[0-9]{10}$
-     */
-  invitationCode: string | null;
+  liveTrackingEnabled: boolean;
   children: TrackingChild[];
   journeys: TrackingJourney[];
 }

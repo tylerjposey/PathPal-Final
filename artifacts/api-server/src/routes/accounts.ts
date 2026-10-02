@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { clerkClient } from "@clerk/express";
+import { clerkClient, getAuth } from "@clerk/express";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import {
@@ -262,6 +262,10 @@ router.post("/accounts/parent", async (req, res): Promise<void> => {
   }
   try {
     const userId = requireSignedInUserId(req);
+    const clerkUserId = getAuth(req).userId;
+    if (!clerkUserId || clerkUserId !== userId) {
+      throw new HttpError(401, "A verified email account is required to create a family.");
+    }
     const displayName = cleanName(parsed.data.displayName, 80);
     const familyName = cleanName(parsed.data.familyName, 100);
     const now = new Date();
@@ -314,11 +318,27 @@ router.post("/accounts/child", async (req, res): Promise<void> => {
   }
   try {
     const userId = requireSignedInUserId(req);
+    const clerkUserId = getAuth(req).userId;
+    if (!clerkUserId || clerkUserId !== userId) {
+      throw new HttpError(401, "A verified email account is required to join a family.");
+    }
     const displayName = cleanName(parsed.data.displayName, 80);
     const normalizedCode = parsed.data.invitationCode.trim().toUpperCase();
     if (!/^[A-Z0-9]{6,24}$/.test(normalizedCode)) {
       throw new HttpError(400, "Family invitation code is invalid.");
     }
+    const phoneNumber = parsed.data.phoneNumber.trim();
+    const phoneDigits = phoneNumber.replace(/\D/g, "");
+    if (phoneDigits.length < 7 || phoneDigits.length > 15) {
+      throw new HttpError(400, "Enter a phone number with 7 to 15 digits.");
+    }
+    const clerkUser = await clerkClient.users.getUser(clerkUserId);
+    await clerkClient.users.updateUserMetadata(clerkUserId, {
+      privateMetadata: {
+        ...clerkUser.privateMetadata,
+        pathpalContactPhoneNumber: phoneNumber,
+      },
+    });
     const now = new Date();
     await db.transaction(async (tx) => {
       const [family] = await tx.select().from(familyGroupsTable)

@@ -633,6 +633,49 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/PublicHeatCell"
+  /reports/session:
+    post:
+      operationId: createReportSession
+      tags: [reports]
+      summary: Start a role-scoped demonstration session in development
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportSessionInput"
+      responses:
+        "200":
+          description: Signed demonstration session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSession"
+        "400":
+          description: Invalid session input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Demonstration credentials were rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Demonstration sessions are disabled outside development
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Demonstration session signing is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /reports:
     get:
       operationId: listReports
@@ -995,7 +1038,8 @@ components:
       properties:
         displayName: { type: string, minLength: 1, maxLength: 80 }
         invitationCode: { type: string, minLength: 6, maxLength: 24 }
-      required: [displayName, invitationCode]
+        phoneNumber: { type: string, minLength: 7, maxLength: 24 }
+      required: [displayName, invitationCode, phoneNumber]
     StaffInvitationAcceptance:
       type: object
       properties:
@@ -1384,6 +1428,29 @@ components:
         changedBy: { type: string }
         changedAt: { type: string, format: date-time }
       required: [fromStatus, toStatus, changedBy, changedAt]
+    ReportSessionInput:
+      type: object
+      properties:
+        username: { type: string, minLength: 1, maxLength: 128 }
+        password: { type: string, minLength: 1, maxLength: 128 }
+        role:
+          type: string
+          enum: [parent, child, manager, worker]
+        verificationCode: { type: string, minLength: 4, maxLength: 8 }
+      required: [username, password, role, verificationCode]
+    ReportSession:
+      type: object
+      properties:
+        accessToken: { type: string, minLength: 1 }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresAt: { type: string, format: date-time }
+        role:
+          type: string
+          enum: [parent, child, manager, worker]
+        userId: { type: string }
+        displayName: { type: string }
+        prototypeOnly: { type: boolean, enum: [true] }
+      required: [accessToken, tokenType, expiresAt, role, userId, displayName, prototypeOnly]
     CommunityReportInput:
       type: object
       properties:

@@ -6,6 +6,7 @@ import {
   useListReports,
   type CommunityReportInput,
   type CommunityReportUpdate,
+  type ReportSession,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -203,6 +204,15 @@ export interface DemoUser {
   role: Role;
   reportServiceUnavailable?: boolean;
   reportServiceError?: string;
+}
+
+export interface PendingSignUp {
+  role: 'parent' | 'child';
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  familyCode: string;
 }
 
 export interface ChildProfile {
@@ -425,11 +435,18 @@ interface DemoContextValue {
   hydrated: boolean;
   reportsError: boolean;
   reportsLoading: boolean;
+  demoSession: ReportSession | null;
+  pendingSignUp: PendingSignUp | null;
   saveParentProfile: (profile: ParentProfile) => Promise<void>;
   saveChildProfile: (id: string, profile: ChildProfile) => Promise<void>;
   saveFamilySettings: (settings: { familyName: string; invitationCode: string }) => Promise<void>;
   saveNotificationPreferences: (preferences: NotificationPreferences) => Promise<void>;
   setAccount: (account: DemoUser | null) => void;
+  setDemoSession: (session: ReportSession) => void;
+  clearDemoSession: () => void;
+  setDemoAccount: (account: DemoUser | null) => void;
+  setPendingSignUp: (draft: PendingSignUp | null) => void;
+  clearPendingSignUp: () => void;
   signOut: () => void;
   clearUserScopedState: () => void;
   resetDemo: () => Promise<void>;
@@ -463,6 +480,8 @@ const DemoContext = createContext<DemoContextValue | null>(null);
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<DemoState>(createInitialDemoState);
   const [hydrated, setHydrated] = useState(false);
+  const [demoSession, setDemoSessionState] = useState<ReportSession | null>(null);
+  const [pendingSignUp, setPendingSignUpState] = useState<PendingSignUp | null>(null);
   const queryClient = useQueryClient();
   const activeReportScope = state.account ? reportAccountScope(state.account) : 'anonymous';
   const reportsQuery = useListReports({
@@ -626,11 +645,38 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setDemoSession = useCallback((session: ReportSession) => {
+    queryClient.clear();
+    setState(privateDataFree(createInitialDemoState()));
+    setPendingSignUpState(null);
+    setDemoSessionState(session);
+  }, [queryClient]);
+
+  const clearDemoSession = useCallback(() => {
+    setDemoSessionState(null);
+  }, []);
+
+  const setDemoAccount = useCallback((account: DemoUser | null) => {
+    setState((current) => ({ ...privateDataFree(current), account }));
+  }, []);
+
+  const setPendingSignUp = useCallback((draft: PendingSignUp | null) => {
+    setPendingSignUpState(draft);
+  }, []);
+
+  const clearPendingSignUp = useCallback(() => {
+    setPendingSignUpState(null);
+  }, []);
+
   const setAccount = useCallback((_account: DemoUser | null) => {
     clearUserScopedState();
   }, [clearUserScopedState]);
 
-  const signOut = clearUserScopedState;
+  const signOut = useCallback(() => {
+    clearUserScopedState();
+    clearDemoSession();
+    clearPendingSignUp();
+  }, [clearUserScopedState, clearDemoSession, clearPendingSignUp]);
 
   const resetDemo = useCallback(async () => {
     const next = privateDataFree(createInitialDemoState());
@@ -928,11 +974,18 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     hydrated,
     reportsError: Boolean(currentQueryMatchesScope && reportsQuery.isError && !state.account?.reportServiceUnavailable),
     reportsLoading: Boolean(currentQueryMatchesScope && state.account && !state.account.reportServiceUnavailable && (reportsQuery.isPending || reportsQuery.isFetching)),
+    demoSession,
+    pendingSignUp,
     saveParentProfile,
     saveChildProfile,
     saveFamilySettings,
     saveNotificationPreferences,
     setAccount,
+    setDemoSession,
+    clearDemoSession,
+    setDemoAccount,
+    setPendingSignUp,
+    clearPendingSignUp,
     signOut,
     clearUserScopedState,
     resetDemo,
@@ -955,6 +1008,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     state,
     visibleState,
     hydrated,
+    demoSession,
+    pendingSignUp,
     reportsQuery.isError,
     reportsQuery.isPending,
     reportsQuery.isFetching,
@@ -964,6 +1019,11 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     saveFamilySettings,
     saveNotificationPreferences,
     setAccount,
+    setDemoSession,
+    clearDemoSession,
+    setDemoAccount,
+    setPendingSignUp,
+    clearPendingSignUp,
     signOut,
     clearUserScopedState,
     resetDemo,

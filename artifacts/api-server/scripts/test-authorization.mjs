@@ -13,6 +13,7 @@ const artifactDir = path.resolve(scriptDir, "..");
 const outputDir = path.join(artifactDir, ".authorization-test-build");
 const testFiles = [
   "pathpal-auth.test.ts",
+  "pathpal-demo-auth.test.ts",
   "family-journeys.routes.test.ts",
   "journey-routes.test.ts",
 ];

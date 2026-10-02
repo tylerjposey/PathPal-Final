@@ -64,6 +64,11 @@ export interface ChildAccountInput {
      * @maxLength 24
      */
   invitationCode: string;
+  /**
+     * @minLength 7
+     * @maxLength 24
+     */
+  phoneNumber: string;
 }
 
 export interface StaffInvitationAcceptance {
@@ -594,6 +599,63 @@ export interface ReportStatusEvent {
 export type CommunityReportDetail = CommunityReport & {
   statusHistory: ReportStatusEvent[];
 };
+
+export type ReportSessionInputRole = typeof ReportSessionInputRole[keyof typeof ReportSessionInputRole];
+
+
+export const ReportSessionInputRole = {
+  parent: 'parent',
+  child: 'child',
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
+export interface ReportSessionInput {
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  username: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     */
+  password: string;
+  role: ReportSessionInputRole;
+  /**
+     * @minLength 4
+     * @maxLength 8
+     */
+  verificationCode: string;
+}
+
+export type ReportSessionTokenType = typeof ReportSessionTokenType[keyof typeof ReportSessionTokenType];
+
+
+export const ReportSessionTokenType = {
+  Bearer: 'Bearer',
+} as const;
+
+export type ReportSessionRole = typeof ReportSessionRole[keyof typeof ReportSessionRole];
+
+
+export const ReportSessionRole = {
+  parent: 'parent',
+  child: 'child',
+  manager: 'manager',
+  worker: 'worker',
+} as const;
+
+export interface ReportSession {
+  /** @minLength 1 */
+  accessToken: string;
+  tokenType: ReportSessionTokenType;
+  expiresAt: string;
+  role: ReportSessionRole;
+  userId: string;
+  displayName: string;
+  prototypeOnly: true;
+}
 
 export type CommunityReportInputLocation = typeof CommunityReportInputLocation[keyof typeof CommunityReportInputLocation];
 

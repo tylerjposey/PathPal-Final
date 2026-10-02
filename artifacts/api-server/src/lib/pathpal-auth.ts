@@ -8,8 +8,9 @@ import {
   familyMembershipsTable,
   type CommunityReportRow,
 } from "@workspace/db";
+import { getPathPalDemoClaims, type PathPalDemoRole } from "./pathpal-demo-auth";
 
-export type PathPalRole = "parent" | "child" | "manager" | "worker";
+export type PathPalRole = PathPalDemoRole;
 
 export type PathPalPrincipal = {
   userId: string;
@@ -30,18 +31,24 @@ export class HttpError extends Error {
 }
 
 export function requireSignedInUserId(req: Request): string {
+  const demoClaims = getPathPalDemoClaims(req);
+  if (demoClaims) return demoClaims.sub;
   const userId = getAuth(req).userId;
   if (!userId) throw new HttpError(401, "A valid signed-in account is required.");
   return userId;
 }
 
 export async function authenticateAccount(req: Request): Promise<PathPalPrincipal> {
-  const userId = requireSignedInUserId(req);
+  const demoClaims = getPathPalDemoClaims(req);
+  const userId = demoClaims?.sub ?? requireSignedInUserId(req);
   const [account] = await db.select().from(accountProfilesTable)
     .where(eq(accountProfilesTable.userId, userId)).limit(1);
   if (!account) throw new HttpError(409, "Complete account setup before using PathPal.");
   if (!["parent", "child", "manager", "worker"].includes(account.role)) {
     throw new HttpError(403, "This account has no active PathPal role.");
+  }
+  if (demoClaims && account.role !== demoClaims.role) {
+    throw new HttpError(403, "The demonstration session role is no longer valid.");
   }
 
   let familyId: string | null = null;

@@ -442,11 +442,15 @@ export const createChildAccountBodyDisplayNameMax = 80;
 export const createChildAccountBodyInvitationCodeMin = 6;
 export const createChildAccountBodyInvitationCodeMax = 24;
 
+export const createChildAccountBodyPhoneNumberMin = 7;
+export const createChildAccountBodyPhoneNumberMax = 24;
+
 
 
 export const CreateChildAccountBody = zod.object({
   "displayName": zod.string().min(1).max(createChildAccountBodyDisplayNameMax),
-  "invitationCode": zod.string().min(createChildAccountBodyInvitationCodeMin).max(createChildAccountBodyInvitationCodeMax)
+  "invitationCode": zod.string().min(createChildAccountBodyInvitationCodeMin).max(createChildAccountBodyInvitationCodeMax),
+  "phoneNumber": zod.string().min(createChildAccountBodyPhoneNumberMin).max(createChildAccountBodyPhoneNumberMax)
 })
 
 export const CreateChildAccountResponse = zod.object({
@@ -1028,6 +1032,39 @@ export const GetPublicReportHeatResponseItem = zod.object({
   "intensity": zod.number().min(getPublicReportHeatResponseIntensityMin).max(getPublicReportHeatResponseIntensityMax)
 })
 export const GetPublicReportHeatResponse = zod.array(GetPublicReportHeatResponseItem)
+
+
+/**
+ * @summary Start a role-scoped demonstration session in development
+ */
+export const createReportSessionBodyUsernameMax = 128;
+
+export const createReportSessionBodyPasswordMax = 128;
+
+export const createReportSessionBodyVerificationCodeMin = 4;
+export const createReportSessionBodyVerificationCodeMax = 8;
+
+
+
+export const CreateReportSessionBody = zod.object({
+  "username": zod.string().min(1).max(createReportSessionBodyUsernameMax),
+  "password": zod.string().min(1).max(createReportSessionBodyPasswordMax),
+  "role": zod.enum(['parent', 'child', 'manager', 'worker']),
+  "verificationCode": zod.string().min(createReportSessionBodyVerificationCodeMin).max(createReportSessionBodyVerificationCodeMax)
+})
+
+
+
+
+export const CreateReportSessionResponse = zod.object({
+  "accessToken": zod.string().min(1),
+  "tokenType": zod.enum(['Bearer']),
+  "expiresAt": zod.coerce.date(),
+  "role": zod.enum(['parent', 'child', 'manager', 'worker']),
+  "userId": zod.string(),
+  "displayName": zod.string(),
+  "prototypeOnly": zod.literal(true)
+})
 
 
 /**

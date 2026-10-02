@@ -10,6 +10,8 @@ import {
 import {
   CreateReportBody,
   CreateReportResponse,
+  CreateReportSessionBody,
+  CreateReportSessionResponse,
   GetReportParams,
   GetReportResponse,
   GetReportPhotoParams,
@@ -27,6 +29,14 @@ import {
   requireApprovedFamilyMember,
   type PathPalPrincipal,
 } from "../lib/pathpal-auth";
+import {
+  createPathPalDemoToken,
+  ensurePathPalDemoAccounts,
+  getPathPalDemoUser,
+  isPathPalDemoAuthEnabled,
+  PATHPAL_DEMO_FAMILY_ID,
+  verifyPathPalDemoCredentials,
+} from "../lib/pathpal-demo-auth";
 import { reportObjectStorage, resolveReportStorageLocation } from "../lib/report-storage";
 
 const router: IRouter = Router();
@@ -43,8 +53,8 @@ const locations = [
   { name: "Santa Clara", x: 17, y: 45, latitude: 37.3541, longitude: -121.9552 },
 ] as const;
 const westCleanTeam = "San Jose – West Clean Team";
-const demoFamilyId = "demo-family-ai4sg";
-const demoCitizenId = "demo-citizen-ai4sg";
+const demoFamilyId = PATHPAL_DEMO_FAMILY_ID;
+const demoReporterUserId = "demo-parent-ai4sg";
 const storage = reportObjectStorage;
 
 type SeedRow = {
@@ -71,6 +81,47 @@ const seed: SeedRow[] = [
   { id: "OR-2459", category: "Other concerns", description: "A recycling bin is overflowing at the transit plaza.", severity: 4, status: "Submitted", location: "Santa Clara", x: 18, y: 47, latitude: 37.3545, longitude: -121.956, hoursAgo: 92, assignedTeam: null },
 ];
 const demoIds = seed.map(({ id }) => id);
+
+router.post("/reports/session", async (req, res): Promise<void> => {
+  if (!isPathPalDemoAuthEnabled()) {
+    res.status(404).json({ error: "Demonstration sessions are disabled outside development." });
+    return;
+  }
+
+  const parsed = CreateReportSessionBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid demonstration session input." });
+    return;
+  }
+  if (!verifyPathPalDemoCredentials(parsed.data)) {
+    res.status(401).json({ error: "Demonstration credentials were rejected." });
+    return;
+  }
+
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    res.status(503).json({ error: "Demonstration session signing is unavailable." });
+    return;
+  }
+
+  try {
+    await ensurePathPalDemoAccounts();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
+    const user = getPathPalDemoUser(parsed.data.role);
+    res.json(CreateReportSessionResponse.parse({
+      accessToken: createPathPalDemoToken(parsed.data.role, expiresAt, secret),
+      tokenType: "Bearer",
+      expiresAt: expiresAt.toISOString(),
+      role: parsed.data.role,
+      userId: user.userId,
+      displayName: user.displayName,
+      prototypeOnly: true,
+    }));
+  } catch (error) {
+    req.log.error({ err: error instanceof Error ? error.message : "unknown" }, "PathPal demo session could not be created");
+    res.status(503).json({ error: "Demonstration session could not be created." });
+  }
+});
 
 function reportResponse(row: CommunityReportRow) {
   return {
@@ -170,8 +221,10 @@ async function seedInitialReportsIdempotently(): Promise<void> {
       priority: report.severity >= 8 ? "High" : report.severity >= 5 ? "Medium" : "Low",
       assignedTeam: report.assignedTeam,
       awardedPoints: report.status === "Resolved",
-      reporterAccountId: demoCitizenId,
+      reporterAccountId: demoReporterUserId,
       familyAccountId: demoFamilyId,
+      reporterUserId: demoReporterUserId,
+      familyId: demoFamilyId,
       assignedAt: report.status === "Assigned" || report.status === "Resolved" ? submittedAt : null,
       resolvedAt: report.status === "Resolved" ? submittedAt : null,
     }).onConflictDoNothing();
@@ -181,8 +234,10 @@ async function seedInitialReportsIdempotently(): Promise<void> {
     const missingFields: Partial<typeof communityReportsTable.$inferInsert> = {};
     if (existing.latitude == null) missingFields.latitude = report.latitude;
     if (existing.longitude == null) missingFields.longitude = report.longitude;
-    if (existing.reporterAccountId == null) missingFields.reporterAccountId = demoCitizenId;
-    if (existing.familyAccountId == null) missingFields.familyAccountId = demoFamilyId;
+    if (existing.reporterAccountId !== demoReporterUserId) missingFields.reporterAccountId = demoReporterUserId;
+    if (existing.familyAccountId !== demoFamilyId) missingFields.familyAccountId = demoFamilyId;
+    if (existing.reporterUserId !== demoReporterUserId) missingFields.reporterUserId = demoReporterUserId;
+    if (existing.familyId !== demoFamilyId) missingFields.familyId = demoFamilyId;
     if (existing.selectedCategory == null) missingFields.selectedCategory = report.category;
     if (existing.photoReference == null) missingFields.photoReference = "No photo provided";
     if (existing.assignedAt == null && (existing.status === "Assigned" || existing.status === "Resolved")) {
@@ -227,8 +282,10 @@ async function restoreDemoReports(): Promise<CommunityReportRow[]> {
       priority: report.severity >= 8 ? "High" : report.severity >= 5 ? "Medium" : "Low",
       assignedTeam: report.assignedTeam,
       awardedPoints: report.status === "Resolved",
-      reporterAccountId: demoCitizenId,
+      reporterAccountId: demoReporterUserId,
       familyAccountId: demoFamilyId,
+      reporterUserId: demoReporterUserId,
+      familyId: demoFamilyId,
       managerNotes: null,
       routeAssignment: null,
       assignedAt: report.status === "Assigned" || report.status === "Resolved" ? submittedAt : null,
@@ -255,9 +312,11 @@ async function restoreDemoReports(): Promise<CommunityReportRow[]> {
         recommendedDepartment: analysis.recommendedDepartment,
         priority: report.severity >= 8 ? "High" : report.severity >= 5 ? "Medium" : "Low",
         assignedTeam: report.assignedTeam,
-        awardedPoints: report.status === "Resolved",
-        reporterAccountId: demoCitizenId,
+        reporterAccountId: demoReporterUserId,
         familyAccountId: demoFamilyId,
+        reporterUserId: demoReporterUserId,
+        familyId: demoFamilyId,
+        awardedPoints: report.status === "Resolved",
         managerNotes: null,
         routeAssignment: null,
         assignedAt: report.status === "Assigned" || report.status === "Resolved" ? submittedAt : null,

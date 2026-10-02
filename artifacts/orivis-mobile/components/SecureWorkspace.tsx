@@ -92,6 +92,10 @@ export function SecureWorkspace() {
   const queryClient = useQueryClient();
   const demo = useDemo();
   const previousUser = useRef<string | null>(null);
+  const demoSession = demo.demoSession;
+  const isDemoIdentity = !!demoSession && !userId;
+  const activeIdentityId = userId ?? (isDemoIdentity ? demoSession.userId : null);
+  const hasIdentity = !!activeIdentityId;
   const [page, setPage] = useState<Page>('overview');
   const [selectedReport, setSelectedReport] = useState<CommunityReport | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -99,37 +103,58 @@ export function SecureWorkspace() {
   const [globalError, setGlobalError] = useState('');
 
   useEffect(() => {
-    setAuthTokenGetter(() => getToken());
-    if (previousUser.current !== (userId ?? null)) {
+    setAuthTokenGetter(() => userId
+      ? getToken()
+      : Promise.resolve(isDemoIdentity ? demoSession?.accessToken ?? null : null));
+    if (previousUser.current !== activeIdentityId) {
       queryClient.clear();
-      demo.clearUserScopedState();
+      if (isDemoIdentity && demoSession) {
+        demo.setDemoAccount({
+          name: demoSession.displayName,
+          username: 'AI4SG',
+          role: demoSession.role,
+        });
+      } else {
+        demo.clearUserScopedState();
+        if (userId && demoSession) demo.clearDemoSession();
+      }
       setPage('overview');
       setSelectedReport(null);
     }
-    previousUser.current = userId ?? null;
+    previousUser.current = activeIdentityId;
     return () => setAuthTokenGetter(null);
-  }, [getToken, userId, queryClient, demo.clearUserScopedState]);
+  }, [
+    getToken,
+    userId,
+    queryClient,
+    activeIdentityId,
+    isDemoIdentity,
+    demoSession,
+    demo.setDemoAccount,
+    demo.clearDemoSession,
+    demo.clearUserScopedState,
+  ]);
 
   const accountQuery = useGetAccountStatus({
-    query: { queryKey: getGetAccountStatusQueryKey(), enabled: !!userId, retry: false },
+    query: { queryKey: getGetAccountStatusQueryKey(), enabled: hasIdentity, retry: false },
   });
   const { approveRequest, rejectRequest, markRead } = useWorkspaceActions();
   const account = accountQuery.data;
   const familyAllowed = account?.status === 'parent' || account?.status === 'child_approved';
   const staffAllowed = account?.status === 'manager' || account?.status === 'worker';
   const reportAllowed = isAuthorizedWorkspace(account?.status);
-  const userScope = [userId ?? '', account?.status ?? '', account?.familyId ?? '', account?.teamName ?? ''];
+  const userScope = [activeIdentityId ?? '', account?.status ?? '', account?.familyId ?? '', account?.teamName ?? ''];
   const familyQuery = useGetMyFamily({
-    query: { queryKey: [...getGetMyFamilyQueryKey(), ...userScope], enabled: !!userId && familyAllowed },
+    query: { queryKey: [...getGetMyFamilyQueryKey(), ...userScope], enabled: hasIdentity && familyAllowed },
   });
   const reportsQuery = useListReports({
-    query: { queryKey: [...getListReportsQueryKey(), ...userScope], enabled: !!userId && reportAllowed, staleTime: 8_000 },
+    query: { queryKey: [...getListReportsQueryKey(), ...userScope], enabled: hasIdentity && reportAllowed, staleTime: 8_000 },
   });
   const mapQuery = useGetReportMapData({
-    query: { queryKey: [...getGetReportMapDataQueryKey(), ...userScope], enabled: !!userId && reportAllowed, staleTime: 12_000 },
+    query: { queryKey: [...getGetReportMapDataQueryKey(), ...userScope], enabled: hasIdentity && reportAllowed, staleTime: 12_000 },
   });
   const notificationsQuery = useListNotifications({
-    query: { queryKey: [...getListNotificationsQueryKey(), ...userScope], enabled: !!userId && isAuthorizedWorkspace(account?.status), staleTime: 8_000 },
+    query: { queryKey: [...getListNotificationsQueryKey(), ...userScope], enabled: hasIdentity && isAuthorizedWorkspace(account?.status), staleTime: 8_000 },
   });
   const invalidateAccount = () => queryClient.invalidateQueries({ queryKey: getGetAccountStatusQueryKey() });
   const invalidateFamily = () => queryClient.invalidateQueries({ queryKey: getGetMyFamilyQueryKey() });
@@ -150,7 +175,10 @@ export function SecureWorkspace() {
     setAuthTokenGetter(null);
     queryClient.clear();
     demo.clearUserScopedState();
+    demo.clearDemoSession();
+    demo.clearPendingSignUp();
     previousUser.current = null;
+    if (!userId) return;
     try {
       await signOut();
     } catch (error) {
@@ -192,9 +220,9 @@ export function SecureWorkspace() {
     );
   }
 
-  const roleLabel = account.status === 'parent' ? 'Family account'
-    : account.status === 'child_approved' ? 'Approved child'
-      : account.status === 'manager' ? 'City manager' : 'City worker';
+  const roleLabel = account.status === 'parent' ? 'Parent'
+    : account.status === 'child_approved' ? 'Child'
+      : account.status === 'manager' ? 'Case Manager' : 'Worker';
   const isFamily = familyAllowed;
   const nav: { id: Page; label: string; icon: keyof typeof Feather.glyphMap }[] = isFamily
     ? [
@@ -203,6 +231,7 @@ export function SecureWorkspace() {
         { id: 'reports', label: 'Reports', icon: 'file-text' },
         { id: 'map', label: 'Map', icon: 'map' },
         { id: 'family', label: 'Family', icon: 'users' },
+        { id: 'account', label: 'More', icon: 'menu' },
       ]
     : account.status === 'manager'
       ? [
@@ -262,7 +291,15 @@ export function SecureWorkspace() {
         ) : page === 'family' && account.status === 'child_approved' ? (
           <ChildFamilyPage family={familyQuery.data} loading={familyQuery.isPending} error={familyQuery.isError ? errorMessage(familyQuery.error) : ''} onRetry={() => { void familyQuery.refetch(); }} />
         ) : page === 'account' ? (
-          <AccountPage account={account} onSignOut={onSignOut} onInvite={() => setInviteOpen(true)} />
+          <AccountPage
+            account={account}
+            invitationCode={familyQuery.data?.state === 'parent' ? familyQuery.data.invitationCode : null}
+            familyLoading={familyQuery.isPending}
+            familyError={familyQuery.isError ? errorMessage(familyQuery.error) : ''}
+            isDemo={isDemoIdentity}
+            onSignOut={onSignOut}
+            onInvite={() => setInviteOpen(true)}
+          />
         ) : page === 'travel' && isFamily ? (
           <TravelPage />
         ) : page === 'reports' ? (
@@ -374,10 +411,17 @@ function StatusPage({ eyebrow, title, detail, action, onAction }: { eyebrow: str
 
 function AccountSetup({ displayName, onComplete, onSignOut }: { displayName: string; onComplete: () => void; onSignOut: () => void }) {
   const colors = useColors();
-  const [flow, setFlow] = useState<'choose' | 'parent' | 'child' | 'staff'>('choose');
-  const [name, setName] = useState(displayName);
-  const [familyName, setFamilyName] = useState('');
-  const [code, setCode] = useState('');
+  const demo = useDemo();
+  const pendingSignUp = demo.pendingSignUp;
+  const [flow, setFlow] = useState<'choose' | 'parent' | 'child' | 'staff'>(() => pendingSignUp?.role ?? 'choose');
+  const [name, setName] = useState(() => pendingSignUp
+    ? [pendingSignUp.firstName, pendingSignUp.lastName].filter(Boolean).join(' ')
+    : displayName);
+  const [familyName, setFamilyName] = useState(() => pendingSignUp?.role === 'parent' && pendingSignUp.lastName
+    ? `${pendingSignUp.lastName} Family`
+    : '');
+  const [code, setCode] = useState(() => pendingSignUp?.familyCode ?? '');
+  const [phoneNumber, setPhoneNumber] = useState(() => pendingSignUp?.phoneNumber ?? '');
   const [error, setError] = useState('');
   const queryClient = useQueryClient();
   const afterSetup = async () => {
@@ -386,6 +430,7 @@ function AccountSetup({ displayName, onComplete, onSignOut }: { displayName: str
       queryClient.invalidateQueries({ queryKey: getGetMyFamilyQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() }),
     ]);
+    demo.clearPendingSignUp();
     onComplete();
   };
   const parent = useCreateParentAccount({ mutation: { onSuccess: () => { void afterSetup(); }, onError: (err) => setError(errorMessage(err)) } });
@@ -399,7 +444,7 @@ function AccountSetup({ displayName, onComplete, onSignOut }: { displayName: str
       <View style={styles.setupTop}><BrandMark size={38} /><Pressable onPress={onSignOut} accessibilityRole="button"><Text style={[styles.signOutText, { color: colors.primary }]}>Sign out</Text></Pressable></View>
       <Text style={[styles.kicker, { color: colors.primary }]}>ACCOUNT SETUP</Text>
       <Text style={[styles.setupTitle, { color: colors.foreground }]}>{flow === 'choose' ? `Welcome, ${displayName}.` : colorsForFlow}</Text>
-      <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Choose the invitation or family path that applies to you. Access is set by your verified account and server permissions.</Text>
+      <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>{pendingSignUp ? 'Finish setting up your account. Your email is used to sign in; any phone number is saved only as contact information.' : 'Choose the invitation or family path that applies to you. Access is set by your verified account and server permissions.'}</Text>
       {flow === 'choose' ? (
         <View style={styles.setupOptions}>
           <SetupOption icon="users" title="Create a family" detail="Parent or guardian account" onPress={() => { setError(''); setFlow('parent'); }} />
@@ -416,21 +461,22 @@ function AccountSetup({ displayName, onComplete, onSignOut }: { displayName: str
         <Card style={styles.setupForm}>
           <Field label="Your name" value={name} onChangeText={setName} autoCapitalize="words" />
           {flow === 'parent' ? <Field label="Family name" value={familyName} onChangeText={setFamilyName} autoCapitalize="words" /> : null}
+          {flow === 'child' ? <Field label="Phone number" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" autoComplete="tel" /> : null}
           {flow !== 'parent' ? <Field label={flow === 'child' ? 'Family invitation code' : 'City invitation code'} value={code} onChangeText={setCode} autoCapitalize="none" /> : null}
           {error ? <Text accessibilityRole="alert" style={[styles.errorText, { color: colors.destructive }]}>{error}</Text> : null}
           <Button
             label={flow === 'parent' ? 'Create family' : flow === 'child' ? 'Request to join' : 'Accept invitation'}
             icon="arrow-right"
             loading={busy}
-            disabled={busy || !name.trim() || (flow === 'parent' ? !familyName.trim() : !code.trim())}
+            disabled={busy || !name.trim() || (flow === 'parent' ? !familyName.trim() : !code.trim()) || (flow === 'child' && !phoneNumber.trim())}
             onPress={() => {
               setError('');
               if (flow === 'parent') parent.mutate({ data: { displayName: name.trim(), familyName: familyName.trim() } });
-              if (flow === 'child') child.mutate({ data: { displayName: name.trim(), invitationCode: code.trim() } });
+              if (flow === 'child') child.mutate({ data: { displayName: name.trim(), invitationCode: code.trim(), phoneNumber: phoneNumber.trim() } });
               if (flow === 'staff') staff.mutate({ data: { displayName: name.trim(), invitationCode: code.trim() } });
             }}
           />
-          <Pressable onPress={() => { setFlow('choose'); setError(''); }} style={styles.backLink}><Text style={[styles.signOutText, { color: colors.primary }]}>Choose another setup</Text></Pressable>
+          {!pendingSignUp ? <Pressable onPress={() => { setFlow('choose'); setError(''); }} style={styles.backLink}><Text style={[styles.signOutText, { color: colors.primary }]}>Choose another setup</Text></Pressable> : null}
         </Card>
       )}
       <View style={styles.privacyNote}><Feather name="lock" size={15} color={colors.primary} /><Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Children do not see family details until a parent approves the request.</Text></View>
@@ -672,9 +718,67 @@ function NotificationsPage({ data, loading, error, onRetry, onRead, onBack }: { 
   return <><BackLink label="Back" onPress={onBack} /><ScreenHeader eyebrow="ACCOUNT UPDATES" title="Notifications." subtitle="Messages from your approved account and family workflow." />{loading ? <SkeletonCard /> : error ? <EmptyState icon="wifi-off" title="Notifications unavailable" detail={error} action="Try again" onAction={onRetry} /> : data.map((notice) => <Pressable key={notice.id} accessibilityRole="button" accessibilityState={{ selected: !!notice.readAt }} onPress={() => { if (!notice.readAt) onRead(notice.id); }} style={({ pressed }) => [styles.noticeRow, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.78 : 1 }]}><View style={[styles.noticeIcon, { backgroundColor: notice.readAt ? colors.muted : colors.accent }]}><Feather name={notice.type === 'child_join_request' ? 'user-plus' : notice.type === 'child_rejected' ? 'user-x' : 'bell'} size={18} color={notice.readAt ? colors.mutedForeground : colors.primary} /></View><View style={styles.grow}><Text style={[styles.cardTitle, { color: colors.foreground }]}>{notice.title}</Text><Text style={[styles.bodyText, { color: colors.mutedForeground }]}>{notice.body}</Text><Text style={[styles.reportMeta, { color: colors.mutedForeground }]}>{new Date(notice.createdAt).toLocaleString()}</Text></View>{!notice.readAt ? <View style={[styles.unreadSmall, { backgroundColor: colors.primary }]} /> : null}</Pressable>)}{!loading && !error && data.length === 0 ? <EmptyState icon="bell" title="All quiet here" detail="Account notifications will appear here." /> : null}</>;
 }
 
-function AccountPage({ account, onSignOut, onInvite }: { account: { displayName: string; status: string; familyName: string | null; teamName: string | null }; onSignOut: () => Promise<void>; onInvite: () => void }) {
+function AccountPage({
+  account,
+  invitationCode,
+  familyLoading,
+  familyError,
+  isDemo,
+  onSignOut,
+  onInvite,
+}: {
+  account: { displayName: string; status: string; familyName: string | null; teamName: string | null };
+  invitationCode: string | null;
+  familyLoading: boolean;
+  familyError: string;
+  isDemo: boolean;
+  onSignOut: () => Promise<void>;
+  onInvite: () => void;
+}) {
   const colors = useColors();
-  return <><ScreenHeader eyebrow="ACCOUNT" title="Account & access." subtitle="This workspace follows the role and scope returned for your signed-in account." /><Card style={styles.accountCard}><View style={[styles.avatarInitial, { width: 48, height: 48, backgroundColor: colors.secondary }]}><Text style={[styles.avatarText, { color: colors.primary }]}>{account.displayName.slice(0, 1).toUpperCase()}</Text></View><View style={styles.grow}><Text style={[styles.cardTitle, { color: colors.foreground }]}>{account.displayName}</Text><Text style={[styles.bodyText, { color: colors.mutedForeground }]}>{account.status === 'parent' || account.status === 'child_approved' ? account.familyName ?? 'Approved family member' : account.teamName ?? 'City staff'}</Text></View><Feather name="shield" size={18} color={colors.primary} /></Card><Card tone="soft" style={styles.accessNote}><Feather name="lock" size={16} color={colors.primary} /><Text style={[styles.bodyText, { color: colors.accentForeground }]}>Reports, family membership, and map data are provided by PathPal’s access-controlled API. Changing roles in the app is not possible.</Text></Card>{account.status === 'manager' ? <><SectionTitle title="Staff" /><Button label="Invite manager or worker" icon="user-plus" onPress={onInvite} /></> : null}<View style={{ height: 20 }} /><Button label="Sign out" icon="log-out" variant="ghost" onPress={onSignOut} testID="secure-sign-out" /></>;
+  return (
+    <>
+      <ScreenHeader eyebrow="ACCOUNT" title="Account & access." subtitle="This workspace follows the role and scope returned for your signed-in account." />
+      <Card style={styles.accountCard}>
+        <View style={[styles.avatarInitial, { width: 48, height: 48, backgroundColor: colors.secondary }]}>
+          <Text style={[styles.avatarText, { color: colors.primary }]}>{account.displayName.slice(0, 1).toUpperCase()}</Text>
+        </View>
+        <View style={styles.grow}>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>{account.displayName}</Text>
+          <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>{account.status === 'parent' || account.status === 'child_approved' ? account.familyName ?? 'Approved family member' : account.teamName ?? 'City staff'}</Text>
+        </View>
+        <Feather name="shield" size={18} color={colors.primary} />
+      </Card>
+      {account.status === 'parent' ? (
+        <>
+          <SectionTitle title="Family invitation code" />
+          <Card tone="soft">
+            {familyLoading ? (
+              <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Loading family code…</Text>
+            ) : familyError ? (
+              <Text style={[styles.bodyText, { color: colors.destructive }]}>{familyError}</Text>
+            ) : invitationCode ? (
+              <Text selectable style={[styles.invitationCode, { color: colors.foreground }]}>{invitationCode}</Text>
+            ) : (
+              <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>Family code is not available.</Text>
+            )}
+            <Text style={[styles.bodyText, { color: colors.mutedForeground, marginTop: 8 }]}>Share this code with your child so they can request to join your family.</Text>
+          </Card>
+        </>
+      ) : null}
+      <Card tone="soft" style={styles.accessNote}>
+        <Feather name="lock" size={16} color={colors.primary} />
+        <Text style={[styles.bodyText, { color: colors.accentForeground }]}>
+          {isDemo
+            ? 'This is shared preview data. Sign out and select another role to inspect its workspace.'
+            : 'Reports, family membership, and map data are provided by PathPal’s access-controlled API.'}
+        </Text>
+      </Card>
+      {account.status === 'manager' ? <><SectionTitle title="Staff" /><Button label="Invite manager or worker" icon="user-plus" onPress={onInvite} /></> : null}
+      <View style={{ height: 20 }} />
+      <Button label="Sign out" icon="log-out" variant="ghost" onPress={onSignOut} testID="secure-sign-out" />
+    </>
+  );
 }
 
 function InviteStaff({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {

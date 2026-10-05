@@ -28,7 +28,7 @@ function responseStatus(error: unknown): number | null {
 export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => void }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { state, authenticate, syncFamilyFromServer, joinFamily } = useDemo();
+  const { state, authenticate, syncFamilyFromServer, joinFamily, saveParentProfile } = useDemo();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [role, setRole] = useState<Role | null>(null);
   const [rolePickerVisible, setRolePickerVisible] = useState(false);
@@ -36,6 +36,10 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
   const [password, setPassword] = useState('1234');
   const [familyName, setFamilyName] = useState('The Chen family');
   const [childName, setChildName] = useState('Maya Chen');
+  const [parentFirstName, setParentFirstName] = useState('');
+  const [parentLastName, setParentLastName] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+  const [parentPhone, setParentPhone] = useState('');
   const [invite, setInvite] = useState('');
   const [newUsername, setNewUsername] = useState('maya');
   const [newPassword, setNewPassword] = useState('1234');
@@ -109,8 +113,8 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
 
   const registerFamily = async () => {
     if (signingIn) return;
-    if (!familyName.trim() || !childName.trim()) {
-      setError('Enter a family name and child’s name.');
+    if (!parentFirstName.trim() || !parentLastName.trim() || !familyName.trim() || !childName.trim()) {
+      setError('Enter your first and last name, a family name, and your child’s name.');
       return;
     }
     setSigningIn(true);
@@ -122,12 +126,18 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
         childName: childName.trim(),
       });
       await syncFamilyFromServer(family);
+      const parentName = `${parentFirstName.trim()} ${parentLastName.trim()}`;
+      await saveParentProfile({
+        name: parentName,
+        email: parentEmail.trim(),
+        phone: parentPhone.trim(),
+      });
       const account = authenticate('AI4SG', '1234', 'parent');
       if (!account) throw new Error('The parent demo sign-in is unavailable.');
       setRole('parent');
       setMode('signin');
       setError('');
-      onVerified(account);
+      onVerified({ ...account, name: parentName });
     } catch (error) {
       await clearReportSession().catch(() => undefined);
       setError(reportError(error));
@@ -268,6 +278,10 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
         ) : mode === 'family' ? (
           <>
             <Text style={[styles.formTitle, { color: colors.foreground }]}>Parent registration</Text>
+            <Field label="First name" value={parentFirstName} onChangeText={setParentFirstName} autoCapitalize="words" testID="parent-first-name" />
+            <Field label="Last name" value={parentLastName} onChangeText={setParentLastName} autoCapitalize="words" testID="parent-last-name" />
+            <Field label="Email" value={parentEmail} onChangeText={setParentEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} testID="parent-email" />
+            <Field label="Phone number" value={parentPhone} onChangeText={setParentPhone} keyboardType="phone-pad" testID="parent-phone" />
             <Field label="Family name" value={familyName} onChangeText={setFamilyName} />
             <Field label="Child’s name" value={childName} onChangeText={setChildName} />
             {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}

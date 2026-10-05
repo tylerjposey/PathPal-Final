@@ -11,6 +11,8 @@ For live journey sharing, use the existing PathPal parent/child sign-in and neve
 
 The active PathPal role set is parent, child, manager, and worker. Do not reintroduce citizen as a selectable or authorized role. Keep older citizen-owned report rows as historical data rather than deleting or rewriting them.
 
-**Why:** The user clarified that live journey sharing must use the app's existing sign-in rather than adding another sign-in option, and later removed citizen from the active role set while preserving historical reports. Shared demo roles remain a prototype and do not identify individual people.
+During parent family creation, first name, last name, email, and phone are prototype-only profile fields; do not send them to email or SMS providers.
 
-**How to apply:** Reuse existing report-session claims and family records for role scoping. Require the parent's family-level enablement and the child's separate opt-in for each current journey; treat citizen-owned records and saved citizen sessions as legacy only, and do not treat demo sign-in as verified personal identity.
+**Why:** The user clarified that live journey sharing must use the app's existing sign-in rather than adding another sign-in option, later removed citizen from the active role set while preserving historical reports, and specified that parent contact fields are not connected to messaging providers. Shared demo roles remain a prototype and do not identify individual people.
+
+**How to apply:** Reuse existing report-session claims and family records for role scoping. Require the parent's family-level enablement and the child's separate opt-in for each current journey; treat citizen-owned records and saved citizen sessions as legacy only, keep parent email/phone local to the prototype profile, and do not treat demo sign-in as verified personal identity.

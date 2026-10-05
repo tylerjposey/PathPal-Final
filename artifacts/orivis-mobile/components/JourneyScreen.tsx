@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { getGetJourneyMapQueryKey, useGetJourneyMap, type JourneyRoute, type TravelModeParameter } from '@workspace/api-client-react';
+import { getGetJourneyMapQueryKey, useGetJourneyMap, type JourneyAlert, type JourneyRoute, type TravelModeParameter } from '@workspace/api-client-react';
 import React, { useState } from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card, Chip, ScreenHeader, SectionTitle } from '@/components/OrivisUI';
 import { GoogleJourneyMap } from '@/components/GoogleJourneyMap';
 import { JourneyMap } from '@/components/JourneyMap';
@@ -54,6 +54,8 @@ export function JourneyScreen() {
   const [searchRequested, setSearchRequested] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [travelMode, setTravelMode] = useState<TravelModeParameter>('any');
+  const [alertFilter, setAlertFilter] = useState<'all' | 'route' | 'stop' | 'uncertain'>('all');
+  const [alertSearch, setAlertSearch] = useState('');
   const [mapView, setMapView] = useState<'2d' | '3d'>('2d');
   const [showHeat, setShowHeat] = useState(false);
   const [googleMapFailed, setGoogleMapFailed] = useState(false);
@@ -75,6 +77,29 @@ export function JourneyScreen() {
   );
   const routes = searchRequested ? journey.data?.routes ?? [] : [];
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? routes.find((route) => route.recommended) ?? routes[0];
+  const journeyAlerts = journey.data?.alerts ?? [];
+  const filteredJourneyAlerts = journeyAlerts.filter((alert) => {
+    const matchesFilter = alertFilter === 'all' ||
+      (alertFilter === 'route' && alert.routeMatches.length > 0) ||
+      (alertFilter === 'stop' && alert.stopMatches.length > 0) ||
+      (alertFilter === 'uncertain' && alert.impact === 'uncertain');
+    const searchable = [
+      alert.originalText,
+      alert.status,
+      ...alert.routeMatches.flatMap((match) => [match.routeNumber ?? '', match.routeName ?? '', match.routeId ?? '']),
+      ...alert.stopMatches.map((match) => match.name),
+    ].join(' ').toLowerCase();
+    return matchesFilter && searchable.includes(alertSearch.trim().toLowerCase());
+  });
+  const alertGroups = new Map<string, JourneyAlert[]>();
+  for (const alert of filteredJourneyAlerts) {
+    const groups = alert.impact === 'uncertain'
+      ? ['Network impact uncertain']
+      : alert.routeMatches.length
+        ? [...new Set(alert.routeMatches.map((match) => `Route ${match.routeNumber ?? match.routeName ?? match.routeId ?? 'unknown'}`))]
+        : alert.stopMatches.map((match) => `Stop ${match.name}`);
+    for (const group of groups) alertGroups.set(group, [...(alertGroups.get(group) ?? []), alert]);
+  }
   const savedJourneyMatchesRoute = Boolean(
     selectedRoute &&
     savedJourney?.id === selectedRoute.id &&
@@ -189,7 +214,7 @@ export function JourneyScreen() {
       walkingMeters: route.walkingMeters,
       transfers: route.transfers,
       delayMinutes: route.delayMinutes,
-      alerts: route.alerts,
+      alerts: route.alerts.map((alert) => alert.originalText),
       source: route.source,
       mode: route.mode,
       legs: route.legs.map((leg) => ({
@@ -487,7 +512,7 @@ export function JourneyScreen() {
                {leg.delayMinutes ? ` · ${leg.delayMinutes} min delay` : ''}
             </Text>
           ))}
-          {route.alerts.map((alert, index) => <Text key={`${index}-${alert}`} style={[styles.small, { color: colors.warning }]}>Service alert: {alert}</Text>)}
+          {route.alerts.map((alert) => <Text key={alert.providerId} style={[styles.small, { color: colors.warning }]}>Service alert: {alert.originalText}</Text>)}
         </Pressable>
       ))}
       {selectedRoute ? <Button label={savedJourneyMatchesRoute ? 'Selected journey' : 'Choose this route'} icon="check" onPress={() => { chooseRoute(selectedRoute); setMapLinkError(''); }} disabled={!selectedRoute.available} testID="choose-route" /> : null}
@@ -514,10 +539,81 @@ export function JourneyScreen() {
         </Card>
       ) : null}
       {mapLinkError ? <Text accessibilityRole="alert" style={[styles.small, { color: colors.destructive }]}>{mapLinkError}</Text> : null}
-      {searchRequested && journey.data?.alerts.length ? (
+      {searchRequested ? (
         <>
-          <SectionTitle title="Service alerts" />
-          {journey.data.alerts.map((alert, index) => <Text key={`${index}-${alert}`} style={[styles.small, { color: colors.warning }]}>{alert}</Text>)}
+          <SectionTitle title={`Service alerts · ${journeyAlerts.length}`} action="Refresh" onAction={() => { void journey.refetch(); }} />
+          {journey.data?.alertsStatus === 'unavailable' ? (
+            <Card tone="danger">
+              <Text style={[styles.small, { color: colors.destructiveForeground }]}>511 alerts could not be refreshed. An empty list does not mean there are no alerts.</Text>
+            </Card>
+          ) : journey.data?.alertsStatus === 'stale' ? (
+            <Card tone="soft">
+              <Text style={[styles.small, { color: colors.foreground }]}>Showing cached 511 alerts because the latest refresh failed.</Text>
+            </Card>
+          ) : journey.data?.alertsStatus === 'cached' ? (
+            <Text style={[styles.caption, { color: colors.mutedForeground }]}>Showing the last available 511 alert feed.</Text>
+          ) : journey.data?.alertsStatus === 'not_requested' ? (
+            <Text style={[styles.caption, { color: colors.mutedForeground }]}>Transit alerts are not requested for walking-only journeys.</Text>
+          ) : null}
+          {journey.data?.alertsFetchedAt ? (
+            <Text style={[styles.caption, { color: colors.mutedForeground }]}>
+              511 feed retrieved {new Date(journey.data.alertsFetchedAt).toLocaleString()}.
+            </Text>
+          ) : null}
+          <TextInput
+            accessibilityLabel="Search transit alerts"
+            value={alertSearch}
+            onChangeText={setAlertSearch}
+            placeholder="Search notice, route, or stop"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.alertSearch, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border }]}
+          />
+          <View style={styles.alertFilters}>
+            {([
+              ['all', 'All'],
+              ['route', 'Route matches'],
+              ['stop', 'Stop matches'],
+              ['uncertain', 'Uncertain impact'],
+            ] as const).map(([value, label]) => (
+              <Chip key={value} label={label} active={alertFilter === value} onPress={() => setAlertFilter(value)} />
+            ))}
+          </View>
+          {journey.isError ? (
+            <Text style={[styles.small, { color: colors.destructive }]}>Journey refresh failed; previous alert data may be stale.</Text>
+          ) : null}
+          {!journey.isFetching && journey.data?.alertsStatus !== 'unavailable' && !filteredJourneyAlerts.length ? (
+            <Text style={[styles.small, { color: colors.mutedForeground }]}>
+              {journeyAlerts.length ? 'No alerts match these filters.' : 'No active, journey-matched notices were returned in this feed.'}
+            </Text>
+          ) : null}
+          {[...alertGroups.entries()].map(([group, alerts]) => (
+            <View key={group} style={styles.alertGroup}>
+              <Text style={[styles.title, { color: colors.foreground }]}>{group}</Text>
+              {alerts.map((alert) => {
+                const timing = alert.activePeriods.length
+                  ? alert.activePeriods.map((period) =>
+                    `${period.start ? new Date(period.start).toLocaleString() : 'Active'} — ${period.end ? new Date(period.end).toLocaleString() : 'Until further notice'}`,
+                  ).join(' · ')
+                  : 'Active; provider supplied no end time';
+                const impact = alert.impact === 'route_and_stop_match'
+                  ? 'Exact route and stop match'
+                  : alert.impact === 'route_match'
+                    ? 'Exact route match'
+                    : alert.impact === 'stop_match'
+                      ? 'Exact stop match'
+                      : 'Impact uncertain';
+                return (
+                  <Card key={`${group}-${alert.providerId}`} tone="soft">
+                    <Text style={[styles.title, { color: colors.foreground }]}>{impact}</Text>
+                    <Text style={[styles.small, { color: colors.foreground }]}>{alert.originalText}</Text>
+                    <Text style={[styles.caption, { color: colors.mutedForeground }]}>
+                      511 · {alert.status.replaceAll('_', ' ')} · {timing}
+                    </Text>
+                  </Card>
+                );
+              })}
+            </View>
+          ))}
         </>
       ) : null}
       <Text style={[styles.caption, { color: colors.mutedForeground }]}>Timings and alerts may change. Check the operator before traveling. If your parent enables live tracking in More, you can opt in to sharing this current trip from Home.</Text>
@@ -535,6 +631,9 @@ const styles = StyleSheet.create({
   mapModeText: { fontFamily: 'Inter_700Bold', fontSize: 12, letterSpacing: 0.3 },
   mapModeSubtext: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 },
   savedRouteCard: { gap: 10 },
+  alertSearch: { minHeight: 44, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, fontFamily: 'Inter_400Regular', fontSize: 13 },
+  alertGroup: { gap: 8, marginTop: 8 },
+  alertFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   title: { fontFamily: 'Inter_700Bold', fontSize: 15, lineHeight: 22 },
   small: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, marginTop: 4 },
   caption: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },

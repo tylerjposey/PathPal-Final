@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { JourneyAlert } from './journeyAlert';
+import type { JourneyOptionsResponseAlertsStatus } from './journeyOptionsResponseAlertsStatus';
 import type { JourneyOptionsResponseSource } from './journeyOptionsResponseSource';
 import type { JourneyRoute } from './journeyRoute';
 import type { JourneyStop } from './journeyStop';
@@ -13,7 +15,11 @@ export interface JourneyOptionsResponse {
   source: JourneyOptionsResponseSource;
   routes: JourneyRoute[];
   stops: JourneyStop[];
-  alerts: string[];
+  alerts: JourneyAlert[];
+  /** Freshness and availability of the 511 service-alert feed; unavailable is not the same as no active alerts. */
+  alertsStatus: JourneyOptionsResponseAlertsStatus;
+  /** @nullable */
+  alertsFetchedAt: Date | null;
   nearestStop?: JourneyStop | null;
   /** @nullable */
   message?: string | null;

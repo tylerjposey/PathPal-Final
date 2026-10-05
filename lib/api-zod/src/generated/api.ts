@@ -53,9 +53,17 @@ export const getJourneyOptionsResponseRoutesItemTransfersMin = 0;
 
 export const getJourneyOptionsResponseRoutesItemDelayMinutesMin = 0;
 
+export const getJourneyOptionsResponseRoutesItemAlertsItemOriginalTextMax = 2000;
+
+export const getJourneyOptionsResponseRoutesItemAlertsItemStatusMax = 80;
+
 export const getJourneyOptionsResponseRoutesItemLegsItemDistanceMetersMin = 0;
 
 export const getJourneyOptionsResponseRoutesItemLegsItemDurationMinutesMin = 0;
+
+export const getJourneyOptionsResponseAlertsItemOriginalTextMax = 2000;
+
+export const getJourneyOptionsResponseAlertsItemStatusMax = 80;
 
 
 
@@ -70,7 +78,27 @@ export const GetJourneyOptionsResponse = zod.object({
   "walkingMeters": zod.number().int().min(getJourneyOptionsResponseRoutesItemWalkingMetersMin),
   "transfers": zod.number().int().min(getJourneyOptionsResponseRoutesItemTransfersMin),
   "delayMinutes": zod.number().int().min(getJourneyOptionsResponseRoutesItemDelayMinutesMin),
-  "alerts": zod.array(zod.string()),
+  "alerts": zod.array(zod.object({
+  "providerId": zod.string(),
+  "originalText": zod.string().max(getJourneyOptionsResponseRoutesItemAlertsItemOriginalTextMax),
+  "status": zod.string().max(getJourneyOptionsResponseRoutesItemAlertsItemStatusMax),
+  "activePeriods": zod.array(zod.object({
+  "start": zod.coerce.date().nullable(),
+  "end": zod.coerce.date().nullable()
+})),
+  "routeMatches": zod.array(zod.object({
+  "routeId": zod.string(),
+  "routeNumber": zod.string().nullable(),
+  "routeName": zod.string().nullable()
+})),
+  "stopMatches": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})),
+  "impact": zod.enum(['route_match', 'stop_match', 'route_and_stop_match', 'uncertain']),
+  "source": zod.enum(['511']),
+  "fetchedAt": zod.coerce.date()
+}).describe('A verbatim active transit notice with provider identity, exact route/stop matches, timing, and feed freshness.')),
   "available": zod.boolean(),
   "recommended": zod.boolean(),
   "source": zod.enum(['live', 'demo']),
@@ -79,6 +107,7 @@ export const GetJourneyOptionsResponse = zod.object({
   "legs": zod.array(zod.object({
   "type": zod.enum(['walk', 'bus']),
   "routeNumber": zod.string().nullable().describe('Public VTA route code (e.g. "22"), null for walking legs.'),
+  "routeId": zod.string().nullable().describe('Exact operator route identifier when available; never inferred by substring.'),
   "routeName": zod.string().nullable(),
   "boardingStop": zod.object({
   "id": zod.string(),
@@ -109,7 +138,29 @@ export const GetJourneyOptionsResponse = zod.object({
   "lng": zod.number(),
   "distanceMeters": zod.number().int().nullish()
 })),
-  "alerts": zod.array(zod.string()),
+  "alerts": zod.array(zod.object({
+  "providerId": zod.string(),
+  "originalText": zod.string().max(getJourneyOptionsResponseAlertsItemOriginalTextMax),
+  "status": zod.string().max(getJourneyOptionsResponseAlertsItemStatusMax),
+  "activePeriods": zod.array(zod.object({
+  "start": zod.coerce.date().nullable(),
+  "end": zod.coerce.date().nullable()
+})),
+  "routeMatches": zod.array(zod.object({
+  "routeId": zod.string(),
+  "routeNumber": zod.string().nullable(),
+  "routeName": zod.string().nullable()
+})),
+  "stopMatches": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})),
+  "impact": zod.enum(['route_match', 'stop_match', 'route_and_stop_match', 'uncertain']),
+  "source": zod.enum(['511']),
+  "fetchedAt": zod.coerce.date()
+}).describe('A verbatim active transit notice with provider identity, exact route/stop matches, timing, and feed freshness.')),
+  "alertsStatus": zod.enum(['fresh', 'cached', 'stale', 'unavailable', 'not_requested']).describe('Freshness and availability of the 511 service-alert feed; unavailable is not the same as no active alerts.'),
+  "alertsFetchedAt": zod.coerce.date().nullable(),
   "nearestStop": zod.union([zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -161,9 +212,17 @@ export const getJourneyMapResponseOneRoutesItemTransfersMin = 0;
 
 export const getJourneyMapResponseOneRoutesItemDelayMinutesMin = 0;
 
+export const getJourneyMapResponseOneRoutesItemAlertsItemOriginalTextMax = 2000;
+
+export const getJourneyMapResponseOneRoutesItemAlertsItemStatusMax = 80;
+
 export const getJourneyMapResponseOneRoutesItemLegsItemDistanceMetersMin = 0;
 
 export const getJourneyMapResponseOneRoutesItemLegsItemDurationMinutesMin = 0;
+
+export const getJourneyMapResponseOneAlertsItemOriginalTextMax = 2000;
+
+export const getJourneyMapResponseOneAlertsItemStatusMax = 80;
 
 
 
@@ -178,7 +237,27 @@ export const GetJourneyMapResponse = zod.object({
   "walkingMeters": zod.number().int().min(getJourneyMapResponseOneRoutesItemWalkingMetersMin),
   "transfers": zod.number().int().min(getJourneyMapResponseOneRoutesItemTransfersMin),
   "delayMinutes": zod.number().int().min(getJourneyMapResponseOneRoutesItemDelayMinutesMin),
-  "alerts": zod.array(zod.string()),
+  "alerts": zod.array(zod.object({
+  "providerId": zod.string(),
+  "originalText": zod.string().max(getJourneyMapResponseOneRoutesItemAlertsItemOriginalTextMax),
+  "status": zod.string().max(getJourneyMapResponseOneRoutesItemAlertsItemStatusMax),
+  "activePeriods": zod.array(zod.object({
+  "start": zod.coerce.date().nullable(),
+  "end": zod.coerce.date().nullable()
+})),
+  "routeMatches": zod.array(zod.object({
+  "routeId": zod.string(),
+  "routeNumber": zod.string().nullable(),
+  "routeName": zod.string().nullable()
+})),
+  "stopMatches": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})),
+  "impact": zod.enum(['route_match', 'stop_match', 'route_and_stop_match', 'uncertain']),
+  "source": zod.enum(['511']),
+  "fetchedAt": zod.coerce.date()
+}).describe('A verbatim active transit notice with provider identity, exact route/stop matches, timing, and feed freshness.')),
   "available": zod.boolean(),
   "recommended": zod.boolean(),
   "source": zod.enum(['live', 'demo']),
@@ -187,6 +266,7 @@ export const GetJourneyMapResponse = zod.object({
   "legs": zod.array(zod.object({
   "type": zod.enum(['walk', 'bus']),
   "routeNumber": zod.string().nullable().describe('Public VTA route code (e.g. "22"), null for walking legs.'),
+  "routeId": zod.string().nullable().describe('Exact operator route identifier when available; never inferred by substring.'),
   "routeName": zod.string().nullable(),
   "boardingStop": zod.object({
   "id": zod.string(),
@@ -217,7 +297,29 @@ export const GetJourneyMapResponse = zod.object({
   "lng": zod.number(),
   "distanceMeters": zod.number().int().nullish()
 })),
-  "alerts": zod.array(zod.string()),
+  "alerts": zod.array(zod.object({
+  "providerId": zod.string(),
+  "originalText": zod.string().max(getJourneyMapResponseOneAlertsItemOriginalTextMax),
+  "status": zod.string().max(getJourneyMapResponseOneAlertsItemStatusMax),
+  "activePeriods": zod.array(zod.object({
+  "start": zod.coerce.date().nullable(),
+  "end": zod.coerce.date().nullable()
+})),
+  "routeMatches": zod.array(zod.object({
+  "routeId": zod.string(),
+  "routeNumber": zod.string().nullable(),
+  "routeName": zod.string().nullable()
+})),
+  "stopMatches": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})),
+  "impact": zod.enum(['route_match', 'stop_match', 'route_and_stop_match', 'uncertain']),
+  "source": zod.enum(['511']),
+  "fetchedAt": zod.coerce.date()
+}).describe('A verbatim active transit notice with provider identity, exact route/stop matches, timing, and feed freshness.')),
+  "alertsStatus": zod.enum(['fresh', 'cached', 'stale', 'unavailable', 'not_requested']).describe('Freshness and availability of the 511 service-alert feed; unavailable is not the same as no active alerts.'),
+  "alertsFetchedAt": zod.coerce.date().nullable(),
   "nearestStop": zod.union([zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -1647,11 +1749,45 @@ export const getReportResponseTwoAiAssessmentOneEvidenceMax = 4;
 
 export const getReportResponseTwoAiAssessmentOneUncertaintyMax = 1000;
 
+export const getReportResponseTwoAiAssessmentOneConflictsItemMax = 300;
+
+export const getReportResponseTwoAiAssessmentOneConflictsMax = 4;
+
+export const getReportResponseTwoAiAssessmentOneMissingFactsItemMax = 300;
+
+export const getReportResponseTwoAiAssessmentOneMissingFactsMax = 5;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneSummaryMax = 500;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneSuggestedSeverityMax = 10;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceItemDetailMax = 300;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceMax = 4;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneUncertaintyMax = 1000;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsItemMax = 300;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsMax = 4;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsItemMax = 300;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsMax = 5;
+
+export const getReportResponseTwoAiAssessmentOneOriginalAssessmentOneRecommendedDepartmentMax = 100;
+
+export const getReportResponseTwoAiAssessmentOneRuleAdjustmentsItemSourceMax = 100;
+
+export const getReportResponseTwoAiAssessmentOneRuleAdjustmentsItemReasonMax = 500;
+
 export const getReportResponseTwoAiAssessmentOneRecommendedDepartmentMax = 100;
 
 export const getReportResponseTwoAiAssessmentOneModelMax = 120;
 
 export const getReportResponseTwoAiAssessmentOneInstructionVersionMax = 80;
+
+export const getReportResponseTwoAiAssessmentOneRubricVersionMax = 80;
 
 export const getReportResponseTwoAiReviewHistoryItemReasonMax = 1500;
 
@@ -1704,15 +1840,45 @@ export const GetReportResponse = zod.object({
   "summary": zod.string().max(getReportResponseTwoAiAssessmentOneSummaryMax),
   "suggestedSeverity": zod.number().int().min(1).max(getReportResponseTwoAiAssessmentOneSuggestedSeverityMax),
   "suggestedPriority": zod.enum(['Low', 'Medium', 'High']),
+  "urgency": zod.enum(['urgent_review', 'same_day', 'routine', 'undetermined']),
+  "evidenceQuality": zod.enum(['limited', 'moderate', 'strong', 'conflicting']),
+  "imageAssessmentStatus": zod.enum(['analyzed', 'not_provided']),
   "evidence": zod.array(zod.object({
   "source": zod.enum(['report_text', 'image']),
   "detail": zod.string().max(getReportResponseTwoAiAssessmentOneEvidenceItemDetailMax)
 })).max(getReportResponseTwoAiAssessmentOneEvidenceMax),
   "uncertainty": zod.string().max(getReportResponseTwoAiAssessmentOneUncertaintyMax),
+  "conflicts": zod.array(zod.string().max(getReportResponseTwoAiAssessmentOneConflictsItemMax)).max(getReportResponseTwoAiAssessmentOneConflictsMax),
+  "missingFacts": zod.array(zod.string().max(getReportResponseTwoAiAssessmentOneMissingFactsItemMax)).max(getReportResponseTwoAiAssessmentOneMissingFactsMax),
+  "originalAssessment": zod.union([zod.object({
+  "suggestedCategory": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
+  "summary": zod.string().max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneSummaryMax),
+  "suggestedSeverity": zod.number().int().min(1).max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneSuggestedSeverityMax),
+  "suggestedPriority": zod.enum(['Low', 'Medium', 'High']),
+  "urgency": zod.enum(['urgent_review', 'same_day', 'routine', 'undetermined']),
+  "evidenceQuality": zod.enum(['limited', 'moderate', 'strong', 'conflicting']),
+  "evidence": zod.array(zod.object({
+  "source": zod.enum(['report_text', 'image']),
+  "detail": zod.string().max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceItemDetailMax)
+})).max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceMax),
+  "uncertainty": zod.string().max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneUncertaintyMax),
+  "conflicts": zod.array(zod.string().max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsItemMax)).max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsMax),
+  "missingFacts": zod.array(zod.string().max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsItemMax)).max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsMax),
+  "recommendedDepartment": zod.string().max(getReportResponseTwoAiAssessmentOneOriginalAssessmentOneRecommendedDepartmentMax),
+  "urgentHumanReview": zod.boolean()
+}),zod.null()]),
+  "ruleAdjustments": zod.array(zod.object({
+  "field": zod.enum(['suggestedSeverity', 'suggestedPriority', 'urgency', 'urgentHumanReview']),
+  "source": zod.string().max(getReportResponseTwoAiAssessmentOneRuleAdjustmentsItemSourceMax),
+  "reason": zod.string().max(getReportResponseTwoAiAssessmentOneRuleAdjustmentsItemReasonMax),
+  "beforeValue": zod.union([zod.string(),zod.number().int(),zod.boolean()]),
+  "afterValue": zod.union([zod.string(),zod.number().int(),zod.boolean()])
+})),
   "recommendedDepartment": zod.string().max(getReportResponseTwoAiAssessmentOneRecommendedDepartmentMax),
   "urgentHumanReview": zod.boolean(),
   "model": zod.string().max(getReportResponseTwoAiAssessmentOneModelMax),
   "instructionVersion": zod.string().max(getReportResponseTwoAiAssessmentOneInstructionVersionMax),
+  "rubricVersion": zod.string().max(getReportResponseTwoAiAssessmentOneRubricVersionMax),
   "analyzedAt": zod.coerce.date()
 }),zod.null()]),
   "aiReviewHistory": zod.array(zod.object({
@@ -1723,6 +1889,7 @@ export const GetReportResponse = zod.object({
   "finalCategory": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
   "finalSeverity": zod.number().int().min(1).max(getReportResponseTwoAiReviewHistoryItemFinalSeverityMax),
   "finalPriority": zod.enum(['Low', 'Medium', 'High']),
+  "finalUrgency": zod.union([zod.literal('urgent_review'),zod.literal('same_day'),zod.literal('routine'),zod.literal('undetermined'),zod.literal(null)]).nullable(),
   "finalDepartment": zod.string().max(getReportResponseTwoAiReviewHistoryItemFinalDepartmentMax),
   "reviewedBy": zod.string().max(getReportResponseTwoAiReviewHistoryItemReviewedByMax),
   "reviewedAt": zod.coerce.date()
@@ -1846,11 +2013,45 @@ export const retryReportAnalysisResponseTwoAiAssessmentOneEvidenceMax = 4;
 
 export const retryReportAnalysisResponseTwoAiAssessmentOneUncertaintyMax = 1000;
 
+export const retryReportAnalysisResponseTwoAiAssessmentOneConflictsItemMax = 300;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneConflictsMax = 4;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneMissingFactsItemMax = 300;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneMissingFactsMax = 5;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneSummaryMax = 500;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneSuggestedSeverityMax = 10;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceItemDetailMax = 300;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceMax = 4;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneUncertaintyMax = 1000;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsItemMax = 300;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsMax = 4;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsItemMax = 300;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsMax = 5;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneRecommendedDepartmentMax = 100;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneRuleAdjustmentsItemSourceMax = 100;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneRuleAdjustmentsItemReasonMax = 500;
+
 export const retryReportAnalysisResponseTwoAiAssessmentOneRecommendedDepartmentMax = 100;
 
 export const retryReportAnalysisResponseTwoAiAssessmentOneModelMax = 120;
 
 export const retryReportAnalysisResponseTwoAiAssessmentOneInstructionVersionMax = 80;
+
+export const retryReportAnalysisResponseTwoAiAssessmentOneRubricVersionMax = 80;
 
 export const retryReportAnalysisResponseTwoAiReviewHistoryItemReasonMax = 1500;
 
@@ -1903,15 +2104,45 @@ export const RetryReportAnalysisResponse = zod.object({
   "summary": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneSummaryMax),
   "suggestedSeverity": zod.number().int().min(1).max(retryReportAnalysisResponseTwoAiAssessmentOneSuggestedSeverityMax),
   "suggestedPriority": zod.enum(['Low', 'Medium', 'High']),
+  "urgency": zod.enum(['urgent_review', 'same_day', 'routine', 'undetermined']),
+  "evidenceQuality": zod.enum(['limited', 'moderate', 'strong', 'conflicting']),
+  "imageAssessmentStatus": zod.enum(['analyzed', 'not_provided']),
   "evidence": zod.array(zod.object({
   "source": zod.enum(['report_text', 'image']),
   "detail": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneEvidenceItemDetailMax)
 })).max(retryReportAnalysisResponseTwoAiAssessmentOneEvidenceMax),
   "uncertainty": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneUncertaintyMax),
+  "conflicts": zod.array(zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneConflictsItemMax)).max(retryReportAnalysisResponseTwoAiAssessmentOneConflictsMax),
+  "missingFacts": zod.array(zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneMissingFactsItemMax)).max(retryReportAnalysisResponseTwoAiAssessmentOneMissingFactsMax),
+  "originalAssessment": zod.union([zod.object({
+  "suggestedCategory": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
+  "summary": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneSummaryMax),
+  "suggestedSeverity": zod.number().int().min(1).max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneSuggestedSeverityMax),
+  "suggestedPriority": zod.enum(['Low', 'Medium', 'High']),
+  "urgency": zod.enum(['urgent_review', 'same_day', 'routine', 'undetermined']),
+  "evidenceQuality": zod.enum(['limited', 'moderate', 'strong', 'conflicting']),
+  "evidence": zod.array(zod.object({
+  "source": zod.enum(['report_text', 'image']),
+  "detail": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceItemDetailMax)
+})).max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceMax),
+  "uncertainty": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneUncertaintyMax),
+  "conflicts": zod.array(zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsItemMax)).max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsMax),
+  "missingFacts": zod.array(zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsItemMax)).max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsMax),
+  "recommendedDepartment": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneRecommendedDepartmentMax),
+  "urgentHumanReview": zod.boolean()
+}),zod.null()]),
+  "ruleAdjustments": zod.array(zod.object({
+  "field": zod.enum(['suggestedSeverity', 'suggestedPriority', 'urgency', 'urgentHumanReview']),
+  "source": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneRuleAdjustmentsItemSourceMax),
+  "reason": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneRuleAdjustmentsItemReasonMax),
+  "beforeValue": zod.union([zod.string(),zod.number().int(),zod.boolean()]),
+  "afterValue": zod.union([zod.string(),zod.number().int(),zod.boolean()])
+})),
   "recommendedDepartment": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneRecommendedDepartmentMax),
   "urgentHumanReview": zod.boolean(),
   "model": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneModelMax),
   "instructionVersion": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneInstructionVersionMax),
+  "rubricVersion": zod.string().max(retryReportAnalysisResponseTwoAiAssessmentOneRubricVersionMax),
   "analyzedAt": zod.coerce.date()
 }),zod.null()]),
   "aiReviewHistory": zod.array(zod.object({
@@ -1922,6 +2153,7 @@ export const RetryReportAnalysisResponse = zod.object({
   "finalCategory": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
   "finalSeverity": zod.number().int().min(1).max(retryReportAnalysisResponseTwoAiReviewHistoryItemFinalSeverityMax),
   "finalPriority": zod.enum(['Low', 'Medium', 'High']),
+  "finalUrgency": zod.union([zod.literal('urgent_review'),zod.literal('same_day'),zod.literal('routine'),zod.literal('undetermined'),zod.literal(null)]).nullable(),
   "finalDepartment": zod.string().max(retryReportAnalysisResponseTwoAiReviewHistoryItemFinalDepartmentMax),
   "reviewedBy": zod.string().max(retryReportAnalysisResponseTwoAiReviewHistoryItemReviewedByMax),
   "reviewedAt": zod.coerce.date()
@@ -1955,6 +2187,7 @@ export const ReviewReportAnalysisBody = zod.object({
   "finalCategory": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']).optional(),
   "finalSeverity": zod.number().int().min(1).max(reviewReportAnalysisBodyFinalSeverityMax).optional(),
   "finalPriority": zod.enum(['Low', 'Medium', 'High']).optional(),
+  "finalUrgency": zod.enum(['urgent_review', 'same_day', 'routine', 'undetermined']).optional(),
   "finalDepartment": zod.string().min(1).max(reviewReportAnalysisBodyFinalDepartmentMax).optional()
 })
 
@@ -1976,11 +2209,45 @@ export const reviewReportAnalysisResponseTwoAiAssessmentOneEvidenceMax = 4;
 
 export const reviewReportAnalysisResponseTwoAiAssessmentOneUncertaintyMax = 1000;
 
+export const reviewReportAnalysisResponseTwoAiAssessmentOneConflictsItemMax = 300;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneConflictsMax = 4;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneMissingFactsItemMax = 300;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneMissingFactsMax = 5;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneSummaryMax = 500;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneSuggestedSeverityMax = 10;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceItemDetailMax = 300;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceMax = 4;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneUncertaintyMax = 1000;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsItemMax = 300;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsMax = 4;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsItemMax = 300;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsMax = 5;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneRecommendedDepartmentMax = 100;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneRuleAdjustmentsItemSourceMax = 100;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneRuleAdjustmentsItemReasonMax = 500;
+
 export const reviewReportAnalysisResponseTwoAiAssessmentOneRecommendedDepartmentMax = 100;
 
 export const reviewReportAnalysisResponseTwoAiAssessmentOneModelMax = 120;
 
 export const reviewReportAnalysisResponseTwoAiAssessmentOneInstructionVersionMax = 80;
+
+export const reviewReportAnalysisResponseTwoAiAssessmentOneRubricVersionMax = 80;
 
 export const reviewReportAnalysisResponseTwoAiReviewHistoryItemReasonMax = 1500;
 
@@ -2033,15 +2300,45 @@ export const ReviewReportAnalysisResponse = zod.object({
   "summary": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneSummaryMax),
   "suggestedSeverity": zod.number().int().min(1).max(reviewReportAnalysisResponseTwoAiAssessmentOneSuggestedSeverityMax),
   "suggestedPriority": zod.enum(['Low', 'Medium', 'High']),
+  "urgency": zod.enum(['urgent_review', 'same_day', 'routine', 'undetermined']),
+  "evidenceQuality": zod.enum(['limited', 'moderate', 'strong', 'conflicting']),
+  "imageAssessmentStatus": zod.enum(['analyzed', 'not_provided']),
   "evidence": zod.array(zod.object({
   "source": zod.enum(['report_text', 'image']),
   "detail": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneEvidenceItemDetailMax)
 })).max(reviewReportAnalysisResponseTwoAiAssessmentOneEvidenceMax),
   "uncertainty": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneUncertaintyMax),
+  "conflicts": zod.array(zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneConflictsItemMax)).max(reviewReportAnalysisResponseTwoAiAssessmentOneConflictsMax),
+  "missingFacts": zod.array(zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneMissingFactsItemMax)).max(reviewReportAnalysisResponseTwoAiAssessmentOneMissingFactsMax),
+  "originalAssessment": zod.union([zod.object({
+  "suggestedCategory": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
+  "summary": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneSummaryMax),
+  "suggestedSeverity": zod.number().int().min(1).max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneSuggestedSeverityMax),
+  "suggestedPriority": zod.enum(['Low', 'Medium', 'High']),
+  "urgency": zod.enum(['urgent_review', 'same_day', 'routine', 'undetermined']),
+  "evidenceQuality": zod.enum(['limited', 'moderate', 'strong', 'conflicting']),
+  "evidence": zod.array(zod.object({
+  "source": zod.enum(['report_text', 'image']),
+  "detail": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceItemDetailMax)
+})).max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneEvidenceMax),
+  "uncertainty": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneUncertaintyMax),
+  "conflicts": zod.array(zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsItemMax)).max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneConflictsMax),
+  "missingFacts": zod.array(zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsItemMax)).max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneMissingFactsMax),
+  "recommendedDepartment": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneOriginalAssessmentOneRecommendedDepartmentMax),
+  "urgentHumanReview": zod.boolean()
+}),zod.null()]),
+  "ruleAdjustments": zod.array(zod.object({
+  "field": zod.enum(['suggestedSeverity', 'suggestedPriority', 'urgency', 'urgentHumanReview']),
+  "source": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneRuleAdjustmentsItemSourceMax),
+  "reason": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneRuleAdjustmentsItemReasonMax),
+  "beforeValue": zod.union([zod.string(),zod.number().int(),zod.boolean()]),
+  "afterValue": zod.union([zod.string(),zod.number().int(),zod.boolean()])
+})),
   "recommendedDepartment": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneRecommendedDepartmentMax),
   "urgentHumanReview": zod.boolean(),
   "model": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneModelMax),
   "instructionVersion": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneInstructionVersionMax),
+  "rubricVersion": zod.string().max(reviewReportAnalysisResponseTwoAiAssessmentOneRubricVersionMax),
   "analyzedAt": zod.coerce.date()
 }),zod.null()]),
   "aiReviewHistory": zod.array(zod.object({
@@ -2052,6 +2349,7 @@ export const ReviewReportAnalysisResponse = zod.object({
   "finalCategory": zod.enum(['Blight', 'Illegal dumping', 'Unsafe bus stops', 'Damaged sidewalks', 'Poor lighting', 'Suspicious activity', 'Other concerns']),
   "finalSeverity": zod.number().int().min(1).max(reviewReportAnalysisResponseTwoAiReviewHistoryItemFinalSeverityMax),
   "finalPriority": zod.enum(['Low', 'Medium', 'High']),
+  "finalUrgency": zod.union([zod.literal('urgent_review'),zod.literal('same_day'),zod.literal('routine'),zod.literal('undetermined'),zod.literal(null)]).nullable(),
   "finalDepartment": zod.string().max(reviewReportAnalysisResponseTwoAiReviewHistoryItemFinalDepartmentMax),
   "reviewedBy": zod.string().max(reviewReportAnalysisResponseTwoAiReviewHistoryItemReviewedByMax),
   "reviewedAt": zod.coerce.date()

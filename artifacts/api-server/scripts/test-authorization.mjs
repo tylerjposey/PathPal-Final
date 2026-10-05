@@ -24,6 +24,7 @@ try {
     logLevel: "info",
     metafile: true,
     external: [
+      "sharp",
       "*.node",
       "@google-cloud/*",
       "pg-native",

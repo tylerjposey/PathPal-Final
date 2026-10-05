@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { JourneyAlert } from './journeyAlert';
 import type { JourneyLeg } from './journeyLeg';
 import type { JourneyRouteMode } from './journeyRouteMode';
 import type { JourneyRouteSource } from './journeyRouteSource';
@@ -22,7 +23,7 @@ export interface JourneyRoute {
   transfers: number;
   /** @minimum 0 */
   delayMinutes: number;
-  alerts: string[];
+  alerts: JourneyAlert[];
   available: boolean;
   recommended: boolean;
   source: JourneyRouteSource;

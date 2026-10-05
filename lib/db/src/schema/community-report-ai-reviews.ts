@@ -11,6 +11,7 @@ export const communityReportAiReviewsTable = pgTable("community_report_ai_review
   finalCategory: varchar("final_category", { length: 40 }).notNull(),
   finalSeverity: integer("final_severity").notNull(),
   finalPriority: varchar("final_priority", { length: 10 }).notNull(),
+  finalUrgency: varchar("final_urgency", { length: 24 }),
   finalDepartment: varchar("final_department", { length: 100 }).notNull(),
   reviewedBy: varchar("reviewed_by", { length: 120 }).notNull(),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),

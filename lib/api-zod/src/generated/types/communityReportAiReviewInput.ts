@@ -8,6 +8,7 @@
 import type { CommunityReportAiReviewInputDecision } from './communityReportAiReviewInputDecision';
 import type { CommunityReportAiReviewInputFinalCategory } from './communityReportAiReviewInputFinalCategory';
 import type { CommunityReportAiReviewInputFinalPriority } from './communityReportAiReviewInputFinalPriority';
+import type { CommunityReportAiReviewInputFinalUrgency } from './communityReportAiReviewInputFinalUrgency';
 
 export interface CommunityReportAiReviewInput {
   decision: CommunityReportAiReviewInputDecision;
@@ -23,6 +24,7 @@ export interface CommunityReportAiReviewInput {
      */
   finalSeverity?: number;
   finalPriority?: CommunityReportAiReviewInputFinalPriority;
+  finalUrgency?: CommunityReportAiReviewInputFinalUrgency;
   /**
      * @minLength 1
      * @maxLength 100

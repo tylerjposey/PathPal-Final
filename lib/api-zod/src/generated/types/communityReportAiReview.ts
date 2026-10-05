@@ -8,6 +8,7 @@
 import type { CommunityReportAiReviewDecision } from './communityReportAiReviewDecision';
 import type { CommunityReportAiReviewFinalCategory } from './communityReportAiReviewFinalCategory';
 import type { CommunityReportAiReviewFinalPriority } from './communityReportAiReviewFinalPriority';
+import type { CommunityReportAiReviewFinalUrgency } from './communityReportAiReviewFinalUrgency';
 
 export interface CommunityReportAiReview {
   id: number;
@@ -22,6 +23,8 @@ export interface CommunityReportAiReview {
      */
   finalSeverity: number;
   finalPriority: CommunityReportAiReviewFinalPriority;
+  /** @nullable */
+  finalUrgency: CommunityReportAiReviewFinalUrgency;
   /** @maxLength 100 */
   finalDepartment: string;
   /** @maxLength 120 */

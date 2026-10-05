@@ -18,6 +18,11 @@ export interface JourneyLeg {
      * @nullable
      */
   routeNumber: string | null;
+  /**
+     * Exact operator route identifier when available; never inferred by substring.
+     * @nullable
+     */
+  routeId: string | null;
   /** @nullable */
   routeName: string | null;
   boardingStop: JourneyStop;

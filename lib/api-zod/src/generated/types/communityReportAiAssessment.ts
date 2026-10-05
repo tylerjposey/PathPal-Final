@@ -5,9 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CommunityReportAiAssessmentEvidenceQuality } from './communityReportAiAssessmentEvidenceQuality';
+import type { CommunityReportAiAssessmentImageAssessmentStatus } from './communityReportAiAssessmentImageAssessmentStatus';
 import type { CommunityReportAiAssessmentSuggestedCategory } from './communityReportAiAssessmentSuggestedCategory';
 import type { CommunityReportAiAssessmentSuggestedPriority } from './communityReportAiAssessmentSuggestedPriority';
+import type { CommunityReportAiAssessmentUrgency } from './communityReportAiAssessmentUrgency';
 import type { ReportAiEvidence } from './reportAiEvidence';
+import type { ReportAiOriginalAssessment } from './reportAiOriginalAssessment';
+import type { ReportAiRuleAdjustment } from './reportAiRuleAdjustment';
 
 export interface CommunityReportAiAssessment {
   id: number;
@@ -20,10 +25,25 @@ export interface CommunityReportAiAssessment {
      */
   suggestedSeverity: number;
   suggestedPriority: CommunityReportAiAssessmentSuggestedPriority;
+  urgency: CommunityReportAiAssessmentUrgency;
+  evidenceQuality: CommunityReportAiAssessmentEvidenceQuality;
+  imageAssessmentStatus: CommunityReportAiAssessmentImageAssessmentStatus;
   /** @maxItems 4 */
   evidence: ReportAiEvidence[];
   /** @maxLength 1000 */
   uncertainty: string;
+  /**
+     * @maxItems 4
+     * @items.maxLength 300
+     */
+  conflicts: string[];
+  /**
+     * @maxItems 5
+     * @items.maxLength 300
+     */
+  missingFacts: string[];
+  originalAssessment: ReportAiOriginalAssessment | null;
+  ruleAdjustments: ReportAiRuleAdjustment[];
   /** @maxLength 100 */
   recommendedDepartment: string;
   urgentHumanReview: boolean;
@@ -31,5 +51,7 @@ export interface CommunityReportAiAssessment {
   model: string;
   /** @maxLength 80 */
   instructionVersion: string;
+  /** @maxLength 80 */
+  rubricVersion: string;
   analyzedAt: Date;
 }

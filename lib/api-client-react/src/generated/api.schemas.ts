@@ -394,6 +394,74 @@ export const JourneyOptionsResponseSource = {
   demo: 'demo',
 } as const;
 
+/**
+ * Freshness and availability of the 511 service-alert feed; unavailable is not the same as no active alerts.
+ */
+export type JourneyOptionsResponseAlertsStatus = typeof JourneyOptionsResponseAlertsStatus[keyof typeof JourneyOptionsResponseAlertsStatus];
+
+
+export const JourneyOptionsResponseAlertsStatus = {
+  fresh: 'fresh',
+  cached: 'cached',
+  stale: 'stale',
+  unavailable: 'unavailable',
+  not_requested: 'not_requested',
+} as const;
+
+export type JourneyAlertImpact = typeof JourneyAlertImpact[keyof typeof JourneyAlertImpact];
+
+
+export const JourneyAlertImpact = {
+  route_match: 'route_match',
+  stop_match: 'stop_match',
+  route_and_stop_match: 'route_and_stop_match',
+  uncertain: 'uncertain',
+} as const;
+
+export type JourneyAlertSource = typeof JourneyAlertSource[keyof typeof JourneyAlertSource];
+
+
+export const JourneyAlertSource = {
+  NUMBER_511: '511',
+} as const;
+
+export type JourneyAlertActivePeriodsItem = {
+  /** @nullable */
+  start: string | null;
+  /** @nullable */
+  end: string | null;
+};
+
+export type JourneyAlertRouteMatchesItem = {
+  routeId: string;
+  /** @nullable */
+  routeNumber: string | null;
+  /** @nullable */
+  routeName: string | null;
+};
+
+export type JourneyAlertStopMatchesItem = {
+  id: string;
+  name: string;
+};
+
+/**
+ * A verbatim active transit notice with provider identity, exact route/stop matches, timing, and feed freshness.
+ */
+export interface JourneyAlert {
+  providerId: string;
+  /** @maxLength 2000 */
+  originalText: string;
+  /** @maxLength 80 */
+  status: string;
+  activePeriods: JourneyAlertActivePeriodsItem[];
+  routeMatches: JourneyAlertRouteMatchesItem[];
+  stopMatches: JourneyAlertStopMatchesItem[];
+  impact: JourneyAlertImpact;
+  source: JourneyAlertSource;
+  fetchedAt: string;
+}
+
 export type JourneyRouteSource = typeof JourneyRouteSource[keyof typeof JourneyRouteSource];
 
 
@@ -437,6 +505,11 @@ export interface JourneyLeg {
      * @nullable
      */
   routeNumber: string | null;
+  /**
+     * Exact operator route identifier when available; never inferred by substring.
+     * @nullable
+     */
+  routeId: string | null;
   /** @nullable */
   routeName: string | null;
   boardingStop: JourneyStop;
@@ -468,7 +541,7 @@ export interface JourneyRoute {
   transfers: number;
   /** @minimum 0 */
   delayMinutes: number;
-  alerts: string[];
+  alerts: JourneyAlert[];
   available: boolean;
   recommended: boolean;
   source: JourneyRouteSource;
@@ -482,7 +555,11 @@ export interface JourneyOptionsResponse {
   source: JourneyOptionsResponseSource;
   routes: JourneyRoute[];
   stops: JourneyStop[];
-  alerts: string[];
+  alerts: JourneyAlert[];
+  /** Freshness and availability of the 511 service-alert feed; unavailable is not the same as no active alerts. */
+  alertsStatus: JourneyOptionsResponseAlertsStatus;
+  /** @nullable */
+  alertsFetchedAt: string | null;
   nearestStop?: JourneyStop | null;
   /** @nullable */
   message?: string | null;
@@ -715,6 +792,34 @@ export const CommunityReportAiAssessmentSuggestedPriority = {
   High: 'High',
 } as const;
 
+export type CommunityReportAiAssessmentUrgency = typeof CommunityReportAiAssessmentUrgency[keyof typeof CommunityReportAiAssessmentUrgency];
+
+
+export const CommunityReportAiAssessmentUrgency = {
+  urgent_review: 'urgent_review',
+  same_day: 'same_day',
+  routine: 'routine',
+  undetermined: 'undetermined',
+} as const;
+
+export type CommunityReportAiAssessmentEvidenceQuality = typeof CommunityReportAiAssessmentEvidenceQuality[keyof typeof CommunityReportAiAssessmentEvidenceQuality];
+
+
+export const CommunityReportAiAssessmentEvidenceQuality = {
+  limited: 'limited',
+  moderate: 'moderate',
+  strong: 'strong',
+  conflicting: 'conflicting',
+} as const;
+
+export type CommunityReportAiAssessmentImageAssessmentStatus = typeof CommunityReportAiAssessmentImageAssessmentStatus[keyof typeof CommunityReportAiAssessmentImageAssessmentStatus];
+
+
+export const CommunityReportAiAssessmentImageAssessmentStatus = {
+  analyzed: 'analyzed',
+  not_provided: 'not_provided',
+} as const;
+
 export type ReportAiEvidenceSource = typeof ReportAiEvidenceSource[keyof typeof ReportAiEvidenceSource];
 
 
@@ -729,6 +834,99 @@ export interface ReportAiEvidence {
   detail: string;
 }
 
+export type ReportAiOriginalAssessmentSuggestedCategory = typeof ReportAiOriginalAssessmentSuggestedCategory[keyof typeof ReportAiOriginalAssessmentSuggestedCategory];
+
+
+export const ReportAiOriginalAssessmentSuggestedCategory = {
+  Blight: 'Blight',
+  Illegal_dumping: 'Illegal dumping',
+  Unsafe_bus_stops: 'Unsafe bus stops',
+  Damaged_sidewalks: 'Damaged sidewalks',
+  Poor_lighting: 'Poor lighting',
+  Suspicious_activity: 'Suspicious activity',
+  Other_concerns: 'Other concerns',
+} as const;
+
+export type ReportAiOriginalAssessmentSuggestedPriority = typeof ReportAiOriginalAssessmentSuggestedPriority[keyof typeof ReportAiOriginalAssessmentSuggestedPriority];
+
+
+export const ReportAiOriginalAssessmentSuggestedPriority = {
+  Low: 'Low',
+  Medium: 'Medium',
+  High: 'High',
+} as const;
+
+export type ReportAiOriginalAssessmentUrgency = typeof ReportAiOriginalAssessmentUrgency[keyof typeof ReportAiOriginalAssessmentUrgency];
+
+
+export const ReportAiOriginalAssessmentUrgency = {
+  urgent_review: 'urgent_review',
+  same_day: 'same_day',
+  routine: 'routine',
+  undetermined: 'undetermined',
+} as const;
+
+export type ReportAiOriginalAssessmentEvidenceQuality = typeof ReportAiOriginalAssessmentEvidenceQuality[keyof typeof ReportAiOriginalAssessmentEvidenceQuality];
+
+
+export const ReportAiOriginalAssessmentEvidenceQuality = {
+  limited: 'limited',
+  moderate: 'moderate',
+  strong: 'strong',
+  conflicting: 'conflicting',
+} as const;
+
+export interface ReportAiOriginalAssessment {
+  suggestedCategory: ReportAiOriginalAssessmentSuggestedCategory;
+  /** @maxLength 500 */
+  summary: string;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  suggestedSeverity: number;
+  suggestedPriority: ReportAiOriginalAssessmentSuggestedPriority;
+  urgency: ReportAiOriginalAssessmentUrgency;
+  evidenceQuality: ReportAiOriginalAssessmentEvidenceQuality;
+  /** @maxItems 4 */
+  evidence: ReportAiEvidence[];
+  /** @maxLength 1000 */
+  uncertainty: string;
+  /**
+     * @maxItems 4
+     * @items.maxLength 300
+     */
+  conflicts: string[];
+  /**
+     * @maxItems 5
+     * @items.maxLength 300
+     */
+  missingFacts: string[];
+  /** @maxLength 100 */
+  recommendedDepartment: string;
+  urgentHumanReview: boolean;
+}
+
+export type ReportAiRuleAdjustmentField = typeof ReportAiRuleAdjustmentField[keyof typeof ReportAiRuleAdjustmentField];
+
+
+export const ReportAiRuleAdjustmentField = {
+  suggestedSeverity: 'suggestedSeverity',
+  suggestedPriority: 'suggestedPriority',
+  urgency: 'urgency',
+  urgentHumanReview: 'urgentHumanReview',
+} as const;
+
+export interface ReportAiRuleAdjustment {
+  field: ReportAiRuleAdjustmentField;
+  /** @maxLength 100 */
+  source: string;
+  /** @maxLength 500 */
+  reason: string;
+  beforeValue: string | number | boolean;
+  afterValue: string | number | boolean;
+}
+
 export interface CommunityReportAiAssessment {
   id: number;
   suggestedCategory: CommunityReportAiAssessmentSuggestedCategory;
@@ -740,10 +938,25 @@ export interface CommunityReportAiAssessment {
      */
   suggestedSeverity: number;
   suggestedPriority: CommunityReportAiAssessmentSuggestedPriority;
+  urgency: CommunityReportAiAssessmentUrgency;
+  evidenceQuality: CommunityReportAiAssessmentEvidenceQuality;
+  imageAssessmentStatus: CommunityReportAiAssessmentImageAssessmentStatus;
   /** @maxItems 4 */
   evidence: ReportAiEvidence[];
   /** @maxLength 1000 */
   uncertainty: string;
+  /**
+     * @maxItems 4
+     * @items.maxLength 300
+     */
+  conflicts: string[];
+  /**
+     * @maxItems 5
+     * @items.maxLength 300
+     */
+  missingFacts: string[];
+  originalAssessment: ReportAiOriginalAssessment | null;
+  ruleAdjustments: ReportAiRuleAdjustment[];
   /** @maxLength 100 */
   recommendedDepartment: string;
   urgentHumanReview: boolean;
@@ -751,6 +964,8 @@ export interface CommunityReportAiAssessment {
   model: string;
   /** @maxLength 80 */
   instructionVersion: string;
+  /** @maxLength 80 */
+  rubricVersion: string;
   analyzedAt: string;
 }
 
@@ -784,6 +999,19 @@ export const CommunityReportAiReviewFinalPriority = {
   High: 'High',
 } as const;
 
+/**
+ * @nullable
+ */
+export type CommunityReportAiReviewFinalUrgency = typeof CommunityReportAiReviewFinalUrgency[keyof typeof CommunityReportAiReviewFinalUrgency] | null;
+
+
+export const CommunityReportAiReviewFinalUrgency = {
+  urgent_review: 'urgent_review',
+  same_day: 'same_day',
+  routine: 'routine',
+  undetermined: 'undetermined',
+} as const;
+
 export interface CommunityReportAiReview {
   id: number;
   assessmentId: number;
@@ -797,6 +1025,8 @@ export interface CommunityReportAiReview {
      */
   finalSeverity: number;
   finalPriority: CommunityReportAiReviewFinalPriority;
+  /** @nullable */
+  finalUrgency: CommunityReportAiReviewFinalUrgency;
   /** @maxLength 100 */
   finalDepartment: string;
   /** @maxLength 120 */
@@ -840,6 +1070,16 @@ export const CommunityReportAiReviewInputFinalPriority = {
   High: 'High',
 } as const;
 
+export type CommunityReportAiReviewInputFinalUrgency = typeof CommunityReportAiReviewInputFinalUrgency[keyof typeof CommunityReportAiReviewInputFinalUrgency];
+
+
+export const CommunityReportAiReviewInputFinalUrgency = {
+  urgent_review: 'urgent_review',
+  same_day: 'same_day',
+  routine: 'routine',
+  undetermined: 'undetermined',
+} as const;
+
 export interface CommunityReportAiReviewInput {
   decision: CommunityReportAiReviewInputDecision;
   /**
@@ -854,6 +1094,7 @@ export interface CommunityReportAiReviewInput {
      */
   finalSeverity?: number;
   finalPriority?: CommunityReportAiReviewInputFinalPriority;
+  finalUrgency?: CommunityReportAiReviewInputFinalUrgency;
   /**
      * @minLength 1
      * @maxLength 100

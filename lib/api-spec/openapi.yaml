@@ -1426,14 +1426,21 @@ components:
         alerts:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/JourneyAlert"
+        alertsStatus:
+          type: string
+          enum: [fresh, cached, stale, unavailable, not_requested]
+          description: Freshness and availability of the 511 service-alert feed; unavailable is not the same as no active alerts.
+        alertsFetchedAt:
+          type: ["string", "null"]
+          format: date-time
         nearestStop:
           anyOf:
             - $ref: "#/components/schemas/JourneyStop"
             - type: "null"
         message:
           type: ["string", "null"]
-      required: [source, routes, stops, alerts]
+      required: [source, routes, stops, alerts, alertsStatus, alertsFetchedAt]
     JourneyMapResponse:
       allOf:
         - $ref: "#/components/schemas/JourneyOptionsResponse"
@@ -1471,7 +1478,7 @@ components:
         alerts:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/JourneyAlert"
         available:
           type: boolean
         recommended:
@@ -1513,6 +1520,9 @@ components:
         routeNumber:
           type: ["string", "null"]
           description: Public VTA route code (e.g. "22"), null for walking legs.
+        routeId:
+          type: ["string", "null"]
+          description: Exact operator route identifier when available; never inferred by substring.
         routeName:
           type: ["string", "null"]
         boardingStop:
@@ -1537,6 +1547,7 @@ components:
       required:
         - type
         - routeNumber
+        - routeId
         - routeName
         - boardingStop
         - alightingStop
@@ -1546,6 +1557,46 @@ components:
         - predictedArrival
         - transferGuidance
         - polyline
+    JourneyAlert:
+      type: object
+      description: A verbatim active transit notice with provider identity, exact route/stop matches, timing, and feed freshness.
+      properties:
+        providerId: { type: string }
+        originalText: { type: string, maxLength: 2000 }
+        status: { type: string, maxLength: 80 }
+        activePeriods:
+          type: array
+          items:
+            type: object
+            properties:
+              start: { type: ["string", "null"], format: date-time }
+              end: { type: ["string", "null"], format: date-time }
+            required: [start, end]
+        routeMatches:
+          type: array
+          items:
+            type: object
+            properties:
+              routeId: { type: string }
+              routeNumber: { type: ["string", "null"] }
+              routeName: { type: ["string", "null"] }
+            required: [routeId, routeNumber, routeName]
+        stopMatches:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+            required: [id, name]
+        impact:
+          type: string
+          enum: [route_match, stop_match, route_and_stop_match, uncertain]
+        source:
+          type: string
+          enum: ["511"]
+        fetchedAt: { type: string, format: date-time }
+      required: [providerId, originalText, status, activePeriods, routeMatches, stopMatches, impact, source, fetchedAt]
     JourneyStop:
       type: object
       properties:
@@ -1685,18 +1736,96 @@ components:
         suggestedPriority:
           type: string
           enum: [Low, Medium, High]
+        urgency:
+          type: string
+          enum: [urgent_review, same_day, routine, undetermined]
+        evidenceQuality:
+          type: string
+          enum: [limited, moderate, strong, conflicting]
+        imageAssessmentStatus:
+          type: string
+          enum: [analyzed, not_provided]
         evidence:
           type: array
           maxItems: 4
           items:
             $ref: "#/components/schemas/ReportAiEvidence"
         uncertainty: { type: string, maxLength: 1000 }
+        conflicts:
+          type: array
+          maxItems: 4
+          items: { type: string, maxLength: 300 }
+        missingFacts:
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 300 }
+        originalAssessment:
+          anyOf:
+            - $ref: "#/components/schemas/ReportAiOriginalAssessment"
+            - type: "null"
+        ruleAdjustments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReportAiRuleAdjustment"
         recommendedDepartment: { type: string, maxLength: 100 }
         urgentHumanReview: { type: boolean }
         model: { type: string, maxLength: 120 }
         instructionVersion: { type: string, maxLength: 80 }
+        rubricVersion: { type: string, maxLength: 80 }
         analyzedAt: { type: string, format: date-time }
-      required: [id, suggestedCategory, summary, suggestedSeverity, suggestedPriority, evidence, uncertainty, recommendedDepartment, urgentHumanReview, model, instructionVersion, analyzedAt]
+      required: [id, suggestedCategory, summary, suggestedSeverity, suggestedPriority, urgency, evidenceQuality, imageAssessmentStatus, evidence, uncertainty, conflicts, missingFacts, originalAssessment, ruleAdjustments, recommendedDepartment, urgentHumanReview, model, instructionVersion, rubricVersion, analyzedAt]
+    ReportAiOriginalAssessment:
+      type: object
+      properties:
+        suggestedCategory:
+          type: string
+          enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns]
+        summary: { type: string, maxLength: 500 }
+        suggestedSeverity: { type: integer, minimum: 1, maximum: 10 }
+        suggestedPriority:
+          type: string
+          enum: [Low, Medium, High]
+        urgency:
+          type: string
+          enum: [urgent_review, same_day, routine, undetermined]
+        evidenceQuality:
+          type: string
+          enum: [limited, moderate, strong, conflicting]
+        evidence:
+          type: array
+          maxItems: 4
+          items: { $ref: "#/components/schemas/ReportAiEvidence" }
+        uncertainty: { type: string, maxLength: 1000 }
+        conflicts:
+          type: array
+          maxItems: 4
+          items: { type: string, maxLength: 300 }
+        missingFacts:
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 300 }
+        recommendedDepartment: { type: string, maxLength: 100 }
+        urgentHumanReview: { type: boolean }
+      required: [suggestedCategory, summary, suggestedSeverity, suggestedPriority, urgency, evidenceQuality, evidence, uncertainty, conflicts, missingFacts, recommendedDepartment, urgentHumanReview]
+    ReportAiRuleAdjustment:
+      type: object
+      properties:
+        field:
+          type: string
+          enum: [suggestedSeverity, suggestedPriority, urgency, urgentHumanReview]
+        source: { type: string, maxLength: 100 }
+        reason: { type: string, maxLength: 500 }
+        beforeValue:
+          anyOf:
+            - type: string
+            - type: integer
+            - type: boolean
+        afterValue:
+          anyOf:
+            - type: string
+            - type: integer
+            - type: boolean
+      required: [field, source, reason, beforeValue, afterValue]
     CommunityReportAiReview:
       type: object
       properties:
@@ -1713,10 +1842,13 @@ components:
         finalPriority:
           type: string
           enum: [Low, Medium, High]
+        finalUrgency:
+          type: ["string", "null"]
+          enum: [urgent_review, same_day, routine, undetermined, null]
         finalDepartment: { type: string, maxLength: 100 }
         reviewedBy: { type: string, maxLength: 120 }
         reviewedAt: { type: string, format: date-time }
-      required: [id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalDepartment, reviewedBy, reviewedAt]
+      required: [id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalUrgency, finalDepartment, reviewedBy, reviewedAt]
     CommunityReportAiReviewInput:
       type: object
       properties:
@@ -1731,6 +1863,9 @@ components:
         finalPriority:
           type: string
           enum: [Low, Medium, High]
+        finalUrgency:
+          type: string
+          enum: [urgent_review, same_day, routine, undetermined]
         finalDepartment: { type: string, minLength: 1, maxLength: 100 }
       required: [decision, reason]
     SOSChatMessage:

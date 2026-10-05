@@ -1266,9 +1266,9 @@ function ReportComposer({ onClose }: { onClose: () => void }) {
           <View style={styles.aiIntro}>
             <Feather name="cpu" size={21} color={colors.primary} />
             <View style={styles.flex}>
-              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Simulated AI review</Text>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>AI-assisted assessment</Text>
               <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
-                PathPal will create a sample category, severity score, department, and priority from your description. {state.account?.reportServiceUnavailable ? 'Report service is unavailable; the report cannot be saved until a server connection is restored.' : 'A report is only confirmed after the server accepts it.'}
+                AI guidance is advisory and awaits human review. Severity, urgency, and evidence quality are shown separately; nothing is dispatched. {state.account?.reportServiceUnavailable ? 'Report service is unavailable; the report cannot be saved until a server connection is restored.' : 'A report is only confirmed after the server accepts it.'}
               </Text>
             </View>
           </View>
@@ -1394,6 +1394,9 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
   const current = detailQuery.data
     ? toSafetyReport(detailQuery.data)
     : state.reports.find((item) => item.id === report.id) ?? report;
+  const aiAssessment = detailQuery.data?.aiAssessment;
+  const aiReviewHistory = detailQuery.data?.aiReviewHistory ?? [];
+  const currentAssessmentReviewed = !!aiAssessment && aiReviewHistory.some((review) => review.assessmentId === aiAssessment.id);
   const [severity, setSeverity] = useState(`${current.severity}`);
   const [description, setDescription] = useState(current.description);
   const [category, setCategory] = useState(current.category);
@@ -1534,21 +1537,69 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
           <Text style={[styles.detailValue, { color: colors.foreground }]}>{current.category}</Text>
           <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{current.summary}</Text>
           {detailQuery.data?.aiAnalysisStatus === 'complete' ? (
-            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI triage guidance · not a verified finding or danger score.</Text>
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+              {currentAssessmentReviewed
+                ? 'Manager review recorded · advisory only; this does not dispatch help.'
+                : 'AI-assisted assessment — awaiting review. Guidance only; not a verified finding or dispatch.'}
+            </Text>
           ) : detailQuery.data?.aiAnalysisStatus === 'pending' ? (
             <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI analysis is still processing.</Text>
           ) : (
             <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI analysis unavailable; the saved report and original description are unchanged.</Text>
           )}
-          {detailQuery.data?.aiAssessment?.urgentHumanReview ? (
-            <Text style={[styles.cardBody, { color: colors.destructive }]}>Human review recommended because the evidence may be unclear or need follow-up.</Text>
-          ) : null}
           <Divider />
           <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Approximate map pin coordinates</Text>
           <Text style={[styles.detailValue, { color: colors.foreground }]}>
             {current.latitude == null || current.longitude == null ? 'Coordinates unavailable' : `${current.latitude.toFixed(6)}, ${current.longitude.toFixed(6)}`}
           </Text>
         </Card>
+        {aiAssessment ? (
+          <Card tone="soft">
+            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Potential severity</Text>
+            <Text style={[styles.detailValue, { color: colors.foreground }]}>{aiAssessment.suggestedSeverity}/10 · legacy priority {aiAssessment.suggestedPriority}</Text>
+            <Divider />
+            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Urgency</Text>
+            <Text style={[styles.detailValue, { color: aiAssessment.urgentHumanReview ? colors.destructive : colors.foreground }]}>
+              {aiAssessment.urgency.replaceAll('_', ' ')}{aiAssessment.urgentHumanReview ? ' · human review required' : ''}
+            </Text>
+            <Divider />
+            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Evidence quality and photo input</Text>
+            <Text style={[styles.detailValue, { color: colors.foreground }]}>
+              {aiAssessment.evidenceQuality} · {aiAssessment.imageAssessmentStatus === 'analyzed' ? 'photo bytes analyzed' : 'no photo provided'}
+            </Text>
+            {aiAssessment.uncertainty ? <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Uncertainty: {aiAssessment.uncertainty}</Text> : null}
+            {aiAssessment.conflicts.map((item, index) => (
+              <Text key={`conflict-${index}`} style={[styles.cardBody, { color: colors.mutedForeground }]}>Conflicting detail: {item}</Text>
+            ))}
+            {aiAssessment.missingFacts.map((item, index) => (
+              <Text key={`missing-${index}`} style={[styles.cardBody, { color: colors.mutedForeground }]}>Verify: {item}</Text>
+            ))}
+            {aiAssessment.ruleAdjustments.map((item, index) => (
+              <Text key={`${item.source}-${index}`} style={[styles.cardBody, { color: colors.foreground }]}>
+                Safety adjustment: {item.reason} ({String(item.beforeValue)} → {String(item.afterValue)})
+              </Text>
+            ))}
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+              Rubric {aiAssessment.rubricVersion} · {aiAssessment.model}. Original model output and rule changes are retained.
+            </Text>
+            {aiAssessment.originalAssessment ? (
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
+                Original: potential severity {aiAssessment.originalAssessment.suggestedSeverity}/10 · urgency {aiAssessment.originalAssessment.urgency.replaceAll('_', ' ')} · evidence quality {aiAssessment.originalAssessment.evidenceQuality}
+              </Text>
+            ) : null}
+          </Card>
+        ) : null}
+        {aiReviewHistory.length ? (
+          <Card>
+            <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Manager review history</Text>
+            {aiReviewHistory.map((review) => (
+              <Text key={review.id} style={[styles.cardBody, { color: colors.foreground }]}>
+                {review.decision === 'approved' ? 'Approved' : 'Overrode'} · {review.reason} · severity {review.finalSeverity}/10
+                {review.finalUrgency ? ` · ${review.finalUrgency.replaceAll('_', ' ')}` : ''}
+              </Text>
+            ))}
+          </Card>
+        ) : null}
         <SectionTitle title="Report details" />
         {canEdit ? (
           <>

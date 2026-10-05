@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger";
+import {
+  matchTransitAlerts,
+  parseTransitAlerts,
+  type JourneyAlert,
+  type TransitFeedAlert,
+} from "../lib/transit-alerts";
 import { findVtaJourneys, getVtaGtfs, scheduledTimestamp, type Feed, type GtfsJourney, type GtfsStop } from "./vta-gtfs";
 import {
   parseCommunityReportPoints,
@@ -62,6 +68,7 @@ type JourneyStop = {
 type JourneyLeg = {
   type: "walk" | "bus";
   routeNumber: string | null;
+  routeId: string | null;
   routeName: string | null;
   boardingStop: JourneyStop;
   alightingStop: JourneyStop;
@@ -82,7 +89,7 @@ type JourneyRoute = {
   walkingMeters: number;
   transfers: number;
   delayMinutes: number;
-  alerts: string[];
+  alerts: JourneyAlert[];
   available: boolean;
   recommended: boolean;
   source: "live" | "demo";
@@ -106,6 +113,7 @@ type LegStop = {
   durationMinutes: number;
   polyline: string | null;
   routeNumber: string | null;
+  routeId?: string | null;
   routeName: string | null;
   scheduledDeparture: number | undefined;
   vehicleType?: string | null;
@@ -142,7 +150,9 @@ type TransitCatalog = {
   routes: string[];
   stops: JourneyStop[];
   lines: TransitLine[];
-  alerts: TransitAlert[];
+  alerts: TransitFeedAlert[];
+  alertsStatus: "fresh" | "cached" | "stale" | "unavailable";
+  alertsFetchedAt: string | null;
   operatorId: string;
   agency: string;
   complete: boolean;
@@ -150,7 +160,6 @@ type TransitCatalog = {
 };
 
 type TransitLine = { id: string; name: string; refs: string[] };
-type TransitAlert = { text: string; lineRefs: string[] };
 type StopPrediction = { lineRef: string; delayMinutes: number };
 const lineLabel = (line: TransitLine): string => {
   const code = line.refs.find((ref) => /^\d{1,4}[A-Z]?$/.test(ref));
@@ -348,93 +357,26 @@ function parse511Stops(payload: unknown): JourneyStop[] {
     .filter((stop): stop is JourneyStop => !!stop);
 }
 
-function lineRefsIn(value: unknown): string[] {
-  const found: string[] = [];
-  const visit = (node: unknown): void => {
-    if (Array.isArray(node)) {
-      node.forEach(visit);
-      return;
-    }
-    const record = asRecord(node);
-    if (!record) return;
-    for (const [key, child] of Object.entries(record)) {
-      if (key.toLowerCase() === "lineref") {
-        const ref =
-          typeof child === "string"
-            ? child.trim()
-            : safeText(asRecord(child)?.ref);
-        if (ref) found.push(ref);
-      } else {
-        visit(child);
-      }
-    }
-  };
-  visit(value);
-  return [...new Set(found)];
-}
-
-function parse511Alerts(payload: unknown): { valid: boolean; alerts: TransitAlert[] } {
-  const gtfs = asRecord(payload);
-  if (gtfs && Array.isArray(gtfs.Entities)) {
-    const translatedText = (value: unknown): string | undefined => {
-      const translations = objectList(getPath(value, "Translations"));
-      return translations.map((entry) => safeText(getPath(entry, "Text"))).find((text) => !!text);
-    };
-    const alerts = objectList(gtfs.Entities)
-      .map((entity) => {
-        const alert = asRecord(getPath(entity, "Alert"));
-        if (!alert) return undefined;
-        const periods = objectList(getPath(alert, "ActivePeriods"));
-        const now = Date.now() / 1000;
-        if (periods.length && !periods.some((period) => {
-          const start = numberField(period, ["start"]);
-          const end = numberField(period, ["end"]);
-          return (start === undefined || start <= now) && (end === undefined || end >= now);
-        })) return undefined;
-        const text = translatedText(getPath(alert, "HeaderText")) ??
-          translatedText(getPath(alert, "DescriptionText"));
-        if (!text) return undefined;
-        const lineRefs = objectList(getPath(alert, "InformedEntities"))
-          .flatMap((informed) => [
-            safeText(getPath(informed, "RouteId")),
-            safeText(getPath(informed, "Trip", "RouteId")),
-          ].filter((ref): ref is string => !!ref));
-        return { text, lineRefs: [...new Set(lineRefs)] };
-      })
-      .filter((alert): alert is TransitAlert => !!alert)
-      .slice(0, 30);
-    return { valid: true, alerts };
-  }
-  const situationExchange = getPath(
-    payload,
-    "Siri",
-    "ServiceDelivery",
-    "SituationExchangeDelivery",
-  );
-  const exchange = asRecord(situationExchange);
-  if (!exchange) return { valid: false, alerts: [] };
-  const situations = asRecord(exchange.Situations);
-  if (!situations) return { valid: true, alerts: [] };
-  const alerts = objectList(situations.PtSituationElement)
-    .map((situation) => {
-      const text =
-        safeText(situation.Summary) ??
-        safeText(situation.Description);
-      if (!text) return undefined;
-      return { text, lineRefs: lineRefsIn(situation) };
-    })
-    .filter((alert): alert is TransitAlert => !!alert)
-    .slice(0, 30);
-  return { valid: true, alerts };
-}
-
 async function get511Catalog(): Promise<TransitCatalog | undefined> {
   const apiKey = process.env.TRANSIT_511_API_KEY;
   if (!apiKey) return undefined;
   if (catalogCache && catalogCache.expiresAt > Date.now()) {
-    return catalogCache.value;
+    return {
+      ...catalogCache.value,
+      alertsStatus: catalogCache.value.alertsStatus === "stale"
+        ? "stale"
+        : catalogCache.value.alertsFetchedAt ? "cached" : "unavailable",
+    };
   }
-  if (catalogFailureExpiresAt > Date.now()) return undefined;
+  if (catalogFailureExpiresAt > Date.now()) {
+    if (!catalogCache) return undefined;
+    return {
+      ...catalogCache.value,
+      alertsStatus: catalogCache.value.alertsStatus === "unavailable" || !catalogCache.value.alertsFetchedAt
+        ? "unavailable"
+        : "stale",
+    };
+  }
   if (catalogInFlight) return catalogInFlight;
 
   catalogInFlight = (async () => {
@@ -481,7 +423,7 @@ async function get511Catalog(): Promise<TransitCatalog | undefined> {
         })(),
       ]);
       const parsedAlerts = alertsResult.ok
-        ? parse511Alerts(alertsResult.payload)
+        ? parseTransitAlerts(alertsResult.payload)
         : { valid: false, alerts: [] };
       const lines = linesResult.ok ? parse511Lines(linesResult.payload) : [];
       const stops = stopsResult.ok ? parse511Stops(stopsResult.payload) : [];
@@ -510,13 +452,18 @@ async function get511Catalog(): Promise<TransitCatalog | undefined> {
           alertArrayLength: Array.isArray(alertsResult.payload) ? alertsResult.payload.length : undefined,
         }, "VTA catalog incomplete");
       }
+      const alertsFetchedAt = parsedAlerts.valid
+        ? new Date().toISOString()
+        : catalogCache?.value.alertsFetchedAt ?? null;
       const catalog: TransitCatalog = {
         operatorId: operator.id,
         agency: operator.id,
         routes: [...new Set(lines.map(lineLabel))],
         lines,
         stops,
-        alerts: parsedAlerts.alerts,
+        alerts: parsedAlerts.valid ? parsedAlerts.alerts : catalogCache?.value.alerts ?? [],
+        alertsStatus: parsedAlerts.valid ? "fresh" : alertsFetchedAt ? "stale" : "unavailable",
+        alertsFetchedAt,
         complete,
         ...(!complete
           ? { message: "VTA catalog feeds are incomplete; no live catalog is available." }
@@ -528,7 +475,12 @@ async function get511Catalog(): Promise<TransitCatalog | undefined> {
     } catch {
       // Never attach upstream URLs or provider error text; they can contain credentials.
       catalogFailureExpiresAt = Date.now() + 60_000;
-      return undefined;
+      return catalogCache
+        ? {
+            ...catalogCache.value,
+            alertsStatus: catalogCache.value.alertsFetchedAt ? "stale" : "unavailable",
+          }
+        : undefined;
     } finally {
       catalogInFlight = undefined;
     }
@@ -1105,6 +1057,7 @@ function demoLeg(type: "walk" | "bus", boarding: JourneyStop, alighting: Journey
   return {
     type,
     routeNumber: type === "bus" ? "22" : null,
+    routeId: type === "bus" ? "demo-route-22" : null,
     routeName: type === "bus" ? "Demo Route 22" : null,
     boardingStop: boarding,
     alightingStop: alighting,
@@ -1183,6 +1136,8 @@ function demoJourney(
     routes: ranked,
     stops: [stop],
     alerts: [],
+    alertsStatus: mode === "walking" ? "not_requested" as const : "unavailable" as const,
+    alertsFetchedAt: null,
     nearestStop: stop,
     message,
   };
@@ -1362,6 +1317,7 @@ async function fetchGoogleWalkingRoute(
         {
           type: "walk",
           routeNumber: null,
+          routeId: null,
           routeName: null,
           boardingStop: boarding,
           alightingStop: alighting,
@@ -1438,7 +1394,7 @@ async function buildGtfsRoute(
     walkingMeters += meters;
     const duration = actual?.durationMinutes ?? fallbackMinutes;
     legs.push({
-      type: "walk", routeNumber: null, routeName: null,
+      type: "walk", routeNumber: null, routeId: null, routeName: null,
       boardingStop: toJourneyStop(from), alightingStop: toJourneyStop(to),
       distanceMeters: meters, durationMinutes: duration,
       delayMinutes: null, predictedArrival: null, transferGuidance: null,
@@ -1460,7 +1416,7 @@ async function buildGtfsRoute(
       : null;
     const nextRide = candidate.rides[rideIndex + 1];
     legs.push({
-      type: "bus", routeNumber: ride.routeNumber, routeName: ride.routeName,
+      type: "bus", routeNumber: ride.routeNumber, routeId: ride.routeId, routeName: ride.routeName,
       boardingStop: toJourneyStop(ride.boarding), alightingStop: toJourneyStop(ride.alighting),
       distanceMeters: ride.distanceMeters, durationMinutes: Math.max(1, Math.ceil((ride.arrival - ride.departure) / 60)),
       delayMinutes: delay, predictedArrival: scheduledTimestamp(feed, ride.arrival + (delay ?? 0) * 60),
@@ -1479,11 +1435,6 @@ async function buildGtfsRoute(
     { ...destination, id: "journey-destination", name: "Destination" },
     candidate.destinationWalkMinutes);
   if (feed.secondsNow + originWalkDuration * 60 > firstRide.departure) missedConnection = true;
-  const lineRefs = new Set(candidate.rides.flatMap((ride) =>
-    [ride.routeId, ride.routeNumber].map(normalizedRef)));
-  const alerts = (catalog?.alerts ?? [])
-    .filter((alert) => alert.lineRefs.some((ref) => lineRefs.has(normalizedRef(ref))))
-    .map((alert) => alert.text);
   const delayMinutes = legs.reduce((sum, leg) => sum + (leg.delayMinutes ?? 0), 0);
   return {
     walkingEstimated,
@@ -1495,7 +1446,7 @@ async function buildGtfsRoute(
       durationMinutes: Math.ceil((lastRide.arrival - feed.secondsNow) / 60) + destinationWalkDuration + delayMinutes,
       walkingMeters: walkingMeters || candidate.walkingMeters,
       transfers: candidate.rides.length - 1, delayMinutes,
-      alerts: [...new Set(alerts)], available: !missedConnection, recommended: false,
+      alerts: [], available: !missedConnection, recommended: false,
       source: "live", mode: "transit", legs,
     },
   };
@@ -1540,6 +1491,15 @@ function buildRouteLegs(
       }
     }
     const nextLeg = route.legStops[index + 1];
+    const routeLine = legStop.type === "bus"
+      ? catalog?.lines.find((line) =>
+          [line.id, line.name, ...line.refs].some((candidate) =>
+            [legStop.routeNumber, legStop.routeName].some((ref) =>
+              !!ref && normalizedRef(candidate) === normalizedRef(ref),
+            ),
+          ),
+        )
+      : undefined;
     const transferGuidance =
       legStop.type === "bus" && nextLeg && nextLeg.type === "bus"
         ? `Transfer to ${nextLeg.routeName ?? nextLeg.routeNumber ?? "the next bus"} at ${alightingStop.name}.`
@@ -1547,6 +1507,7 @@ function buildRouteLegs(
     return {
       type: legStop.type,
       routeNumber: legStop.routeNumber,
+      routeId: legStop.routeId ?? routeLine?.id ?? null,
       routeName: legStop.routeName,
       boardingStop,
       alightingStop,
@@ -1641,13 +1602,36 @@ async function buildJourney(
     }))
     .sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0))
     .slice(0, 12);
-  const alerts = [...new Set((catalog?.alerts ?? []).map((alert) => alert.text))];
   const walkingJourneyRoutes = mode !== "transit" && walkingRoute ? [walkingRoute.route] : [];
   const rankedRoutes = rankJourneyRoutes([
     ...transitJourneyRoutes,
     ...googleTransitRoutes,
     ...walkingJourneyRoutes,
   ]);
+  const routesWithAlerts = rankedRoutes.map((route) => {
+    if (route.mode !== "transit") return route;
+    const busLegs = route.legs.filter((leg) => leg.type === "bus");
+    const routeRefs = busLegs.map(({ routeId, routeNumber, routeName }) => ({ routeId, routeNumber, routeName }));
+    const stopRefs = busLegs.flatMap((leg) => [leg.boardingStop, leg.alightingStop]);
+    return {
+      ...route,
+      alerts: matchTransitAlerts(
+        catalog?.alerts ?? [],
+        routeRefs,
+        stopRefs,
+        catalog?.alertsFetchedAt ?? new Date().toISOString(),
+      ),
+    };
+  });
+  const allBusLegs = routesWithAlerts
+    .filter((route) => route.mode === "transit")
+    .flatMap((route) => route.legs.filter((leg) => leg.type === "bus"));
+  const alerts = matchTransitAlerts(
+    catalog?.alerts ?? [],
+    allBusLegs.map(({ routeId, routeNumber, routeName }) => ({ routeId, routeNumber, routeName })),
+    allBusLegs.flatMap((leg) => [leg.boardingStop, leg.alightingStop]),
+    catalog?.alertsFetchedAt ?? new Date().toISOString(),
+  );
   const nearestStop = stops[0] ?? null;
   const notices: string[] = [];
   if (transitJourneyRoutes.length) notices.push("VTA bus trips use the 511 published schedule; arrival estimates are not live vehicle positions.");
@@ -1657,6 +1641,11 @@ async function buildJourney(
       : "Google Maps provided this VTA bus route and path; 511 schedule and delay details are unavailable.");
   }
   if (!catalog?.complete && mode !== "walking") notices.push(catalog?.message ?? "511 real-time feeds are unavailable; delays and alerts may be missing.");
+  if (mode !== "walking" && catalog?.alertsStatus === "unavailable") {
+    notices.push("511 service alerts could not be loaded; an empty alert list does not mean there are no alerts.");
+  } else if (mode !== "walking" && catalog?.alertsStatus === "stale") {
+    notices.push("Showing cached 511 service alerts because the latest refresh failed.");
+  }
   if (!feed && mode !== "walking" && !googleTransitRoutes.length) notices.push("511 VTA schedule is unavailable; no verified bus route can be shown right now.");
   if (built.some(({ walkingEstimated }) => walkingEstimated)) notices.push("Some connecting walks use straight-line estimates because walking directions were unavailable.");
   if (feed && mode !== "walking" && !transitJourneyRoutes.length && !googleTransitRoutes.length) {
@@ -1665,9 +1654,13 @@ async function buildJourney(
   if (!walkingRoute && mode !== "transit") notices.push("Google walking directions are unavailable.");
   return {
     source: rankedRoutes.length ? "live" as const : "demo" as const,
-    routes: rankedRoutes,
+    routes: routesWithAlerts,
     stops,
     alerts,
+    alertsStatus: mode === "walking"
+      ? "not_requested" as const
+      : catalog?.alertsStatus ?? "unavailable" as const,
+    alertsFetchedAt: catalog?.alertsFetchedAt ?? null,
     nearestStop,
     ...(notices.length ? { message: notices.join(" ") } : {}),
   };

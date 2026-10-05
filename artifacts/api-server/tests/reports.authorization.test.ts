@@ -3,6 +3,7 @@ import { createHmac, randomInt, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { after, before, test } from "node:test";
 import { Storage } from "@google-cloud/storage";
+import sharp from "sharp";
 import { eq, inArray } from "drizzle-orm";
 import app from "../src/app";
 import {
@@ -19,8 +20,15 @@ const testManager = "authorization-test-manager";
 const testWorker = "authorization-test-worker";
 const westCleanTeam = "San Jose – West Clean Team";
 const otherTeam = "Authorization Test Other Team";
-const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8ioAAAAASUVORK5CYII=";
-const pngBytes = Buffer.from(pngBase64, "base64");
+const pngBytes = await sharp({
+  create: {
+    width: 8,
+    height: 8,
+    channels: 4,
+    background: { r: 54, g: 122, b: 163, alpha: 1 },
+  },
+}).png().toBuffer();
+const pngBase64 = pngBytes.toString("base64");
 
 type TestRole = "parent" | "child" | "manager" | "worker";
 
@@ -292,7 +300,12 @@ test("family accounts list, read, and download only reports and photos from thei
   const ownPhoto = await api(`/reports/${reportAId}/photo`, reporterAToken);
   assert.equal(ownPhoto.status, 200);
   assert.equal(ownPhoto.headers.get("content-type"), "image/png");
-  assert.deepEqual(Buffer.from(await ownPhoto.arrayBuffer()), pngBytes);
+  const downloadedPhoto = Buffer.from(await ownPhoto.arrayBuffer());
+  const photoMetadata = await sharp(downloadedPhoto).metadata();
+  assert.equal(photoMetadata.format, "png");
+  assert.equal(photoMetadata.width, 8);
+  assert.equal(photoMetadata.height, 8);
+  assert.equal(photoMetadata.exif, undefined, "Normalized photos must not retain EXIF metadata.");
 });
 
 test("report sessions retain parent, child, manager, and worker roles but reject citizen", async () => {

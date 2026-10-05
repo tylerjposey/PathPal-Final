@@ -8,6 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:synthetic": "node --experimental-strip-types --test tests/report-assessment.test.ts tests/transit-alerts.test.ts",
     "test:authorization": "node ./scripts/test-authorization.mjs"
   },
   "dependencies": {

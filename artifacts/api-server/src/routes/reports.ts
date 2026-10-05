@@ -33,6 +33,7 @@ import {
 } from "@workspace/api-zod";
 import { authenticate, createToken, HttpError, type Claims, type Role } from "../lib/report-session";
 import { analyzeCommunityReport } from "../lib/openai-assistance";
+import { applySeriousHazardReviewRule } from "../lib/report-assessment-rules";
 
 const router: IRouter = Router();
 const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
@@ -168,12 +169,19 @@ async function analyzeSavedReport(
   log?: Request["log"],
 ): Promise<CommunityReportRow> {
   try {
-    const { suggestion, model, instructionVersion } = await analyzeCommunityReport({
+    const {
+      suggestion: modelSuggestion,
+      originalAssessment,
+      model,
+      instructionVersion,
+      rubricVersion,
+    } = await analyzeCommunityReport({
       description: report.description,
       selectedCategory: report.selectedCategory,
       photoBytes: photo?.bytes,
       contentType: photo?.contentType,
     });
+    const { suggestion, adjustments } = applySeriousHazardReviewRule(modelSuggestion, report.description);
     const analyzedAt = new Date();
     const updated = await db.transaction(async (tx) => {
       const [assessment] = await tx.insert(communityReportAiAssessmentsTable).values({
@@ -184,10 +192,18 @@ async function analyzeSavedReport(
         suggestedPriority: suggestion.suggestedPriority,
         evidence: suggestion.evidence,
         uncertainty: suggestion.uncertainty,
+        urgency: suggestion.urgency,
+        evidenceQuality: suggestion.evidenceQuality,
+        imageAssessmentStatus: photo ? "analyzed" : "not_provided",
+        conflicts: suggestion.conflicts,
+        missingFacts: suggestion.missingFacts,
+        originalAssessment,
+        ruleAdjustments: adjustments,
         recommendedDepartment: suggestion.recommendedDepartment,
         urgentHumanReview: suggestion.urgentHumanReview,
         model,
         instructionVersion,
+        rubricVersion,
         analyzedAt,
       }).returning();
       if (!assessment) throw new Error("AI assessment could not be stored.");
@@ -247,14 +263,22 @@ async function reportDetail(row: CommunityReportRow) {
     suggestedPriority: latestAssessment.suggestedPriority,
     evidence: latestAssessment.evidence,
     uncertainty: latestAssessment.uncertainty,
+    urgency: latestAssessment.urgency,
+    evidenceQuality: latestAssessment.evidenceQuality,
+    imageAssessmentStatus: latestAssessment.imageAssessmentStatus,
+    conflicts: latestAssessment.conflicts,
+    missingFacts: latestAssessment.missingFacts,
+    originalAssessment: latestAssessment.originalAssessment,
+    ruleAdjustments: latestAssessment.ruleAdjustments,
     recommendedDepartment: latestAssessment.recommendedDepartment,
     urgentHumanReview: latestAssessment.urgentHumanReview,
     model: latestAssessment.model,
     instructionVersion: latestAssessment.instructionVersion,
+    rubricVersion: latestAssessment.rubricVersion,
     analyzedAt: latestAssessment.analyzedAt,
   } : null;
-  const aiReviewHistory = reviews.map(({ id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalDepartment, reviewedBy, reviewedAt }) => ({
-    id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalDepartment, reviewedBy, reviewedAt,
+  const aiReviewHistory = reviews.map(({ id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalUrgency, finalDepartment, reviewedBy, reviewedAt }) => ({
+    id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalUrgency, finalDepartment, reviewedBy, reviewedAt,
   }));
   return { ...reportResponse(row), statusHistory, aiAssessment, aiReviewHistory };
 }
@@ -766,24 +790,27 @@ router.post("/reports/:id/analysis/review", async (req, res): Promise<void> => {
     let finalCategory: string;
     let finalSeverity: number;
     let finalPriority: "Low" | "Medium" | "High";
+    let finalUrgency: "urgent_review" | "same_day" | "routine" | "undetermined";
     let finalDepartment: string;
     if (input.decision === "approved") {
       if (input.finalCategory !== undefined || input.finalSeverity !== undefined ||
-          input.finalPriority !== undefined || input.finalDepartment !== undefined) {
+          input.finalPriority !== undefined || input.finalUrgency !== undefined || input.finalDepartment !== undefined) {
         throw new HttpError(400, "An approval uses the AI suggestion as-is; send override fields only for an override.");
       }
       finalCategory = assessment.suggestedCategory;
       finalSeverity = assessment.suggestedSeverity;
       finalPriority = assessment.suggestedPriority as "Low" | "Medium" | "High";
+      finalUrgency = assessment.urgency as typeof finalUrgency;
       finalDepartment = assessment.recommendedDepartment;
     } else {
       if (!input.finalCategory || input.finalSeverity === undefined ||
-          !input.finalPriority || !input.finalDepartment?.trim()) {
-        throw new HttpError(400, "An override must include category, severity, priority, and department.");
+          !input.finalPriority || !input.finalUrgency || !input.finalDepartment?.trim()) {
+        throw new HttpError(400, "An override must include category, severity, priority, urgency, and department.");
       }
       finalCategory = input.finalCategory;
       finalSeverity = input.finalSeverity;
       finalPriority = priorityForSeverity(finalSeverity);
+      finalUrgency = input.finalUrgency;
       if (input.finalPriority !== finalPriority) {
         throw new HttpError(400, "Priority must match the selected severity.");
       }
@@ -800,6 +827,7 @@ router.post("/reports/:id/analysis/review", async (req, res): Promise<void> => {
         finalCategory,
         finalSeverity,
         finalPriority,
+        finalUrgency,
         finalDepartment,
         reviewedBy: claims.sub,
         reviewedAt,

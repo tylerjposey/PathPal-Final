@@ -357,6 +357,7 @@ function AiAssessmentPanel({ report, session }: { report: CommunityReportDetail;
   const [reason, setReason] = useState('');
   const [finalCategory, setFinalCategory] = useState<CommunityReportCategory>(report.category);
   const [finalSeverity, setFinalSeverity] = useState(String(report.severity));
+  const [finalUrgency, setFinalUrgency] = useState<'urgent_review' | 'same_day' | 'routine' | 'undetermined'>('undetermined');
   const [finalDepartment, setFinalDepartment] = useState(report.recommendedDepartment);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -366,6 +367,7 @@ function AiAssessmentPanel({ report, session }: { report: CommunityReportDetail;
     if (!assessment) return;
     setFinalCategory(assessment.suggestedCategory);
     setFinalSeverity(String(assessment.suggestedSeverity));
+    setFinalUrgency(assessment.urgency);
     setFinalDepartment(assessment.recommendedDepartment);
     setReason('');
   }, [assessment?.id]);
@@ -412,6 +414,7 @@ function AiAssessmentPanel({ report, session }: { report: CommunityReportDetail;
           finalCategory,
           finalSeverity: severity,
           finalPriority: severity >= 8 ? 'High' : severity >= 5 ? 'Medium' : 'Low',
+          finalUrgency,
           finalDepartment: finalDepartment.trim(),
         };
     setBusy(true);
@@ -433,25 +436,45 @@ function AiAssessmentPanel({ report, session }: { report: CommunityReportDetail;
       <h2>Assessment & human review</h2>
     </div>
     <p className="quiet-text" data-testid="text-ai-analysis-status">
-      {report.aiAnalysisStatus === 'complete' ? 'AI assessment complete · guidance only, not a verified finding.' :
+      {report.aiAnalysisStatus === 'complete' && assessment &&
+        report.aiReviewHistory.some(review => review.assessmentId === assessment.id)
+        ? 'Manager review recorded · advisory only; this does not dispatch help.' :
+        report.aiAnalysisStatus === 'complete' && assessment
+          ? 'AI-assisted assessment — awaiting review. Guidance only; not a verified finding or dispatch.' :
         report.aiAnalysisStatus === 'pending' ? 'AI assessment is still processing.' : 'AI analysis is unavailable. The report remains saved with its original details.'}
     </p>
     {assessment ? <>
       <div className="analysis-fields">
         <div><span>MODEL SUGGESTION</span><strong>{assessment.suggestedCategory}</strong></div>
-        <div><span>SEVERITY / PRIORITY</span><strong>{assessment.suggestedSeverity} / 10 · {assessment.suggestedPriority}</strong></div>
+        <div><span>POTENTIAL SEVERITY · LEGACY PRIORITY</span><strong>{assessment.suggestedSeverity} / 10 · {assessment.suggestedPriority}</strong></div>
+        <div><span>URGENCY</span><strong>{assessment.urgency.replaceAll('_', ' ')}</strong></div>
+        <div><span>EVIDENCE QUALITY</span><strong>{assessment.evidenceQuality}</strong></div>
+        <div><span>PHOTO INPUT</span><strong>{assessment.imageAssessmentStatus === 'analyzed' ? 'Image bytes analyzed' : 'No photo provided'}</strong></div>
         <div><span>RECOMMENDED DEPARTMENT</span><strong>{assessment.recommendedDepartment}</strong></div>
         <div><span>ANALYZED</span><strong>{dateText(assessment.analyzedAt)}</strong></div>
       </div>
       {assessment.urgentHumanReview ? <div className="quiet-banner" role="status">Human review recommended: the evidence may be ambiguous or need follow-up.</div> : null}
       {assessment.uncertainty ? <p className="quiet-text"><strong>Uncertainty:</strong> {assessment.uncertainty}</p> : null}
+      {assessment.conflicts.length ? <p className="quiet-text"><strong>Conflicting details:</strong> {assessment.conflicts.join(' · ')}</p> : null}
+      {assessment.missingFacts.length ? <div className="quiet-text"><strong>Facts to verify:</strong><ul>{assessment.missingFacts.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></div> : null}
       {assessment.evidence.length ? <div className="timeline">{assessment.evidence.map((item, index) => (
         <div className="timeline-event" key={`${item.source}-${index}`}><span className="timeline-node" /><div>
           <div className="timeline-top"><strong>{item.source === 'image' ? 'Photo evidence' : 'Report text'}</strong></div>
           <p>{item.detail}</p>
         </div></div>
       ))}</div> : null}
-      <p className="context-foot">Original assessment retained separately · model {assessment.model}.</p>
+      {assessment.ruleAdjustments.length ? <div className="quiet-banner" role="status">
+        <strong>Safety rule adjustments</strong>
+        {assessment.ruleAdjustments.map((adjustment, index) => (
+          <p key={`${adjustment.source}-${index}`}>{adjustment.source}: {adjustment.reason} ({String(adjustment.beforeValue)} → {String(adjustment.afterValue)})</p>
+        ))}
+      </div> : null}
+      {assessment.originalAssessment ? <details className="quiet-text">
+        <summary>Original model assessment</summary>
+        <p>Potential severity {assessment.originalAssessment.suggestedSeverity}/10 · urgency {assessment.originalAssessment.urgency.replaceAll('_', ' ')} · evidence quality {assessment.originalAssessment.evidenceQuality}</p>
+        <p>{assessment.originalAssessment.summary}</p>
+      </details> : null}
+      <p className="context-foot">Original model assessment, rubric {assessment.rubricVersion}, and model {assessment.model} are retained.</p>
     </> : null}
     {session.role === 'manager' && report.aiAnalysisStatus !== 'complete' ? (
       <button className="secondary-btn" type="button" disabled={busy} onClick={() => void retry()} data-testid="button-retry-ai-analysis">
@@ -466,6 +489,12 @@ function AiAssessmentPanel({ report, session }: { report: CommunityReportDetail;
         <label className="field"><span>OVERRIDE SEVERITY / 10</span><input type="number" min="1" max="10" step="1" value={finalSeverity} onChange={event => setFinalSeverity(event.target.value)} data-testid="input-ai-review-severity" /></label>
       </div>
       <label className="field"><span>OVERRIDE DEPARTMENT</span><input maxLength={100} value={finalDepartment} onChange={event => setFinalDepartment(event.target.value)} data-testid="input-ai-review-department" /></label>
+        <label className="field"><span>OVERRIDE URGENCY</span><span className="select-wrap"><select value={finalUrgency} onChange={event => setFinalUrgency(event.target.value as typeof finalUrgency)} data-testid="select-ai-review-urgency">
+          <option value="urgent_review">Urgent human review</option>
+          <option value="same_day">Same day</option>
+          <option value="routine">Routine</option>
+          <option value="undetermined">Undetermined</option>
+        </select><ChevronDown size={16} /></span></label>
       <div className="detail-hero-actions">
         <button type="button" className="secondary-btn" disabled={busy} onClick={() => void review('approved')} data-testid="button-approve-ai">Approve suggestion</button>
         <button type="button" className="primary-btn" disabled={busy} onClick={() => void review('overridden')} data-testid="button-override-ai">Save override</button>
@@ -477,7 +506,7 @@ function AiAssessmentPanel({ report, session }: { report: CommunityReportDetail;
       <h3>Human review history</h3>
       {report.aiReviewHistory.map(review => <div className="timeline-event" key={review.id}><span className="timeline-node" /><div>
         <div className="timeline-top"><strong>{review.decision === 'approved' ? 'Approved suggestion' : 'Overrode suggestion'}</strong><time>{dateText(review.reviewedAt)}</time></div>
-        <p>{review.reason} · {review.reviewedBy} · Final severity {review.finalSeverity}/10</p>
+        <p>{review.reason} · {review.reviewedBy} · Final potential severity {review.finalSeverity}/10 · urgency {review.finalUrgency?.replaceAll('_', ' ') ?? 'not recorded'}</p>
       </div></div>)}
     </div> : null}
   </div>;

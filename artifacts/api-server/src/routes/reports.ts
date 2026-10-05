@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { Storage } from "@google-cloud/storage";
+import sharp from "sharp";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { and, asc, desc, eq } from "drizzle-orm";
 import {
   db,
   communityReportsTable,
+  communityReportAiAssessmentsTable,
+  communityReportAiReviewsTable,
   communityReportStatusEventsTable,
   familyChildrenTable,
   type CommunityReportRow,
@@ -18,18 +21,27 @@ import {
   GetReportResponse,
   GetReportPhotoParams,
   ListReportsResponse,
+  RetryReportAnalysisParams,
+  RetryReportAnalysisResponse,
+  ReviewReportAnalysisBody,
+  ReviewReportAnalysisParams,
+  ReviewReportAnalysisResponse,
   ResetDemoReportsResponse,
   UpdateReportBody,
   UpdateReportParams,
   UpdateReportResponse,
 } from "@workspace/api-zod";
 import { authenticate, createToken, HttpError, type Claims, type Role } from "../lib/report-session";
+import { analyzeCommunityReport } from "../lib/openai-assistance";
 
 const router: IRouter = Router();
 const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 const RATE_WINDOW_MS = 15 * 60_000;
 const RATE_LIMIT = 5;
 const rateBuckets = new Map<string, number[]>();
+const ANALYSIS_RATE_WINDOW_MS = 60 * 60_000;
+const ANALYSIS_RATE_LIMIT = 3;
+const analysisRateBuckets = new Map<string, number[]>();
 const locations = [
   { name: "Downtown San Jose", x: 48, y: 43, latitude: 37.3382, longitude: -121.8863 },
   { name: "Japantown", x: 35, y: 25, latitude: 37.3481, longitude: -121.8958 },
@@ -89,6 +101,7 @@ function reportResponse(row: CommunityReportRow) {
     description: row.description,
     severity: row.severity,
     status: row.status,
+    aiAnalysisStatus: row.aiAnalysisStatus as "pending" | "complete" | "unavailable",
     location: row.location,
     x: row.x,
     y: row.y,
@@ -131,6 +144,127 @@ function analyze(description: string, selectedCategory?: string | null) {
       ? "Transportation & Public Works"
       : category === "Damaged sidewalks" ? "Public Works" : "Environmental Services",
   };
+}
+
+async function normalizePhoto(bytes: Buffer, contentType: string): Promise<Buffer> {
+  const image = sharp(bytes, { failOn: "error", limitInputPixels: 20_000_000 }).rotate().resize({
+    width: 1600,
+    height: 1600,
+    fit: "inside",
+    withoutEnlargement: true,
+  });
+  if (contentType === "image/jpeg") return image.jpeg({ quality: 84 }).toBuffer();
+  if (contentType === "image/png") return image.png({ compressionLevel: 8 }).toBuffer();
+  return image.webp({ quality: 84 }).toBuffer();
+}
+
+function priorityForSeverity(severity: number): "Low" | "Medium" | "High" {
+  return severity >= 8 ? "High" : severity >= 5 ? "Medium" : "Low";
+}
+
+async function analyzeSavedReport(
+  report: CommunityReportRow,
+  photo?: { bytes: Buffer; contentType: string },
+  log?: Request["log"],
+): Promise<CommunityReportRow> {
+  try {
+    const { suggestion, model, instructionVersion } = await analyzeCommunityReport({
+      description: report.description,
+      selectedCategory: report.selectedCategory,
+      photoBytes: photo?.bytes,
+      contentType: photo?.contentType,
+    });
+    const analyzedAt = new Date();
+    const updated = await db.transaction(async (tx) => {
+      const [assessment] = await tx.insert(communityReportAiAssessmentsTable).values({
+        reportId: report.id,
+        suggestedCategory: suggestion.suggestedCategory,
+        summary: suggestion.summary,
+        suggestedSeverity: suggestion.suggestedSeverity,
+        suggestedPriority: suggestion.suggestedPriority,
+        evidence: suggestion.evidence,
+        uncertainty: suggestion.uncertainty,
+        recommendedDepartment: suggestion.recommendedDepartment,
+        urgentHumanReview: suggestion.urgentHumanReview,
+        model,
+        instructionVersion,
+        analyzedAt,
+      }).returning();
+      if (!assessment) throw new Error("AI assessment could not be stored.");
+      const [row] = await tx.update(communityReportsTable).set({
+        category: suggestion.suggestedCategory,
+        summary: suggestion.summary,
+        severity: suggestion.suggestedSeverity,
+        priority: suggestion.suggestedPriority,
+        recommendedDepartment: suggestion.recommendedDepartment,
+        aiAnalysisStatus: "complete",
+        updatedAt: analyzedAt,
+      }).where(eq(communityReportsTable.id, report.id)).returning();
+      if (!row) throw new Error("AI assessment report could not be updated.");
+      return row;
+    });
+    return updated;
+  } catch (error) {
+    log?.warn({
+      reportId: report.id,
+      errorType: error instanceof Error ? error.name : "unknown",
+    }, "Community report AI analysis unavailable");
+    try {
+      const [row] = await db.update(communityReportsTable)
+        .set({ aiAnalysisStatus: "unavailable" })
+        .where(eq(communityReportsTable.id, report.id))
+        .returning();
+      if (row) return row;
+    } catch {
+      log?.warn({ reportId: report.id }, "Could not update report AI status");
+    }
+    return { ...report, aiAnalysisStatus: "unavailable" };
+  }
+}
+
+async function reportDetail(row: CommunityReportRow) {
+  const [statusHistory, [latestAssessment], reviews] = await Promise.all([
+    db.select({
+      fromStatus: communityReportStatusEventsTable.fromStatus,
+      toStatus: communityReportStatusEventsTable.toStatus,
+      changedBy: communityReportStatusEventsTable.changedBy,
+      changedAt: communityReportStatusEventsTable.changedAt,
+    }).from(communityReportStatusEventsTable)
+      .where(eq(communityReportStatusEventsTable.reportId, row.id))
+      .orderBy(asc(communityReportStatusEventsTable.changedAt), asc(communityReportStatusEventsTable.id)),
+    db.select().from(communityReportAiAssessmentsTable)
+      .where(eq(communityReportAiAssessmentsTable.reportId, row.id))
+      .orderBy(desc(communityReportAiAssessmentsTable.id)).limit(1),
+    db.select().from(communityReportAiReviewsTable)
+      .where(eq(communityReportAiReviewsTable.reportId, row.id))
+      .orderBy(asc(communityReportAiReviewsTable.reviewedAt), asc(communityReportAiReviewsTable.id)),
+  ]);
+  const aiAssessment = latestAssessment ? {
+    id: latestAssessment.id,
+    suggestedCategory: latestAssessment.suggestedCategory,
+    summary: latestAssessment.summary,
+    suggestedSeverity: latestAssessment.suggestedSeverity,
+    suggestedPriority: latestAssessment.suggestedPriority,
+    evidence: latestAssessment.evidence,
+    uncertainty: latestAssessment.uncertainty,
+    recommendedDepartment: latestAssessment.recommendedDepartment,
+    urgentHumanReview: latestAssessment.urgentHumanReview,
+    model: latestAssessment.model,
+    instructionVersion: latestAssessment.instructionVersion,
+    analyzedAt: latestAssessment.analyzedAt,
+  } : null;
+  const aiReviewHistory = reviews.map(({ id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalDepartment, reviewedBy, reviewedAt }) => ({
+    id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalDepartment, reviewedBy, reviewedAt,
+  }));
+  return { ...reportResponse(row), statusHistory, aiAssessment, aiReviewHistory };
+}
+
+function enforceAnalysisRateLimit(subject: string): void {
+  const now = Date.now();
+  const active = (analysisRateBuckets.get(subject) ?? []).filter((time) => time > now - ANALYSIS_RATE_WINDOW_MS);
+  if (active.length >= ANALYSIS_RATE_LIMIT) throw new HttpError(429, "Report analysis retry limit reached. Please try again later.");
+  active.push(now);
+  analysisRateBuckets.set(subject, active);
 }
 
 function statusPath(status: string): string[] {
@@ -388,6 +522,7 @@ router.get("/reports", async (req, res): Promise<void> => {
 
 router.post("/reports", async (req, res): Promise<void> => {
   let uploadedKey: string | undefined;
+  let photoForAnalysis: { bytes: Buffer; contentType: string } | undefined;
   try {
     const claims = authenticate(req);
     await assertChildFamilyAccess(claims);
@@ -407,7 +542,14 @@ router.post("/reports", async (req, res): Promise<void> => {
     let photoObjectKey: string | null = null;
     let photoContentType: string | null = null;
     if (photoBase64 !== undefined && contentType !== undefined) {
-      const bytes = decodePhoto(photoBase64, contentType);
+      const originalBytes = decodePhoto(photoBase64, contentType);
+      let bytes: Buffer;
+      try {
+        bytes = await normalizePhoto(originalBytes, contentType);
+      } catch {
+        throw new HttpError(400, "Photo could not be decoded as a supported image.");
+      }
+      photoForAnalysis = { bytes, contentType };
       try {
         const { bucket, prefix } = storageLocation();
         const extension = contentType === "image/jpeg" ? "jpg" : contentType.slice("image/".length);
@@ -434,6 +576,7 @@ router.post("/reports", async (req, res): Promise<void> => {
         description,
         severity: analysis.severity,
         status: "Submitted",
+        aiAnalysisStatus: "pending",
         location: mapPin.name,
         x: Math.round(((longitude + 122.2) / 0.6) * 100),
         y: Math.round(((37.6 - latitude) / 0.6) * 100),
@@ -457,7 +600,8 @@ router.post("/reports", async (req, res): Promise<void> => {
       });
       return inserted;
     });
-    res.status(201).json(CreateReportResponse.parse(reportResponse(created)));
+    const analyzed = await analyzeSavedReport(created, photoForAnalysis, req.log);
+    res.status(201).json(CreateReportResponse.parse(reportResponse(analyzed)));
   } catch (error) {
     if (uploadedKey) {
       try {
@@ -554,16 +698,130 @@ router.get("/reports/:id", async (req, res): Promise<void> => {
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!row) throw new HttpError(404, "Report not found.");
     requireView(claims, row);
-    const history = await db.select({
-      fromStatus: communityReportStatusEventsTable.fromStatus,
-      toStatus: communityReportStatusEventsTable.toStatus,
-      changedBy: communityReportStatusEventsTable.changedBy,
-      changedAt: communityReportStatusEventsTable.changedAt,
-    }).from(communityReportStatusEventsTable)
-      .where(eq(communityReportStatusEventsTable.reportId, row.id))
-      .orderBy(asc(communityReportStatusEventsTable.changedAt), asc(communityReportStatusEventsTable.id));
-    res.json(GetReportResponse.parse({ ...reportResponse(row), statusHistory: history }));
+    res.json(GetReportResponse.parse(await reportDetail(row)));
   } catch (error) {
+    errorResponse(error, res);
+  }
+});
+
+router.post("/reports/:id/analysis/retry", async (req, res): Promise<void> => {
+  try {
+    const params = RetryReportAnalysisParams.safeParse(req.params);
+    if (!params.success) throw new HttpError(400, "Invalid report ID.");
+    const claims = authenticate(req);
+    if (claims.role !== "manager") throw new HttpError(403, "Only case managers may retry report analysis.");
+    enforceAnalysisRateLimit(claims.sub);
+    const [report] = await db.select().from(communityReportsTable)
+      .where(eq(communityReportsTable.id, params.data.id)).limit(1);
+    if (!report) throw new HttpError(404, "Report not found.");
+    let photo: { bytes: Buffer; contentType: string } | undefined;
+    if (report.photoObjectKey && report.photoContentType) {
+      try {
+        const { bucket } = storageLocation();
+        const [bytes] = await storage.bucket(bucket).file(report.photoObjectKey).download();
+        photo = { bytes, contentType: report.photoContentType };
+      } catch {
+        req.log.warn({ reportId: report.id }, "Report photo unavailable for AI retry; continuing with report text only");
+      }
+    }
+    const [pending] = await db.update(communityReportsTable)
+      .set({ aiAnalysisStatus: "pending", updatedAt: new Date() })
+      .where(eq(communityReportsTable.id, report.id))
+      .returning();
+    const analyzed = await analyzeSavedReport(pending ?? report, photo, req.log);
+    res.json(RetryReportAnalysisResponse.parse(await reportDetail(analyzed)));
+  } catch (error) {
+    if (error instanceof HttpError) {
+      if (error.status === 429) res.setHeader("Retry-After", "3600");
+      errorResponse(error, res);
+      return;
+    }
+    req.log.error({ err: error instanceof Error ? error.name : "unknown" }, "Community report AI retry failed");
+    errorResponse(error, res);
+  }
+});
+
+router.post("/reports/:id/analysis/review", async (req, res): Promise<void> => {
+  try {
+    const params = ReviewReportAnalysisParams.safeParse(req.params);
+    if (!params.success) throw new HttpError(400, "Invalid report ID.");
+    const claims = authenticate(req);
+    if (claims.role !== "manager") throw new HttpError(403, "Only case managers may review report AI suggestions.");
+    const parsed = ReviewReportAnalysisBody.safeParse(req.body);
+    if (!parsed.success) throw new HttpError(400, "Invalid report review.");
+    const input = parsed.data;
+    const reason = input.reason.trim();
+    if (reason.length < 8) throw new HttpError(400, "Include a review reason of at least 8 characters.");
+
+    const [report] = await db.select().from(communityReportsTable)
+      .where(eq(communityReportsTable.id, params.data.id)).limit(1);
+    if (!report) throw new HttpError(404, "Report not found.");
+    const [assessment] = await db.select().from(communityReportAiAssessmentsTable)
+      .where(eq(communityReportAiAssessmentsTable.reportId, report.id))
+      .orderBy(desc(communityReportAiAssessmentsTable.id)).limit(1);
+    if (!assessment || report.aiAnalysisStatus !== "complete") {
+      throw new HttpError(409, "No completed AI assessment is available to review.");
+    }
+
+    let finalCategory: string;
+    let finalSeverity: number;
+    let finalPriority: "Low" | "Medium" | "High";
+    let finalDepartment: string;
+    if (input.decision === "approved") {
+      if (input.finalCategory !== undefined || input.finalSeverity !== undefined ||
+          input.finalPriority !== undefined || input.finalDepartment !== undefined) {
+        throw new HttpError(400, "An approval uses the AI suggestion as-is; send override fields only for an override.");
+      }
+      finalCategory = assessment.suggestedCategory;
+      finalSeverity = assessment.suggestedSeverity;
+      finalPriority = assessment.suggestedPriority as "Low" | "Medium" | "High";
+      finalDepartment = assessment.recommendedDepartment;
+    } else {
+      if (!input.finalCategory || input.finalSeverity === undefined ||
+          !input.finalPriority || !input.finalDepartment?.trim()) {
+        throw new HttpError(400, "An override must include category, severity, priority, and department.");
+      }
+      finalCategory = input.finalCategory;
+      finalSeverity = input.finalSeverity;
+      finalPriority = priorityForSeverity(finalSeverity);
+      if (input.finalPriority !== finalPriority) {
+        throw new HttpError(400, "Priority must match the selected severity.");
+      }
+      finalDepartment = input.finalDepartment.trim();
+    }
+
+    const reviewedAt = new Date();
+    await db.transaction(async (tx) => {
+      await tx.insert(communityReportAiReviewsTable).values({
+        reportId: report.id,
+        assessmentId: assessment.id,
+        decision: input.decision,
+        reason,
+        finalCategory,
+        finalSeverity,
+        finalPriority,
+        finalDepartment,
+        reviewedBy: claims.sub,
+        reviewedAt,
+      });
+      await tx.update(communityReportsTable).set({
+        category: finalCategory,
+        severity: finalSeverity,
+        priority: finalPriority,
+        recommendedDepartment: finalDepartment,
+        updatedAt: reviewedAt,
+      }).where(eq(communityReportsTable.id, report.id));
+    });
+    const [updated] = await db.select().from(communityReportsTable)
+      .where(eq(communityReportsTable.id, report.id)).limit(1);
+    if (!updated) throw new HttpError(404, "Report not found.");
+    res.json(ReviewReportAnalysisResponse.parse(await reportDetail(updated)));
+  } catch (error) {
+    if (error instanceof HttpError) {
+      errorResponse(error, res);
+      return;
+    }
+    req.log.error({ err: error instanceof Error ? error.name : "unknown" }, "Community report AI review failed");
     errorResponse(error, res);
   }
 });
@@ -587,6 +845,11 @@ router.patch("/reports/:id", async (req, res): Promise<void> => {
     const [current] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!current) throw new HttpError(404, "Report not found.");
+    if (claims.role === "manager" && current.aiAnalysisStatus === "complete" &&
+        ((update.category !== undefined && update.category !== current.category) ||
+          (update.severity !== undefined && update.severity !== current.severity))) {
+      throw new HttpError(409, "Use the AI review action with a reason to change the assessed category or severity.");
+    }
     if (claims.role === "worker" && current.assignedTeam !== westCleanTeam) {
       throw new HttpError(403, "Workers may update reports assigned to the West Clean Team.");
     }

@@ -6,8 +6,8 @@ import pathpalMark from '@assets/pathpal-mark.png';
 import {
   CommunityReportCategory, CommunityReportInputLocation, CommunityReportStatus,
   createReportSession, getGetReportQueryKey, getListReportsQueryKey, getReportPhoto,
-  setAuthTokenGetter, useCreateReport, useGetReport, useListReports, useResetDemoReports, useUpdateReport,
-  type CommunityReport, type CommunityReportInput, type CommunityReportUpdate, type ReportSession, type ReportSessionInputRole,
+  retryReportAnalysis, reviewReportAnalysis, setAuthTokenGetter, useCreateReport, useGetReport, useListReports, useResetDemoReports, useUpdateReport,
+  type CommunityReport, type CommunityReportAiReviewInput, type CommunityReportDetail, type CommunityReportInput, type CommunityReportUpdate, type ReportSession, type ReportSessionInputRole,
 } from '@workspace/api-client-react';
 import './app.css';
 
@@ -337,7 +337,8 @@ function Detail({ session }: { session: ReportSession }) {
     {isLoading ? <div className="detail-loading"><Skeleton lines={8} /></div> : error || !report ? <Failure error={error ?? new Error('Report not found or not visible to this account.')} retry={() => void refetch()} /> : <>
       <div className="detail-hero"><div><div className="section-kicker"><span className="kicker-line" />CASE FILE / {report.id.slice(0, 12).toUpperCase()}</div><h1>{report.summary}</h1><div className="detail-hero-meta"><Status value={report.status} /><span><MapPin size={15} />{report.location}</span><span><Clock3 size={15} />Submitted {shortDate(report.submittedAt)}</span></div></div><div className="detail-hero-actions">{(session.role === 'manager' || session.role === 'worker') && <button className="primary-btn" onClick={startEdit} data-testid="button-edit-report">{session.role === 'worker' ? 'Update status' : 'Manage report'} <ArrowUpRight size={16} /></button>}</div></div>
       <div className="detail-grid"><div className="detail-main">
-        <div className="detail-card input-output"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />THE FULL CONTEXT</span><h2>What was shared <em>&</em> what we found</h2></div><div className="context-pair"><div className="context-box original"><div className="context-tag"><span>01</span> NEIGHBOR'S WORDS</div><p data-testid="text-report-description">{report.description}</p><span className="context-caption">Original submitted description</span></div><div className="context-box analysis"><div className="context-tag"><Sparkles size={15} /> SYSTEM ANALYSIS</div><div className="analysis-summary"><span>SUMMARY</span><strong data-testid="text-report-summary">{report.summary}</strong></div><div className="analysis-fields"><div><span>SUGGESTED CATEGORY</span><strong>{report.category}</strong></div><div><span>RECOMMENDED TEAM</span><strong>{report.recommendedDepartment}</strong></div><div><span>PRIORITY</span><strong>{report.priority}</strong></div><div><span>SEVERITY</span><strong>{report.severity} / 10</strong></div></div></div></div><div className="context-foot">Selected category: {report.selectedCategory ?? 'Let PathPal suggest'} <span>·</span> Analysis is guidance, not a confirmed finding.</div></div>
+         <div className="detail-card input-output"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />THE FULL CONTEXT</span><h2>What was shared <em>&</em> what we found</h2></div><div className="context-pair"><div className="context-box original"><div className="context-tag"><span>01</span> NEIGHBOR'S WORDS</div><p data-testid="text-report-description">{report.description}</p><span className="context-caption">Original submitted description</span></div><div className="context-box analysis"><div className="context-tag"><Sparkles size={15} /> AI REPORT ANALYSIS</div><div className="analysis-summary"><span>SUMMARY</span><strong data-testid="text-report-summary">{report.summary}</strong></div><div className="analysis-fields"><div><span>SUGGESTED CATEGORY</span><strong>{report.category}</strong></div><div><span>RECOMMENDED TEAM</span><strong>{report.recommendedDepartment}</strong></div><div><span>PRIORITY</span><strong>{report.priority}</strong></div><div><span>SEVERITY</span><strong>{report.severity} / 10</strong></div></div></div></div><div className="context-foot">Selected category: {report.selectedCategory ?? 'Let PathPal suggest'} <span>·</span> AI output is triage guidance, not a confirmed finding.</div></div>
+         <AiAssessmentPanel report={report} session={session} />
         <div className="detail-card"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />LOCATION & EVIDENCE</span><h2>At the scene</h2></div><div className="scene-grid"><ProtectedPhoto id={id} hasPhoto={!!report.photoUri} /><div className="pin-detail"><span className="detail-label">REPORTED LOCATION</span><h3>{report.location}</h3><div className="pin-coordinates"><MapPin size={19} /><div><strong>Submitted pin</strong><span data-testid="text-report-coordinates">{report.latitude != null && report.longitude != null ? `${report.latitude.toFixed(6)}, ${report.longitude.toFixed(6)}` : 'No coordinates recorded'}</span></div></div>{report.latitude != null && report.longitude != null && <a href={`https://www.openstreetmap.org/?mlat=${report.latitude}&mlon=${report.longitude}#map=17/${report.latitude}/${report.longitude}`} target="_blank" rel="noreferrer" className="text-action" data-testid="link-open-map">Open pin in map <ArrowUpRight size={16} /></a>}</div></div></div>
         <div className="detail-card"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />CASE ACTIVITY</span><h2>How it is moving</h2></div>{report.statusHistory.length ? <div className="timeline">{report.statusHistory.map((event, i) => <div className="timeline-event" key={`${event.changedAt}-${i}`}><span className="timeline-node" /><div><div className="timeline-top"><strong>{event.toStatus}</strong><time>{dateText(event.changedAt)}</time></div><p>{event.fromStatus ? `Moved from ${event.fromStatus}` : 'Report received'} <span>·</span> {event.changedBy}</p></div></div>)}</div> : <p className="quiet-text">No status changes have been recorded yet.</p>}</div>
       </div><aside className="detail-aside"><div className="detail-card case-card"><div className="card-heading"><span className="section-kicker"><span className="kicker-line" />CASE DETAILS</span><h2>At a glance</h2></div><div className="case-facts"><div><span>CASE ID</span><strong className="mono">{report.id}</strong></div><div><span>STATUS</span><Status value={report.status} /></div><div><span>ASSIGNED TEAM</span><strong>{report.assignedTeam || 'Not assigned yet'}</strong></div><div><span>ROUTE ASSIGNMENT</span><strong>{report.routeAssignment || 'Not assigned yet'}</strong></div><div><span>MANAGER NOTES</span><strong className="normal-weight">{report.managerNotes || 'No notes added yet'}</strong></div></div></div><div className="detail-card timestamp-card"><span className="section-kicker"><span className="kicker-line" />TIMESTAMPS</span><div><span>Submitted</span><strong>{dateText(report.submittedAt)}</strong></div><div><span>Last updated</span><strong>{dateText(report.updatedAt)}</strong></div><div><span>Assigned</span><strong>{dateText(report.assignedAt)}</strong></div><div><span>Resolved</span><strong>{dateText(report.resolvedAt)}</strong></div></div><div className="aside-warning"><ShieldCheck size={20} /><p>This case is visible according to your demo role. For immediate danger, call 911.</p></div></aside></div>
@@ -348,6 +349,138 @@ function Detail({ session }: { session: ReportSession }) {
         {saveError && <div className="inline-error" role="alert" data-testid="text-update-error">{saveError}</div>}<div className="modal-actions"><button type="button" className="secondary-btn" onClick={() => setEditing(false)} data-testid="button-cancel-edit">Cancel</button><button className="primary-btn" disabled={update.isPending} type="submit" data-testid="button-save-report">{update.isPending ? 'Saving…' : 'Save changes'} <ArrowRight size={16} /></button></div></form></div></div>}
     </>}
   </>;
+}
+
+function AiAssessmentPanel({ report, session }: { report: CommunityReportDetail; session: ReportSession }) {
+  const query = useQueryClient();
+  const assessment = report.aiAssessment;
+  const [reason, setReason] = useState('');
+  const [finalCategory, setFinalCategory] = useState<CommunityReportCategory>(report.category);
+  const [finalSeverity, setFinalSeverity] = useState(String(report.severity));
+  const [finalDepartment, setFinalDepartment] = useState(report.recommendedDepartment);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!assessment) return;
+    setFinalCategory(assessment.suggestedCategory);
+    setFinalSeverity(String(assessment.suggestedSeverity));
+    setFinalDepartment(assessment.recommendedDepartment);
+    setReason('');
+  }, [assessment?.id]);
+
+  async function refreshCase() {
+    await Promise.all([
+      query.invalidateQueries({ queryKey: getGetReportQueryKey(report.id) }),
+      query.invalidateQueries({ queryKey: getListReportsQueryKey() }),
+    ]);
+  }
+
+  async function retry() {
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await retryReportAnalysis(report.id);
+      await refreshCase();
+      setMessage('A new AI assessment is ready to review.');
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function review(decision: 'approved' | 'overridden') {
+    setError('');
+    setMessage('');
+    if (reason.trim().length < 8) {
+      setError('Add a reason with at least 8 characters.');
+      return;
+    }
+    const severity = Number(finalSeverity);
+    if (decision === 'overridden' && (!Number.isInteger(severity) || severity < 1 || severity > 10 || !finalDepartment.trim())) {
+      setError('Choose a severity from 1 to 10 and enter a department.');
+      return;
+    }
+    const data: CommunityReportAiReviewInput = decision === 'approved'
+      ? { decision, reason: reason.trim() }
+      : {
+          decision,
+          reason: reason.trim(),
+          finalCategory,
+          finalSeverity: severity,
+          finalPriority: severity >= 8 ? 'High' : severity >= 5 ? 'Medium' : 'Low',
+          finalDepartment: finalDepartment.trim(),
+        };
+    setBusy(true);
+    try {
+      await reviewReportAnalysis(report.id, data);
+      await refreshCase();
+      setMessage(decision === 'approved' ? 'AI suggestion approved with your reason recorded.' : 'Override saved; the original AI assessment remains in the history.');
+      setReason('');
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <div className="detail-card">
+    <div className="card-heading">
+      <span className="section-kicker"><span className="kicker-line" />AI TRIAGE</span>
+      <h2>Assessment & human review</h2>
+    </div>
+    <p className="quiet-text" data-testid="text-ai-analysis-status">
+      {report.aiAnalysisStatus === 'complete' ? 'AI assessment complete · guidance only, not a verified finding.' :
+        report.aiAnalysisStatus === 'pending' ? 'AI assessment is still processing.' : 'AI analysis is unavailable. The report remains saved with its original details.'}
+    </p>
+    {assessment ? <>
+      <div className="analysis-fields">
+        <div><span>MODEL SUGGESTION</span><strong>{assessment.suggestedCategory}</strong></div>
+        <div><span>SEVERITY / PRIORITY</span><strong>{assessment.suggestedSeverity} / 10 · {assessment.suggestedPriority}</strong></div>
+        <div><span>RECOMMENDED DEPARTMENT</span><strong>{assessment.recommendedDepartment}</strong></div>
+        <div><span>ANALYZED</span><strong>{dateText(assessment.analyzedAt)}</strong></div>
+      </div>
+      {assessment.urgentHumanReview ? <div className="quiet-banner" role="status">Human review recommended: the evidence may be ambiguous or need follow-up.</div> : null}
+      {assessment.uncertainty ? <p className="quiet-text"><strong>Uncertainty:</strong> {assessment.uncertainty}</p> : null}
+      {assessment.evidence.length ? <div className="timeline">{assessment.evidence.map((item, index) => (
+        <div className="timeline-event" key={`${item.source}-${index}`}><span className="timeline-node" /><div>
+          <div className="timeline-top"><strong>{item.source === 'image' ? 'Photo evidence' : 'Report text'}</strong></div>
+          <p>{item.detail}</p>
+        </div></div>
+      ))}</div> : null}
+      <p className="context-foot">Original assessment retained separately · model {assessment.model}.</p>
+    </> : null}
+    {session.role === 'manager' && report.aiAnalysisStatus !== 'complete' ? (
+      <button className="secondary-btn" type="button" disabled={busy} onClick={() => void retry()} data-testid="button-retry-ai-analysis">
+        {busy ? 'Retrying…' : 'Retry AI analysis'} <RefreshCw size={15} />
+      </button>
+    ) : null}
+    {session.role === 'manager' && assessment ? <div className="ai-review-form">
+      <h3>Record your decision</h3>
+      <label className="field"><span>REVIEW REASON</span><textarea value={reason} onChange={event => setReason(event.target.value)} minLength={8} maxLength={1500} rows={3} placeholder="Explain why you approve or change the suggestion." data-testid="input-ai-review-reason" /></label>
+      <div className="field-pair">
+        <label className="field"><span>OVERRIDE CATEGORY</span><span className="select-wrap"><select value={finalCategory} onChange={event => setFinalCategory(event.target.value as CommunityReportCategory)} data-testid="select-ai-review-category">{categories.map(category => <option key={category}>{category}</option>)}</select><ChevronDown size={16} /></span></label>
+        <label className="field"><span>OVERRIDE SEVERITY / 10</span><input type="number" min="1" max="10" step="1" value={finalSeverity} onChange={event => setFinalSeverity(event.target.value)} data-testid="input-ai-review-severity" /></label>
+      </div>
+      <label className="field"><span>OVERRIDE DEPARTMENT</span><input maxLength={100} value={finalDepartment} onChange={event => setFinalDepartment(event.target.value)} data-testid="input-ai-review-department" /></label>
+      <div className="detail-hero-actions">
+        <button type="button" className="secondary-btn" disabled={busy} onClick={() => void review('approved')} data-testid="button-approve-ai">Approve suggestion</button>
+        <button type="button" className="primary-btn" disabled={busy} onClick={() => void review('overridden')} data-testid="button-override-ai">Save override</button>
+      </div>
+    </div> : null}
+    {message ? <div className="inline-success" role="status">{message}</div> : null}
+    {error ? <div className="inline-error" role="alert">{error}</div> : null}
+    {report.aiReviewHistory.length ? <div className="timeline" data-testid="list-ai-review-history">
+      <h3>Human review history</h3>
+      {report.aiReviewHistory.map(review => <div className="timeline-event" key={review.id}><span className="timeline-node" /><div>
+        <div className="timeline-top"><strong>{review.decision === 'approved' ? 'Approved suggestion' : 'Overrode suggestion'}</strong><time>{dateText(review.reviewedAt)}</time></div>
+        <p>{review.reason} · {review.reviewedBy} · Final severity {review.finalSeverity}/10</p>
+      </div></div>)}
+    </div> : null}
+  </div>;
 }
 
 function Settings({ session, signOut }: { session: ReportSession; signOut: () => void }) {

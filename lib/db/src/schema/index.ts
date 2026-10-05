@@ -18,5 +18,7 @@
 //   export type Post = typeof postsTable.$inferSelect;
 
 export * from "./community-reports";
+export * from "./community-report-ai-assessments";
+export * from "./community-report-ai-reviews";
 export * from "./family-accounts";
 export * from "./live-tracking";

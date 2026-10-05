@@ -1532,6 +1532,16 @@ function CaseDetail({ report, role, onClose }: { report: SafetyReport; role: Rol
           <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>AI category and analysis</Text>
           <Text style={[styles.detailValue, { color: colors.foreground }]}>{current.category}</Text>
           <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>{current.summary}</Text>
+          {detailQuery.data?.aiAnalysisStatus === 'complete' ? (
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI triage guidance · not a verified finding or danger score.</Text>
+          ) : detailQuery.data?.aiAnalysisStatus === 'pending' ? (
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI analysis is still processing.</Text>
+          ) : (
+            <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI analysis unavailable; the saved report and original description are unchanged.</Text>
+          )}
+          {detailQuery.data?.aiAssessment?.urgentHumanReview ? (
+            <Text style={[styles.cardBody, { color: colors.destructive }]}>Human review recommended because the evidence may be unclear or need follow-up.</Text>
+          ) : null}
           <Divider />
           <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>Approximate map pin coordinates</Text>
           <Text style={[styles.detailValue, { color: colors.foreground }]}>
@@ -1640,6 +1650,7 @@ function SOSScreen({ onClose }: { onClose: () => void }) {
   const [countdown, setCountdown] = useState(state.sosActive ? 0 : 5);
   const [cancelled, setCancelled] = useState(false);
   const [message, setMessage] = useState('');
+  const [replying, setReplying] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -1694,7 +1705,8 @@ function SOSScreen({ onClose }: { onClose: () => void }) {
           <View style={styles.sosControls}>
             <Card tone="soft">
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>Civic Center, San Jose</Text>
-              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Simulated emergency location · parent and police-contact views notified</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Simulated location and notifications only. No real emergency service is contacted.</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI text guidance may be unavailable. Do not share your name, phone number, address, or other private information.</Text>
             </Card>
             <View style={styles.wrap}>
               {['Prolonged silence', 'Unusual movement'].map((signal) => (
@@ -1710,7 +1722,11 @@ function SOSScreen({ onClose }: { onClose: () => void }) {
         }
         renderItem={({ item }) => (
           <View style={[styles.chatBubble, item.sender === 'child' ? styles.childBubble : styles.guideBubble, { backgroundColor: item.sender === 'child' ? colors.primary : colors.card, borderColor: colors.border }]}>
-            {item.sender === 'guide' ? <Text style={[styles.whisperLabel, { color: colors.primary }]}>quiet guidance</Text> : null}
+            {item.sender === 'guide' ? (
+              <Text style={[styles.whisperLabel, { color: colors.primary }]}>
+                {item.aiAvailable === false ? 'prepared safety step' : item.aiAvailable ? 'AI text guidance · demo' : 'quiet guidance'}
+              </Text>
+            ) : null}
             <Text style={[styles.chatText, { color: item.sender === 'child' ? colors.primaryForeground : colors.foreground }]}>{item.text}</Text>
           </View>
         )}
@@ -1720,18 +1736,27 @@ function SOSScreen({ onClose }: { onClose: () => void }) {
           ref={inputRef}
           value={message}
           onChangeText={setMessage}
+          maxLength={1200}
           placeholder="Share what’s happening…"
           placeholderTextColor={colors.mutedForeground}
           style={[styles.chatInput, { color: colors.foreground, backgroundColor: colors.muted }]}
         />
         <Pressable
-          onPress={() => {
+          disabled={!message.trim() || replying}
+          accessibilityRole="button"
+          accessibilityLabel="Send SOS chat message"
+          onPress={async () => {
             const copy = message;
             setMessage('');
-            sendSOSMessage(copy);
+            setReplying(true);
+            try {
+              await sendSOSMessage(copy);
+            } finally {
+              setReplying(false);
+            }
             inputRef.current?.focus();
           }}
-          style={[styles.sendButton, { backgroundColor: colors.primary }]}
+          style={[styles.sendButton, { backgroundColor: colors.primary, opacity: !message.trim() || replying ? 0.55 : 1 }]}
         >
           <Feather name="arrow-up" size={20} color={colors.primaryForeground} />
         </Pressable>

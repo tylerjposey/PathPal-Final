@@ -9,6 +9,7 @@ export const communityReportsTable = pgTable("community_reports", {
   description: text("description").notNull(),
   severity: integer("severity").notNull(),
   status: varchar("status", { length: 20 }).notNull(),
+  aiAnalysisStatus: varchar("ai_analysis_status", { length: 20 }).notNull().default("unavailable"),
   location: varchar("location", { length: 80 }).notNull(),
   x: integer("x").notNull(),
   y: integer("y").notNull(),

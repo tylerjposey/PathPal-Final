@@ -4,6 +4,7 @@ import {
   getListReportsQueryKey,
   listReports,
   resetDemoReports,
+  sendSosChat,
   updateReport as saveCommunityReport,
   useListReports,
   type CommunityReportInput,
@@ -275,6 +276,7 @@ export interface SafetyReport {
   priority: 'Low' | 'Medium' | 'High';
   assignedTeam?: string;
   awardedPoints: boolean;
+  aiAnalysisStatus?: 'pending' | 'complete' | 'unavailable';
 }
 
 export interface DemoNotification {
@@ -292,6 +294,7 @@ export interface SOSMessage {
   sender: 'child' | 'guide';
   text: string;
   createdAt: string;
+  aiAvailable?: boolean;
 }
 
 export interface SOSEvent {
@@ -621,7 +624,7 @@ interface DemoContextValue {
   markNotificationsRead: () => void;
   activateSOS: () => void;
   setSOSSignal: (signal: string) => void;
-  sendSOSMessage: (text: string) => void;
+  sendSOSMessage: (text: string) => Promise<void>;
   endSOS: () => void;
 }
 
@@ -1013,7 +1016,13 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       ...current,
       reports: [report, ...current.reports],
       notifications: [
-        notification('Community report received', `${report.id} is in review. The sample AI assigned ${report.category} with ${report.priority.toLowerCase()} priority.`, 'Case'),
+        notification(
+          'Community report received',
+          report.aiAnalysisStatus === 'complete'
+            ? `${report.id} is in review. AI suggested ${report.category} with ${report.priority.toLowerCase()} priority.`
+            : `${report.id} is saved for review. AI analysis is unavailable; the original report was kept.`,
+          'Case',
+        ),
         ...current.notifications,
       ],
     }));
@@ -1131,25 +1140,71 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     });
   }, [update]);
 
-  const sendSOSMessage = useCallback((text: string) => {
-    const cleanText = text.trim();
-    if (!cleanText) return;
+  const sendSOSMessage = useCallback(async (text: string) => {
+    const cleanText = text.trim().slice(0, 1200);
+    if (!cleanText || !state.sosActive) return;
+    const activeEventId = state.sosEvents[0]?.id;
+    const chatContext = [
+      ...state.sosMessages,
+      { id: newId('child'), sender: 'child' as const, text: cleanText, createdAt: new Date().toISOString() },
+    ].slice(-8).map((item) => ({
+      role: item.sender === 'child' ? 'user' as const : 'assistant' as const,
+      content: item.text.slice(0, 1200),
+    }));
     update((current) => {
       if (!current.sosActive) return current;
-      const messages = [
-        ...current.sosMessages,
-        { id: newId('child'), sender: 'child' as const, text: cleanText, createdAt: new Date().toISOString() },
-      ];
-      const event = current.sosEvents[0];
       return {
         ...current,
-        sosMessages: messages,
-        sosEvents: event
-          ? [{ ...event, sharedMessages: [...event.sharedMessages, cleanText] }, ...current.sosEvents.slice(1)]
-          : current.sosEvents,
+        sosMessages: [
+        ...current.sosMessages,
+        { id: newId('child'), sender: 'child' as const, text: cleanText, createdAt: new Date().toISOString() },
+        ],
       };
     });
-  }, [update]);
+    if (state.account?.role !== 'child') {
+      update((current) => current.sosActive && current.sosEvents[0]?.id === activeEventId
+        ? {
+            ...current,
+            sosMessages: [...current.sosMessages, {
+              id: newId('guide'),
+              sender: 'guide',
+              text: 'I’m here with you. Find a trusted adult or a staffed, public place if you can. This is a demo; no one has been contacted.',
+              createdAt: new Date().toISOString(),
+              aiAvailable: false,
+            }],
+          }
+        : current);
+      return;
+    }
+    try {
+      const result = await sendSosChat({ messages: chatContext });
+      update((current) => current.sosActive && current.sosEvents[0]?.id === activeEventId
+        ? {
+            ...current,
+            sosMessages: [...current.sosMessages, {
+              id: newId('guide'),
+              sender: 'guide',
+              text: result.reply,
+              createdAt: new Date().toISOString(),
+              aiAvailable: result.available,
+            }],
+          }
+        : current);
+    } catch {
+      update((current) => current.sosActive && current.sosEvents[0]?.id === activeEventId
+        ? {
+            ...current,
+            sosMessages: [...current.sosMessages, {
+              id: newId('guide'),
+              sender: 'guide',
+              text: 'I’m here with you. Find a trusted adult or a staffed, public place if you can. This is a demo; no one has been contacted. Call your local emergency number if you need urgent help.',
+              createdAt: new Date().toISOString(),
+              aiAvailable: false,
+            }],
+          }
+        : current);
+    }
+  }, [state.account?.role, state.sosActive, state.sosEvents, state.sosMessages, update]);
 
   const endSOS = useCallback(() => {
     update((current) => ({

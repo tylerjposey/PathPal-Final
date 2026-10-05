@@ -503,7 +503,8 @@ export const createReportSessionBodyPasswordMax = 200;
 export const CreateReportSessionBody = zod.object({
   "username": zod.string().min(1).max(createReportSessionBodyUsernameMax),
   "password": zod.string().min(1).max(createReportSessionBodyPasswordMax),
-  "role": zod.enum(['parent', 'child', 'manager', 'worker'])
+  "role": zod.enum(['parent', 'child', 'manager', 'worker']),
+  "familyChildId": zod.string().uuid().optional()
 })
 
 export const CreateReportSessionResponse = zod.object({
@@ -516,7 +517,7 @@ export const CreateReportSessionResponse = zod.object({
 
 
 /**
- * @summary Get the family associated with the shared demo parent session
+ * @summary Get the family for a parent or an approved family child
  */
 export const getMyFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
 
@@ -528,7 +529,8 @@ export const GetMyFamilyResponse = zod.object({
   "children": zod.array(zod.object({
   "id": zod.string().uuid(),
   "name": zod.string(),
-  "username": zod.string().nullable()
+  "username": zod.string().nullable(),
+  "approvalStatus": zod.enum(['pending', 'approved'])
 }))
 })
 
@@ -557,13 +559,14 @@ export const CreateFamilyResponse = zod.object({
   "children": zod.array(zod.object({
   "id": zod.string().uuid(),
   "name": zod.string(),
-  "username": zod.string().nullable()
+  "username": zod.string().nullable(),
+  "approvalStatus": zod.enum(['pending', 'approved'])
 }))
 })
 
 
 /**
- * @summary Join a family using its server-generated invitation code
+ * @summary Request to join a family using its invitation code
  */
 export const joinFamilyBodyInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
 export const joinFamilyBodyChildNameMax = 120;
@@ -579,17 +582,31 @@ export const JoinFamilyBody = zod.object({
   "username": zod.string().min(joinFamilyBodyUsernameMin).max(joinFamilyBodyUsernameMax)
 })
 
-export const joinFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
-
-
 export const JoinFamilyResponse = zod.object({
+  "familyChildId": zod.string().uuid(),
+  "approvalStatus": zod.enum(['pending', 'approved'])
+})
+
+
+/**
+ * @summary Approve a child's request to access the family
+ */
+export const ApproveFamilyChildParams = zod.object({
+  "childId": zod.coerce.string().uuid()
+})
+
+export const approveFamilyChildResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');
+
+
+export const ApproveFamilyChildResponse = zod.object({
   "familyId": zod.string().uuid(),
   "familyName": zod.string(),
-  "invitationCode": zod.string().regex(joinFamilyResponseInvitationCodeRegExp),
+  "invitationCode": zod.string().regex(approveFamilyChildResponseInvitationCodeRegExp),
   "children": zod.array(zod.object({
   "id": zod.string().uuid(),
   "name": zod.string(),
-  "username": zod.string().nullable()
+  "username": zod.string().nullable(),
+  "approvalStatus": zod.enum(['pending', 'approved'])
 }))
 })
 

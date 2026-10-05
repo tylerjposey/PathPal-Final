@@ -2,7 +2,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 
 export type Role = "parent" | "child" | "manager" | "worker";
-export type Claims = { role: Role; sub: string; familyId: string | null; exp: number };
+export type Claims = {
+  role: Role;
+  sub: string;
+  familyId: string | null;
+  familyChildId?: string;
+  exp: number;
+};
 
 export class HttpError extends Error {
   constructor(readonly status: number, message: string) {

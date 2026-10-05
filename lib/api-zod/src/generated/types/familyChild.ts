@@ -5,10 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { FamilyChildApprovalStatus } from './familyChildApprovalStatus';
 
 export interface FamilyChild {
   id: string;
   name: string;
   /** @nullable */
   username: string | null;
+  approvalStatus: FamilyChildApprovalStatus;
 }

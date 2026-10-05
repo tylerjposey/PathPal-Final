@@ -16,7 +16,12 @@ import {
   ScreenHeader,
   SectionTitle,
 } from '@/components/OrivisUI';
-import { updateTrackingSettings, useGetTrackingProfile } from '@workspace/api-client-react';
+import {
+  approveFamilyChild,
+  getMyFamily,
+  updateTrackingSettings,
+  useGetTrackingProfile,
+} from '@workspace/api-client-react';
 import {
   DEFAULT_DEMO_JOURNEY,
   type ChildProfile,
@@ -53,6 +58,16 @@ function trackingErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Live tracking settings could not be saved.';
 }
 
+function familySettingsErrorMessage(error: unknown) {
+  if (error && typeof error === 'object' && 'data' in error) {
+    const data = (error as { data?: unknown }).data;
+    if (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string') {
+      return data.error;
+    }
+  }
+  return error instanceof Error ? error.message : 'Family requests could not be updated.';
+}
+
 export function FamilySettings() {
   const colors = useColors();
   const { isDarkMode, setDarkModeEnabled } = useThemePreference();
@@ -63,6 +78,7 @@ export function FamilySettings() {
     saveParentProfile,
     saveChildProfile,
     saveNotificationPreferences,
+    syncFamilyFromServer,
   } = useDemo();
   const trackingProfile = useGetTrackingProfile({
     query: {
@@ -83,12 +99,41 @@ export function FamilySettings() {
     ...state.notificationPreferences,
   }));
   const [saving, setSaving] = useState(false);
+  const [refreshingFamily, setRefreshingFamily] = useState(false);
+  const [approvingChildId, setApprovingChildId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
 
   const clearFeedback = () => {
     setFeedback('');
     setError('');
+  };
+
+  const refreshFamilyRequests = async () => {
+    setRefreshingFamily(true);
+    clearFeedback();
+    try {
+      await syncFamilyFromServer(await getMyFamily());
+      setFeedback('Child approval requests are up to date.');
+    } catch (requestError) {
+      setError(familySettingsErrorMessage(requestError));
+    } finally {
+      setRefreshingFamily(false);
+    }
+  };
+
+  const approveChild = async (childId: string, childName: string) => {
+    setApprovingChildId(childId);
+    clearFeedback();
+    try {
+      const family = await approveFamilyChild(childId);
+      await syncFamilyFromServer(family);
+      setFeedback(`${childName} can now sign in to the family.`);
+    } catch (requestError) {
+      setError(familySettingsErrorMessage(requestError));
+    } finally {
+      setApprovingChildId(null);
+    }
   };
 
   const saveParent = async () => {
@@ -180,7 +225,7 @@ export function FamilySettings() {
 
   const familyChildren = state.familyChildren.length
     ? state.familyChildren
-    : [{ id: 'child-1', ...state.child }];
+    : [{ id: 'child-1', ...state.child, approvalStatus: 'approved' as const }];
   const parentCount = state.parentProfile ? 1 : 0;
   const assignedRoute = state.selectedJourney?.name ?? DEFAULT_DEMO_JOURNEY.name;
 
@@ -374,6 +419,16 @@ export function FamilySettings() {
                 subtitle={state.familyName}
               />
               <SectionTitle title="Parent and children" />
+              <Button
+                label="Refresh child requests"
+                icon="refresh-cw"
+                variant="ghost"
+                loading={refreshingFamily}
+                onPress={() => { void refreshFamilyRequests(); }}
+                testID="refresh-family-requests"
+              />
+              {error ? <Text style={[styles.cardBody, { color: colors.destructive }]}>{error}</Text> : null}
+              {feedback ? <Text style={[styles.cardBody, { color: colors.success }]}>{feedback}</Text> : null}
               <MemberCard
                 name={state.parentProfile.name}
                 relationship="Parent / guardian"
@@ -382,14 +437,24 @@ export function FamilySettings() {
                 icon="user"
               />
               {familyChildren.map((child) => (
-                <MemberCard
-                  key={child.id}
-                  name={child.name}
-                  relationship="Child"
-                  status="Active · demo"
-                  route={assignedRoute}
-                  icon="smile"
-                />
+                <View key={child.id} style={{ gap: 8 }}>
+                  <MemberCard
+                    name={child.name}
+                    relationship="Child"
+                    status={child.approvalStatus === 'pending' ? 'Awaiting parent approval' : 'Active · demo'}
+                    route={child.approvalStatus === 'pending' ? 'Family access is locked' : assignedRoute}
+                    icon="smile"
+                  />
+                  {child.approvalStatus === 'pending' ? (
+                    <Button
+                      label={`Approve ${child.name}`}
+                      icon="check"
+                      loading={approvingChildId === child.id}
+                      onPress={() => { void approveChild(child.id, child.name); }}
+                      testID={`approve-family-child-${child.id}`}
+                    />
+                  ) : null}
+                </View>
               ))}
               <Card tone="soft" style={styles.noteCard}>
                 <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>

@@ -278,7 +278,10 @@ async function sourceFamilyForClaims(claims: Claims) {
   const sourceChildren = await db
     .select()
     .from(familyChildrenTable)
-    .where(eq(familyChildrenTable.familyId, familyAccount.id))
+    .where(and(
+      eq(familyChildrenTable.familyId, familyAccount.id),
+      eq(familyChildrenTable.approvalStatus, "approved"),
+    ))
     .orderBy(asc(familyChildrenTable.createdAt));
   if (!sourceChildren.length) fail(404, "Add a child to the family before enabling live tracking.");
   return { familyAccount, sourceChildren };
@@ -367,6 +370,24 @@ async function ensureTrackingChildren(
 }
 
 async function profileForClaims(claims: Claims) {
+  if (claims.role === "child" && claims.familyChildId) {
+    const [child] = await db
+      .select({ id: familyChildrenTable.id })
+      .from(familyChildrenTable)
+      .where(and(
+        eq(familyChildrenTable.id, claims.familyChildId),
+        eq(familyChildrenTable.approvalStatus, "approved"),
+      ))
+      .limit(1);
+    if (!child) fail(403, "A parent must approve this child before family tracking is available.");
+  } else if (claims.role === "child") {
+    const [pendingChild] = await db
+      .select({ id: familyChildrenTable.id })
+      .from(familyChildrenTable)
+      .where(eq(familyChildrenTable.approvalStatus, "pending"))
+      .limit(1);
+    if (pendingChild) fail(403, "A parent must approve the family-code request before shared child access is available.");
+  }
   await expireJourneys();
   const { familyAccount, sourceChildren } = await sourceFamilyForClaims(claims);
   const family = await ensureTrackingFamily(familyAccount.familyName, familyAccount.ownerDemoSub);

@@ -5,11 +5,20 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type FamilyChildApprovalStatus = typeof FamilyChildApprovalStatus[keyof typeof FamilyChildApprovalStatus];
+
+
+export const FamilyChildApprovalStatus = {
+  pending: 'pending',
+  approved: 'approved',
+} as const;
+
 export interface FamilyChild {
   id: string;
   name: string;
   /** @nullable */
   username: string | null;
+  approvalStatus: FamilyChildApprovalStatus;
 }
 
 export interface FamilyAccountResponse {
@@ -46,6 +55,19 @@ export interface JoinFamilyInput {
      * @maxLength 60
      */
   username: string;
+}
+
+export type FamilyJoinResultApprovalStatus = typeof FamilyJoinResultApprovalStatus[keyof typeof FamilyJoinResultApprovalStatus];
+
+
+export const FamilyJoinResultApprovalStatus = {
+  pending: 'pending',
+  approved: 'approved',
+} as const;
+
+export interface FamilyJoinResult {
+  familyChildId: string;
+  approvalStatus: FamilyJoinResultApprovalStatus;
 }
 
 export interface UpdateTrackingSettingsInput {
@@ -748,6 +770,7 @@ export interface ReportSessionInput {
      */
   password: string;
   role: ReportSessionInputRole;
+  familyChildId?: string;
 }
 
 export type ReportSessionTokenType = typeof ReportSessionTokenType[keyof typeof ReportSessionTokenType];

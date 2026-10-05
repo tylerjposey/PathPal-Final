@@ -8,6 +8,7 @@ import {
   useListReports,
   type CommunityReportInput,
   type CommunityReportUpdate,
+  type FamilyJoinResult,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -219,13 +220,19 @@ export interface ChildProfile {
 
 export interface FamilyChildProfile extends ChildProfile {
   id: string;
+  approvalStatus: 'pending' | 'approved';
 }
 
 export interface FamilyAccountSnapshot {
   familyId: string;
   familyName: string;
   invitationCode: string;
-  children: Array<{ id: string; name: string; username: string | null }>;
+  children: Array<{
+    id: string;
+    name: string;
+    username: string | null;
+    approvalStatus: 'pending' | 'approved';
+  }>;
 }
 
 export interface ParentProfile {
@@ -304,7 +311,7 @@ export interface DemoState {
   child: ChildProfile;
   familyChildren: FamilyChildProfile[];
   invitationCode: string;
-  childLogin: { username: string; password: string } | null;
+  childLogin: { username: string; password: string; familyChildId?: string } | null;
   notificationPreferences: NotificationPreferences;
   /** -1 means no milestone confirmed yet for the currently selected journey. */
   milestoneIndex: number;
@@ -366,7 +373,7 @@ export function createInitialDemoState(): DemoState {
     familyName: 'The Chen family',
     parentProfile: { name: 'Jordan Chen', email: '', phone: '' },
     child: { name: 'Maya Chen', school: 'River Glen Elementary' },
-    familyChildren: [{ id: 'child-1', name: 'Maya Chen', school: 'River Glen Elementary' }],
+    familyChildren: [{ id: 'child-1', name: 'Maya Chen', school: 'River Glen Elementary', approvalStatus: 'approved' }],
     invitationCode: '',
     childLogin: null,
     notificationPreferences: {
@@ -587,7 +594,7 @@ interface DemoContextValue {
   reportsLoading: boolean;
   authenticate: (username: string, password: string, role: Role) => DemoUser | null;
   syncFamilyFromServer: (family: FamilyAccountSnapshot) => Promise<void>;
-  joinFamily: (family: FamilyAccountSnapshot, childName: string, username: string, password: string) => Promise<void>;
+  joinFamily: (request: FamilyJoinResult, childName: string, username: string, password: string) => Promise<void>;
   saveParentProfile: (profile: ParentProfile) => Promise<void>;
   saveChildProfile: (id: string, profile: ChildProfile) => Promise<void>;
   saveNotificationPreferences: (preferences: NotificationPreferences) => Promise<void>;
@@ -677,8 +684,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
                   id: child.id || `child-${index + 1}`,
                   name: child.name,
                   school: child.school,
+                  approvalStatus: child.approvalStatus ?? 'approved',
                 }))
-              : [{ id: 'child-1', ...saved.child }];
+              : [{ id: 'child-1', ...saved.child, approvalStatus: 'approved' }];
             saved.notificationPreferences = {
               ...initial.notificationPreferences,
               ...parsed.notificationPreferences,
@@ -787,6 +795,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         id: member.id,
         name: member.name,
         school: existing?.school ?? current.child.school,
+        approvalStatus: member.approvalStatus,
       };
     });
     const firstChild = familyChildren[0];
@@ -800,27 +809,16 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }), [persistUpdate]);
 
   const joinFamily = useCallback((
-    family: FamilyAccountSnapshot,
+    request: FamilyJoinResult,
     childName: string,
     username: string,
     password: string,
   ) => persistUpdate((current) => {
     const joinedName = childName.trim();
-    const familyChildren = family.children.map((member) => {
-      const existing = current.familyChildren.find((child) => child.id === member.id || child.name === member.name);
-      return {
-        id: member.id,
-        name: member.name,
-        school: existing?.school ?? current.child.school,
-      };
-    });
     return {
       ...current,
-      familyName: family.familyName,
-      invitationCode: family.invitationCode,
-      familyChildren: familyChildren.length ? familyChildren : current.familyChildren,
       child: { ...current.child, name: joinedName },
-      childLogin: { username: username.trim(), password },
+      childLogin: { username: username.trim(), password, familyChildId: request.familyChildId },
     };
   }), [persistUpdate]);
 

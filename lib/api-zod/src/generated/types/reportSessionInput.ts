@@ -19,4 +19,5 @@ export interface ReportSessionInput {
      */
   password: string;
   role: ReportSessionInputRole;
+  familyChildId?: string;
 }

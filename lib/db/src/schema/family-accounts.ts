@@ -16,6 +16,9 @@ export const familyChildrenTable = pgTable("family_children", {
   familyId: uuid("family_id").notNull().references(() => familyAccountsTable.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 120 }).notNull(),
   username: varchar("username", { length: 60 }),
+  approvalStatus: varchar("approval_status", { length: 16, enum: ["pending", "approved"] })
+    .notNull()
+    .default("approved"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("family_children_family_username_uq").on(table.familyId, table.username),

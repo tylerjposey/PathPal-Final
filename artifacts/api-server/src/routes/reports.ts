@@ -6,6 +6,7 @@ import {
   db,
   communityReportsTable,
   communityReportStatusEventsTable,
+  familyChildrenTable,
   type CommunityReportRow,
 } from "@workspace/db";
 import {
@@ -287,6 +288,34 @@ function requireView(claims: Claims, row: CommunityReportRow): void {
   if (!canView(claims, row)) throw new HttpError(403, "You are not authorized to view this report.");
 }
 
+async function hasPendingFamilyChildRequest(): Promise<boolean> {
+  const [pendingChild] = await db
+    .select({ id: familyChildrenTable.id })
+    .from(familyChildrenTable)
+    .where(eq(familyChildrenTable.approvalStatus, "pending"))
+    .limit(1);
+  return Boolean(pendingChild);
+}
+
+async function assertChildFamilyAccess(claims: Claims): Promise<void> {
+  if (claims.role !== "child") return;
+  if (claims.familyChildId) {
+    const [child] = await db
+      .select({ id: familyChildrenTable.id })
+      .from(familyChildrenTable)
+      .where(and(
+        eq(familyChildrenTable.id, claims.familyChildId),
+        eq(familyChildrenTable.approvalStatus, "approved"),
+      ))
+      .limit(1);
+    if (!child) throw new HttpError(403, "A parent must approve this child before family reports are available.");
+    return;
+  }
+  if (await hasPendingFamilyChildRequest()) {
+    throw new HttpError(403, "A parent must approve the family-code request before shared child access is available.");
+  }
+}
+
 function storageLocation(): { bucket: string; prefix: string } {
   const bucket = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
   const rawPrivateDir = process.env.PRIVATE_OBJECT_DIR;
@@ -347,6 +376,7 @@ function errorResponse(error: unknown, res: Response): void {
 router.get("/reports", async (req, res): Promise<void> => {
   try {
     const claims = authenticate(req);
+    await assertChildFamilyAccess(claims);
     await seedInitialReportsIdempotently();
     const rows = await db.select().from(communityReportsTable).orderBy(desc(communityReportsTable.submittedAt));
     res.json(ListReportsResponse.parse(rows.filter((row) => canView(claims, row)).map(reportResponse)));
@@ -360,6 +390,7 @@ router.post("/reports", async (req, res): Promise<void> => {
   let uploadedKey: string | undefined;
   try {
     const claims = authenticate(req);
+    await assertChildFamilyAccess(claims);
     if (!["parent", "child"].includes(claims.role)) throw new HttpError(403, "Only parent or child demo roles may submit reports.");
     if (process.env.NODE_ENV !== "development") {
       enforceCreateRateLimit(req.ip || req.socket.remoteAddress || "unknown");
@@ -455,7 +486,7 @@ router.post("/reports", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/reports/session", (req, res): void => {
+router.post("/reports/session", async (req, res): Promise<void> => {
   const parsed = CreateReportSessionBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid session input." });
@@ -465,18 +496,51 @@ router.post("/reports/session", (req, res): void => {
     res.status(401).json({ error: "Invalid demo credentials." });
     return;
   }
+  if (parsed.data.familyChildId && parsed.data.role !== "child") {
+    res.status(400).json({ error: "Only child sessions can use a family child account." });
+    return;
+  }
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) {
     res.status(503).json({ error: "Demo session signing is not configured." });
     return;
   }
   const role = parsed.data.role;
-  const sub = role === "parent" ? "demo-family-parent-ai4sg"
+  let sub = role === "parent" ? "demo-family-parent-ai4sg"
     : role === "child" ? "demo-family-child-ai4sg"
       : role === "manager" ? "Avery Patel" : "Luis Rivera";
+  let familyChildId: string | undefined;
+  if (role === "child" && parsed.data.familyChildId) {
+    const [child] = await db
+      .select()
+      .from(familyChildrenTable)
+      .where(eq(familyChildrenTable.id, parsed.data.familyChildId))
+      .limit(1);
+    if (!child || !child.username) {
+      res.status(404).json({ error: "This family child account was not found." });
+      return;
+    }
+    if (child.approvalStatus !== "approved") {
+      res.status(403).json({ error: "A parent must approve this child before family information is available." });
+      return;
+    }
+    sub = child.username;
+    familyChildId = child.id;
+  } else if (role === "child") {
+    if (await hasPendingFamilyChildRequest()) {
+      res.status(403).json({ error: "A parent must approve the family-code request before child sign-in is available." });
+      return;
+    }
+  }
   const familyId = role === "parent" || role === "child" ? demoFamilyId : null;
   const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
-  const accessToken = createToken({ role, sub, familyId, exp: Math.floor(expiresAt.getTime() / 1000) }, secret);
+  const accessToken = createToken({
+    role,
+    sub,
+    familyId,
+    ...(familyChildId ? { familyChildId } : {}),
+    exp: Math.floor(expiresAt.getTime() / 1000),
+  }, secret);
   res.json(CreateReportSessionResponse.parse({ accessToken, tokenType: "Bearer", expiresAt, role, prototypeOnly: true }));
 });
 
@@ -485,6 +549,7 @@ router.get("/reports/:id", async (req, res): Promise<void> => {
     const params = GetReportParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
     const claims = authenticate(req);
+    await assertChildFamilyAccess(claims);
     const [row] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!row) throw new HttpError(404, "Report not found.");
@@ -615,6 +680,7 @@ router.get("/reports/:id/photo", async (req, res): Promise<void> => {
     const params = GetReportPhotoParams.safeParse(req.params);
     if (!params.success) throw new HttpError(400, "Invalid report ID.");
     const claims = authenticate(req);
+    await assertChildFamilyAccess(claims);
     const [report] = await db.select().from(communityReportsTable)
       .where(eq(communityReportsTable.id, params.data.id)).limit(1);
     if (!report) throw new HttpError(404, "Report not found.");

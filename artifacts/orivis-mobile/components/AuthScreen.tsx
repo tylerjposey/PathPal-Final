@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
@@ -46,10 +46,27 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
   const [error, setError] = useState('');
   const [signingIn, setSigningIn] = useState(false);
 
+  useEffect(() => {
+    if (!state.childLogin) return;
+    setRole('child');
+    setMode('signin');
+    setUsername(state.childLogin.username);
+    setPassword(state.childLogin.password);
+  }, [state.childLogin]);
+
   const signIn = async () => {
     if (signingIn) return;
     if (!role) {
       setError('Select an account type first.');
+      return;
+    }
+    const familyChildId = role === 'child' ? state.childLogin?.familyChildId : undefined;
+    if (
+      familyChildId &&
+      (username.trim().toLowerCase() !== state.childLogin?.username.toLowerCase() ||
+        password !== state.childLogin.password)
+    ) {
+      setError('Use the child username and password created with the family code.');
       return;
     }
     const account = authenticate(username, password, role);
@@ -64,10 +81,16 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
           username: role === 'parent' || role === 'child' ? 'AI4SG' : username,
           password: role === 'parent' || role === 'child' ? '1234' : password,
           role,
+          ...(familyChildId ? { familyChildId } : {}),
         });
         await saveReportSession(session);
       } catch (error) {
         const detail = reportError(error);
+        if (familyChildId) {
+          await clearReportSession().catch(() => undefined);
+          setError(detail);
+          return;
+        }
         if (role === 'parent' || role === 'child') {
           await clearReportSession().catch(() => undefined);
           const serviceMessage = `Report service unavailable: ${detail}. You can continue using the local family journey, check-ins, and simulated SOS; reports require a server connection.`;
@@ -100,6 +123,17 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
             familyServiceUnavailable: true,
             familyServiceError: familyMessage,
           });
+          return;
+        }
+      }
+
+      if (familyChildId) {
+        try {
+          const family = await getMyFamily();
+          await syncFamilyFromServer(family);
+        } catch (error) {
+          await clearReportSession().catch(() => undefined);
+          setError(`Family access unavailable: ${reportError(error)}`);
           return;
         }
       }
@@ -266,6 +300,14 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
           <>
             <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" testID="username" />
             <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry testID="password" />
+            {role === 'child' && state.childLogin?.familyChildId ? (
+              <View style={[styles.demoNote, { backgroundColor: colors.muted }]}>
+                <Feather name="info" size={15} color={colors.primary} />
+                <Text style={[styles.demoText, { color: colors.mutedForeground }]}>
+                  A parent must approve this child before family reports and details are available. Try signing in again after approval.
+                </Text>
+              </View>
+            ) : null}
             {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
             <Button label="Continue securely" icon="arrow-right" onPress={() => { void signIn(); }} loading={signingIn} testID="continue-signin" />
             <View style={[styles.demoNote, { backgroundColor: colors.muted }]}>

@@ -29,6 +29,7 @@ import type {
   CreateTrackingJourneyInput,
   ErrorResponse,
   FamilyAccountResponse,
+  FamilyJoinResult,
   GetJourneyCatalogParams,
   GetJourneyMap3dParams,
   GetJourneyMapImageParams,
@@ -1010,7 +1011,7 @@ export const getGetMyFamilyUrl = () => {
 }
 
 /**
- * @summary Get the family associated with the shared demo parent session
+ * @summary Get the family for a parent or an approved family child
  */
 export const getMyFamily = async ( options?: Parameters<typeof customFetch>[1]): Promise<FamilyAccountResponse> => {
 
@@ -1057,7 +1058,7 @@ export type GetMyFamilyQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get the family associated with the shared demo parent session
+ * @summary Get the family for a parent or an approved family child
  */
 
 export function useGetMyFamily<TData = Awaited<ReturnType<typeof getMyFamily>>, TError = ErrorType<ErrorResponse>>(
@@ -1175,9 +1176,9 @@ export const getJoinFamilyUrl = () => {
 }
 
 /**
- * @summary Join a family using its server-generated invitation code
+ * @summary Request to join a family using its invitation code
  */
-export const joinFamily = async (joinFamilyInput: JoinFamilyInput, options?: Parameters<typeof customFetch>[1]): Promise<FamilyAccountResponse> => {
+export const joinFamily = async (joinFamilyInput: JoinFamilyInput, options?: Parameters<typeof customFetch>[1]): Promise<FamilyJoinResult> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1193,7 +1194,7 @@ export const joinFamily = async (joinFamilyInput: JoinFamilyInput, options?: Par
     }
     return headers;
   };
-return customFetch<FamilyAccountResponse>(getJoinFamilyUrl(),
+return customFetch<FamilyJoinResult>(getJoinFamilyUrl(),
   {
     ...options,
     method: 'POST',
@@ -1241,7 +1242,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type JoinFamilyMutationVariables = {data: BodyType<JoinFamilyInput>}
 
     /**
- * @summary Join a family using its server-generated invitation code
+ * @summary Request to join a family using its invitation code
  */
 export const useJoinFamily = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinFamily>>, TError,JoinFamilyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1252,6 +1253,80 @@ export const useJoinFamily = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getJoinFamilyMutationOptions(options));
+    }
+
+export const getApproveFamilyChildUrl = (childId: string,) => {
+
+
+
+
+  return `/api/families/children/${childId}/approve`
+}
+
+/**
+ * @summary Approve a child's request to access the family
+ */
+export const approveFamilyChild = async (childId: string, options?: Parameters<typeof customFetch>[1]): Promise<FamilyAccountResponse> => {
+
+  return customFetch<FamilyAccountResponse>(getApproveFamilyChildUrl(childId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getApproveFamilyChildMutationKey = () => ['approveFamilyChild'] as const;
+
+export const getApproveFamilyChildMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveFamilyChild>>, TError,ApproveFamilyChildMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveFamilyChild>>, TError,ApproveFamilyChildMutationVariables, TContext> => {
+
+const mutationKey = getApproveFamilyChildMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveFamilyChild>>, ApproveFamilyChildMutationVariables> = (props) => {
+          const {childId} = props ?? {};
+
+          return  approveFamilyChild(childId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveFamilyChildMutationResult = NonNullable<Awaited<ReturnType<typeof approveFamilyChild>>>
+
+    export type ApproveFamilyChildMutationError = ErrorType<ErrorResponse>
+    export type ApproveFamilyChildMutationVariables = {childId: string}
+
+    /**
+ * @summary Approve a child's request to access the family
+ */
+export const useApproveFamilyChild = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveFamilyChild>>, TError,ApproveFamilyChildMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveFamilyChild>>,
+        TError,
+        ApproveFamilyChildMutationVariables,
+        TContext
+      > => {
+      return useMutation(getApproveFamilyChildMutationOptions(options));
     }
 
 export const getGetTrackingProfileUrl = () => {

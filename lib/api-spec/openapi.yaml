@@ -239,6 +239,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/CommunityReport"
+        "403":
+          description: A family-code child request is awaiting parent approval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Reports could not be loaded
           content:
@@ -266,6 +272,12 @@ paths:
                 $ref: "#/components/schemas/CommunityReport"
         "400":
           description: Invalid report input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: A family-code child request is awaiting parent approval
           content:
             application/json:
               schema:
@@ -318,6 +330,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The parent has not approved this child for family access
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Family child account was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Session signing is not configured
           content:
@@ -328,7 +352,7 @@ paths:
     get:
       operationId: getMyFamily
       tags: [families]
-      summary: Get the family associated with the shared demo parent session
+      summary: Get the family for a parent or an approved family child
       security:
         - bearerAuth: []
       responses:
@@ -345,7 +369,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: The session is not a parent session
+          description: The session is not an approved family parent or child
           content:
             application/json:
               schema:
@@ -404,7 +428,7 @@ paths:
     post:
       operationId: joinFamily
       tags: [families]
-      summary: Join a family using its server-generated invitation code
+      summary: Request to join a family using its invitation code
       requestBody:
         required: true
         content:
@@ -413,11 +437,11 @@ paths:
               $ref: "#/components/schemas/JoinFamilyInput"
       responses:
         "200":
-          description: Family account after adding or retrieving the child
+          description: Child request ID and its current approval status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/FamilyAccountResponse"
+                $ref: "#/components/schemas/FamilyJoinResult"
         "400":
           description: Invalid child or invitation code details
           content:
@@ -432,6 +456,45 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: The username is already assigned to another child in this family
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /families/children/{childId}/approve:
+    post:
+      operationId: approveFamilyChild
+      tags: [families]
+      summary: Approve a child's request to access the family
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: childId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Updated family account with the child's approval reflected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FamilyAccountResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Only the parent who owns this family can approve the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pending child request was not found
           content:
             application/json:
               schema:
@@ -457,7 +520,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: The session is not a parent or child account
+          description: The session is not a parent or approved child account
           content:
             application/json:
               schema:
@@ -695,7 +758,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Role is not authorized to view this report
+          description: Role is not authorized or the child is awaiting parent approval
           content:
             application/json:
               schema:
@@ -784,6 +847,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The child is awaiting parent approval or the role cannot view this report
           content:
             application/json:
               schema:
@@ -931,7 +1000,8 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         username: { type: ["string", "null"] }
-      required: [id, name, username]
+        approvalStatus: { type: string, enum: [pending, approved] }
+      required: [id, name, username, approvalStatus]
     FamilyAccountResponse:
       type: object
       properties:
@@ -955,6 +1025,12 @@ components:
         childName: { type: string, minLength: 1, maxLength: 120 }
         username: { type: string, minLength: 3, maxLength: 60 }
       required: [invitationCode, childName, username]
+    FamilyJoinResult:
+      type: object
+      properties:
+        familyChildId: { type: string, format: uuid }
+        approvalStatus: { type: string, enum: [pending, approved] }
+      required: [familyChildId, approvalStatus]
     UpdateTrackingSettingsInput:
       type: object
       properties:
@@ -1382,6 +1458,7 @@ components:
         username: { type: string, minLength: 1, maxLength: 100 }
         password: { type: string, minLength: 1, maxLength: 200 }
         role: { type: string, enum: [parent, child, manager, worker] }
+        familyChildId: { type: string, format: uuid }
       required: [username, password, role]
     ReportSession:
       type: object

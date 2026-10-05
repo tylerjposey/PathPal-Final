@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import { Router, type IRouter, type Response } from "express";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import {
+  ApproveFamilyChildParams,
   CreateFamilyBody,
   CreateFamilyResponse,
   GetMyFamilyResponse,
@@ -33,7 +34,7 @@ function handleError(error: unknown, res: Response): void {
   res.status(500).json({ error: "Family service is unavailable." });
 }
 
-async function familyResponse(family: FamilyAccountRow) {
+async function familyResponse(family: FamilyAccountRow, includePending = true) {
   const children = await db
     .select()
     .from(familyChildrenTable)
@@ -43,7 +44,9 @@ async function familyResponse(family: FamilyAccountRow) {
     familyId: family.id,
     familyName: family.familyName,
     invitationCode: family.invitationCode,
-    children: children.map(({ id, name, username }) => ({ id, name, username })),
+    children: children
+      .filter((child) => includePending || child.approvalStatus === "approved")
+      .map(({ id, name, username, approvalStatus }) => ({ id, name, username, approvalStatus })),
   };
 }
 
@@ -53,14 +56,34 @@ function createInvitationCode(): string {
 
 router.get("/families/me", async (req, res): Promise<void> => {
   try {
-    const claims = requireParent(req);
-    const [family] = await db
-      .select()
-      .from(familyAccountsTable)
-      .where(eq(familyAccountsTable.ownerDemoSub, claims.sub))
-      .limit(1);
+    const claims = authenticate(req);
+    let family: FamilyAccountRow | undefined;
+    if (claims.role === "parent") {
+      [family] = await db
+        .select()
+        .from(familyAccountsTable)
+        .where(eq(familyAccountsTable.ownerDemoSub, claims.sub))
+        .limit(1);
+    } else if (claims.role === "child" && claims.familyChildId) {
+      const [child] = await db
+        .select()
+        .from(familyChildrenTable)
+        .where(and(
+          eq(familyChildrenTable.id, claims.familyChildId),
+          eq(familyChildrenTable.approvalStatus, "approved"),
+        ))
+        .limit(1);
+      if (!child) throw new HttpError(403, "A parent must approve this child before family information is available.");
+      [family] = await db
+        .select()
+        .from(familyAccountsTable)
+        .where(eq(familyAccountsTable.id, child.familyId))
+        .limit(1);
+    } else {
+      throw new HttpError(403, "Only a family parent or an approved child can access family information.");
+    }
     if (!family) throw new HttpError(404, "No family has been created for this demo parent.");
-    res.json(GetMyFamilyResponse.parse(await familyResponse(family)));
+    res.json(GetMyFamilyResponse.parse(await familyResponse(family, claims.role === "parent")));
   } catch (error) {
     handleError(error, res);
   }
@@ -167,7 +190,7 @@ router.post("/families/join", async (req, res): Promise<void> => {
       .limit(1);
     if (!family) throw new HttpError(404, "That family code was not found.");
 
-    await db.transaction(async (tx) => {
+    const child = await db.transaction(async (tx) => {
       const [existingChild] = await tx
         .select()
         .from(familyChildrenTable)
@@ -181,7 +204,7 @@ router.post("/families/join", async (req, res): Promise<void> => {
         if (existingChild.name.trim().toLowerCase() !== childName.toLowerCase()) {
           throw new HttpError(409, "That username is already used by another child in this family.");
         }
-        return;
+        return existingChild;
       }
 
       const [unregisteredChild] = await tx
@@ -192,20 +215,71 @@ router.post("/families/join", async (req, res): Promise<void> => {
         .limit(1);
 
       if (unregisteredChild) {
-        await tx
+        const [updatedChild] = await tx
           .update(familyChildrenTable)
-          .set({ name: childName, username })
-          .where(eq(familyChildrenTable.id, unregisteredChild.id));
+          .set({ name: childName, username, approvalStatus: "pending" })
+          .where(eq(familyChildrenTable.id, unregisteredChild.id))
+          .returning();
+        if (!updatedChild) throw new HttpError(409, "The child request could not be saved. Please try again.");
+        return updatedChild;
       } else {
-        await tx.insert(familyChildrenTable).values({
+        const [createdChild] = await tx.insert(familyChildrenTable).values({
           familyId: family.id,
           name: childName,
           username,
-        });
+          approvalStatus: "pending",
+        }).returning();
+        if (!createdChild) throw new HttpError(503, "The child request could not be saved.");
+        return createdChild;
       }
     });
 
-    res.json(JoinFamilyResponse.parse(await familyResponse(family)));
+    res.json(JoinFamilyResponse.parse({
+      familyChildId: child.id,
+      approvalStatus: child.approvalStatus,
+    }));
+  } catch (error) {
+    handleError(error, res);
+  }
+});
+
+router.post("/families/children/:childId/approve", async (req, res): Promise<void> => {
+  const params = ApproveFamilyChildParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid child request ID." });
+    return;
+  }
+
+  try {
+    const claims = requireParent(req);
+    const [family] = await db
+      .select()
+      .from(familyAccountsTable)
+      .where(eq(familyAccountsTable.ownerDemoSub, claims.sub))
+      .limit(1);
+    if (!family) throw new HttpError(404, "No family has been created for this demo parent.");
+
+    const [child] = await db
+      .select()
+      .from(familyChildrenTable)
+      .where(and(
+        eq(familyChildrenTable.id, params.data.childId),
+        eq(familyChildrenTable.familyId, family.id),
+      ))
+      .limit(1);
+    if (!child || !child.username) throw new HttpError(404, "That child request was not found.");
+
+    if (child.approvalStatus !== "approved") {
+      await db
+        .update(familyChildrenTable)
+        .set({ approvalStatus: "approved" })
+        .where(and(
+          eq(familyChildrenTable.id, child.id),
+          eq(familyChildrenTable.familyId, family.id),
+        ));
+    }
+
+    res.json(GetMyFamilyResponse.parse(await familyResponse(family)));
   } catch (error) {
     handleError(error, res);
   }

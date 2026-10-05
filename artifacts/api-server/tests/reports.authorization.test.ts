@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+import { createHmac, randomInt, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { after, before, test } from "node:test";
 import { Storage } from "@google-cloud/storage";
@@ -9,6 +9,7 @@ import {
   communityReportStatusEventsTable,
   communityReportsTable,
   db,
+  familyAccountsTable,
   pool,
 } from "@workspace/db";
 
@@ -42,6 +43,7 @@ const workerToken = signedToken("worker", testWorker);
 let server: ReturnType<typeof app.listen>;
 let baseUrl: string;
 const createdIds: string[] = [];
+const createdFamilyIds: string[] = [];
 const createdPhotoIds = new Set<string>();
 
 const photoStorage = new Storage({
@@ -114,6 +116,9 @@ before(async () => {
 
 after(async () => {
   try {
+    if (createdFamilyIds.length) {
+      await db.delete(familyAccountsTable).where(inArray(familyAccountsTable.id, createdFamilyIds));
+    }
     if (createdIds.length) {
       const rows = await db.select({
         id: communityReportsTable.id,
@@ -137,6 +142,130 @@ after(async () => {
     }
     await pool.end();
   }
+});
+
+test("family-code children stay blocked until the parent approves them", async () => {
+  const ownerDemoSub = `family-approval-test-${randomUUID()}`;
+  const invitationCode = randomInt(0, 10_000_000_000).toString().padStart(10, "0");
+  const [family] = await db.insert(familyAccountsTable).values({
+    ownerDemoSub,
+    familyName: "Approval Test Family",
+    invitationCode,
+  }).returning();
+  assert.ok(family);
+  createdFamilyIds.push(family.id);
+
+  const parentToken = signedToken("parent", ownerDemoSub);
+  const legacySharedChildToken = signedToken("child", "authorization-test-shared-child", "authorization-test-family");
+  const pendingResponse = await api("/families/join", undefined, {
+    method: "POST",
+    body: JSON.stringify({
+      invitationCode,
+      childName: "Test Child",
+      username: `test-child-${randomUUID().slice(0, 8)}`,
+    }),
+  });
+  const pending = await pendingResponse.json() as {
+    familyChildId?: string;
+    approvalStatus?: string;
+    familyName?: string;
+  };
+  assert.equal(pendingResponse.status, 200);
+  assert.equal(pending.approvalStatus, "pending");
+  assert.ok(pending.familyChildId);
+  assert.equal(pending.familyName, undefined, "A pending child must not receive family details.");
+  assert.equal(
+    (await api("/reports", legacySharedChildToken)).status,
+    403,
+    "A previously issued shared child session must not bypass a pending approval request.",
+  );
+  assert.equal(
+    (await api("/tracking/me", legacySharedChildToken)).status,
+    403,
+    "A previously issued shared child session must not bypass a pending approval request for tracking.",
+  );
+
+  const blockedSession = await api("/reports/session", undefined, {
+    method: "POST",
+    body: JSON.stringify({
+      username: "AI4SG",
+      password: "1234",
+      role: "child",
+      familyChildId: pending.familyChildId,
+    }),
+  });
+  assert.equal(blockedSession.status, 403, "Pending children must not receive a family-scoped session.");
+
+  const blockedSharedChildSession = await api("/reports/session", undefined, {
+    method: "POST",
+    body: JSON.stringify({ username: "AI4SG", password: "1234", role: "child" }),
+  });
+  assert.equal(blockedSharedChildSession.status, 403, "The shared child login must not bypass a pending family request.");
+
+  const familyBeforeApproval = await api("/families/me", parentToken);
+  assert.equal(familyBeforeApproval.status, 200);
+  const pendingFamily = await familyBeforeApproval.json() as {
+    children: Array<{ id: string; approvalStatus: string }>;
+  };
+  assert.equal(
+    pendingFamily.children.find((child) => child.id === pending.familyChildId)?.approvalStatus,
+    "pending",
+  );
+
+  const forbiddenApproval = await api(
+    `/families/children/${pending.familyChildId}/approve`,
+    managerToken,
+    { method: "POST" },
+  );
+  assert.equal(forbiddenApproval.status, 403, "Only the owning parent can approve a child.");
+
+  const approvalResponse = await api(
+    `/families/children/${pending.familyChildId}/approve`,
+    parentToken,
+    { method: "POST" },
+  );
+  assert.equal(approvalResponse.status, 200);
+  const approvedFamily = await approvalResponse.json() as {
+    children: Array<{ id: string; approvalStatus: string }>;
+  };
+  assert.equal(
+    approvedFamily.children.find((child) => child.id === pending.familyChildId)?.approvalStatus,
+    "approved",
+  );
+
+  const secondRequest = await api("/families/join", undefined, {
+    method: "POST",
+    body: JSON.stringify({
+      invitationCode,
+      childName: "Another Test Child",
+      username: `test-child-${randomUUID().slice(0, 8)}`,
+    }),
+  });
+  assert.equal(secondRequest.status, 200);
+
+  const approvedSession = await api("/reports/session", undefined, {
+    method: "POST",
+    body: JSON.stringify({
+      username: "AI4SG",
+      password: "1234",
+      role: "child",
+      familyChildId: pending.familyChildId,
+    }),
+  });
+  assert.equal(approvedSession.status, 200);
+  const { accessToken } = await approvedSession.json() as { accessToken: string };
+  const childFamilyResponse = await api("/families/me", accessToken);
+  assert.equal(childFamilyResponse.status, 200);
+  const childFamily = await childFamilyResponse.json() as {
+    children: Array<{ id: string; approvalStatus: string }>;
+  };
+  assert.equal(childFamily.children.length, 1, "Approved children must not see other pending requests.");
+  assert.equal(childFamily.children[0]?.id, pending.familyChildId);
+  assert.equal(childFamily.children[0]?.approvalStatus, "approved");
+  assert.equal((await api("/reports", accessToken)).status, 200);
+
+  await db.delete(familyAccountsTable).where(eq(familyAccountsTable.id, family.id));
+  createdFamilyIds.splice(createdFamilyIds.indexOf(family.id), 1);
 });
 
 test("family accounts list, read, and download only reports and photos from their family", async () => {
@@ -216,42 +345,43 @@ test("report input cannot spoof the reporter, assign a team, set status, or edit
 });
 
 test("workers can read and change status only for reports assigned to their configured team", async () => {
-  const [rowA] = await db.select({ id: communityReportsTable.id })
-    .from(communityReportsTable)
-    .where(eq(communityReportsTable.reporterAccountId, testReporterA))
-    .limit(1);
-  const [rowB] = await db.select({ id: communityReportsTable.id })
-    .from(communityReportsTable)
-    .where(eq(communityReportsTable.reporterAccountId, testReporterB))
-    .limit(1);
+  const photoReports = await db.select({
+    id: communityReportsTable.id,
+    reporterAccountId: communityReportsTable.reporterAccountId,
+  }).from(communityReportsTable)
+    .where(inArray(communityReportsTable.id, [...createdPhotoIds]));
+  const rowA = photoReports.find((row) => row.reporterAccountId === testReporterA);
+  const rowB = photoReports.find((row) => row.reporterAccountId === testReporterB);
   assert.ok(rowA?.id && rowB?.id, "Both reporter fixtures should exist.");
 
   const assignA = await api(`/reports/${rowA.id}`, managerToken, {
     method: "PATCH",
     body: JSON.stringify({ assignedTeam: westCleanTeam, status: "Assigned" }),
   });
-  assert.equal(assignA.status, 200);
+  assert.equal(assignA.status, 200, `Could not assign reporter A's test case: ${await assignA.clone().text()}`);
   const assignB = await api(`/reports/${rowB.id}`, managerToken, {
     method: "PATCH",
     body: JSON.stringify({ assignedTeam: otherTeam, status: "Assigned" }),
   });
-  assert.equal(assignB.status, 200);
+  assert.equal(assignB.status, 200, `Could not assign reporter B's test case: ${await assignB.clone().text()}`);
 
   const workerListResponse = await api("/reports", workerToken);
-  assert.equal(workerListResponse.status, 200);
+  assert.equal(workerListResponse.status, 200, `Worker list failed: ${await workerListResponse.clone().text()}`);
   const workerList = await workerListResponse.json() as Array<{ id: string }>;
   assert.ok(workerList.some((row) => row.id === rowA.id));
   assert.ok(!workerList.some((row) => row.id === rowB.id));
-  assert.equal((await api(`/reports/${rowA.id}`, workerToken)).status, 200);
+  const workerOwnRead = await api(`/reports/${rowA.id}`, workerToken);
+  assert.equal(workerOwnRead.status, 200, `Worker could not read its assigned report: ${await workerOwnRead.clone().text()}`);
   assert.equal((await api(`/reports/${rowB.id}`, workerToken)).status, 403);
-  assert.equal((await api(`/reports/${rowA.id}/photo`, workerToken)).status, 200);
+  const workerOwnPhoto = await api(`/reports/${rowA.id}/photo`, workerToken);
+  assert.equal(workerOwnPhoto.status, 200, `Worker could not read its assigned report photo: ${await workerOwnPhoto.clone().text()}`);
   assert.equal((await api(`/reports/${rowB.id}/photo`, workerToken)).status, 403);
 
   const allowedUpdate = await api(`/reports/${rowA.id}`, workerToken, {
     method: "PATCH",
     body: JSON.stringify({ status: "Under Review" }),
   });
-  assert.equal(allowedUpdate.status, 200);
+  assert.equal(allowedUpdate.status, 200, `Worker could not update its assigned report: ${await allowedUpdate.clone().text()}`);
   const deniedUpdate = await api(`/reports/${rowB.id}`, workerToken, {
     method: "PATCH",
     body: JSON.stringify({ status: "Resolved" }),

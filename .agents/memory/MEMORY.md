@@ -3,6 +3,7 @@
 - [Orivis demo account scope](orivis-demo-account-scope.md) — keep shared demo identities while family invitation codes and memberships persist centrally.
 - [Expo web map taps](expo-web-map-taps.md) — React Native Web press events may lack locationX/Y; map pins need a finite web-compatible coordinate path.
 - [Role-scoped report views](role-scoped-report-views.md) — server authorization alone is insufficient when a mobile demo retains report state across role switches.
+- [Persistent authorization-test fixtures](authorization-test-fixtures.md) — tests over a persistent development database must select records created in the current run, not an unordered matching row.
 - [Google Maps API availability](google-maps-key-legacy-apis-disabled.md) — Places, Routes, live VTA transit, and browser-keyed 3D maps work; keep Google-only suggestions and coordinate-gated routing.
 - [React Native Alert.alert is a no-op on web](react-native-web-alert-noop.md) — confirmation dialogs via Alert.alert silently do nothing in Expo web preview; not a Playwright artifact.
 - [Orivis account deletion boundary](orivis-account-deletion-boundary.md) — keep real deletion disabled until account-backed auth can revoke child access.

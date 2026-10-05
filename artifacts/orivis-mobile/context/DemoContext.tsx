@@ -5,11 +5,14 @@ import {
   listReports,
   resetDemoReports,
   sendSosChat,
+  sendSosVoiceChunk as callSosVoiceChunk,
   updateReport as saveCommunityReport,
   useListReports,
   type CommunityReportInput,
   type CommunityReportUpdate,
   type FamilyJoinResult,
+  type SOSVoiceChunkInputFormat,
+  type SOSVoiceChunkResponse,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -295,7 +298,11 @@ export interface SOSMessage {
   text: string;
   createdAt: string;
   aiAvailable?: boolean;
+  source?: 'voice';
+  transcriptSource?: SOSVoiceSource;
 }
+
+export type SOSVoiceSource = 'unknown' | 'child_confirmed' | 'unverified_audio_clue';
 
 export interface SOSEvent {
   id: string;
@@ -532,6 +539,15 @@ function visibleReports(serverReports: SafetyReport[], legacyReports: SafetyRepo
 }
 
 const STORAGE_KEY = 'orivis-demo-v1';
+const SOS_UNAVAILABLE_REPLY =
+  'Prepared safety guidance — AI is unavailable. Move toward a trusted adult or a staffed public place if you can. For urgent real-world help, contact your local emergency number.';
+
+function persistableDemoState(value: DemoState): DemoState {
+  return {
+    ...value,
+    sosMessages: value.sosMessages.filter((message) => message.source !== 'voice'),
+  };
+}
 
 function isRemovedCitizenRole(account: unknown): boolean {
   return typeof account === 'object' && account !== null &&
@@ -540,6 +556,22 @@ function isRemovedCitizenRole(account: unknown): boolean {
 
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function appendSOSGuideMessage(
+  messages: SOSMessage[],
+  text: string,
+  aiAvailable: boolean,
+): SOSMessage[] {
+  const lastGuide = [...messages].reverse().find((message) => message.sender === 'guide');
+  if (!aiAvailable && lastGuide?.aiAvailable === false) return messages;
+  return [...messages, {
+    id: newId('guide'),
+    sender: 'guide',
+    text,
+    createdAt: new Date().toISOString(),
+    aiAvailable,
+  }];
 }
 
 function notification(
@@ -625,6 +657,13 @@ interface DemoContextValue {
   activateSOS: () => void;
   setSOSSignal: (signal: string) => void;
   sendSOSMessage: (text: string) => Promise<void>;
+  sendSOSVoiceChunk: (
+    audioBase64: string,
+    format: SOSVoiceChunkInputFormat,
+    spokenReplies: boolean,
+  ) => Promise<SOSVoiceChunkResponse>;
+  correctSOSVoiceTranscript: (id: string, text: string, source: SOSVoiceSource) => void;
+  shareSOSVoiceSummary: (summary: string) => void;
   endSOS: () => void;
 }
 
@@ -660,7 +699,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       const reports = visibleReports(serverReports, legacy);
       if (JSON.stringify(current.reports) === JSON.stringify(reports) && JSON.stringify(current.legacyReportsByAccount) === JSON.stringify(buckets)) return current;
       const next = { ...current, reports, legacyReportsByAccount: buckets, reportScopeKey: scope };
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persistableDemoState(next)));
       return next;
     });
   }, [reportsQuery.data, reportsQuery.isSuccess, reportsQuery.isError, reportsQuery.queryKey, hydrated, state.account]);
@@ -675,6 +714,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
             const parsed = JSON.parse(raw) as Partial<DemoState>;
             const initial = createInitialDemoState();
             const saved = { ...initial, ...parsed };
+            saved.sosMessages = Array.isArray(parsed.sosMessages)
+              ? parsed.sosMessages.filter((message) => message.source !== 'voice')
+              : [];
             const removedCitizenAccount = isRemovedCitizenRole(saved.account);
             saved.parentProfile = {
               ...initial.parentProfile,
@@ -727,7 +769,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
             }
             if (mounted) {
               setState(saved);
-              void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+              void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persistableDemoState(saved)));
             }
           } catch {
             setState(createInitialDemoState());
@@ -759,14 +801,14 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       if (notifications.length !== next.notifications.length) {
         next = { ...next, notifications };
       }
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persistableDemoState(next))).catch(() => undefined);
       return next;
     });
   }, []);
 
   const persistUpdate = useCallback(async (recipe: (current: DemoState) => DemoState) => {
     const next = recipe(state);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persistableDemoState(next)));
     setState(next);
   }, [state]);
 
@@ -934,7 +976,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     };
     await clearReportSession();
     setState(next);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persistableDemoState(next)));
     await queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
   }, [state.account?.role, state.reports, queryClient]);
 
@@ -1163,16 +1205,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     });
     if (state.account?.role !== 'child') {
       update((current) => current.sosActive && current.sosEvents[0]?.id === activeEventId
-        ? {
-            ...current,
-            sosMessages: [...current.sosMessages, {
-              id: newId('guide'),
-              sender: 'guide',
-              text: 'I’m here with you. Find a trusted adult or a staffed, public place if you can. This is a demo; no one has been contacted.',
-              createdAt: new Date().toISOString(),
-              aiAvailable: false,
-            }],
-          }
+        ? { ...current, sosMessages: appendSOSGuideMessage(current.sosMessages, SOS_UNAVAILABLE_REPLY, false) }
         : current);
       return;
     }
@@ -1192,24 +1225,86 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         : current);
     } catch {
       update((current) => current.sosActive && current.sosEvents[0]?.id === activeEventId
-        ? {
-            ...current,
-            sosMessages: [...current.sosMessages, {
-              id: newId('guide'),
-              sender: 'guide',
-              text: 'I’m here with you. Find a trusted adult or a staffed, public place if you can. This is a demo; no one has been contacted. Call your local emergency number if you need urgent help.',
-              createdAt: new Date().toISOString(),
-              aiAvailable: false,
-            }],
-          }
+        ? { ...current, sosMessages: appendSOSGuideMessage(current.sosMessages, SOS_UNAVAILABLE_REPLY, false) }
         : current);
     }
   }, [state.account?.role, state.sosActive, state.sosEvents, state.sosMessages, update]);
+
+  const sendSOSVoiceChunk = useCallback(async (
+    audioBase64: string,
+    format: SOSVoiceChunkInputFormat,
+    spokenReplies: boolean,
+  ): Promise<SOSVoiceChunkResponse> => {
+    if (!state.sosActive || state.account?.role !== 'child') {
+      throw new Error('SOS voice chat is available only during an approved child demo session.');
+    }
+    const activeEventId = state.sosEvents[0]?.id;
+    if (!activeEventId) throw new Error('No active simulated SOS session was found.');
+    const chatContext = state.sosMessages.slice(-8).map((item) => ({
+      role: item.sender === 'child' ? 'user' as const : 'assistant' as const,
+      content: item.text.slice(0, 1200),
+    }));
+    const result = await callSosVoiceChunk({
+      audioBase64,
+      format,
+      messages: chatContext,
+      spokenReplies,
+    });
+    update((current) => {
+      if (!current.sosActive || current.sosEvents[0]?.id !== activeEventId) return current;
+      let sosMessages = current.sosMessages;
+      if (result.transcript.trim()) {
+        sosMessages = [...sosMessages, {
+          id: newId('voice'),
+          sender: 'child',
+          text: result.transcript.trim().slice(0, 1200),
+          createdAt: new Date().toISOString(),
+          source: 'voice',
+          transcriptSource: 'unknown',
+        }];
+      }
+      sosMessages = appendSOSGuideMessage(sosMessages, result.reply, result.available);
+      return { ...current, sosMessages };
+    });
+    return result;
+  }, [state.account?.role, state.sosActive, state.sosEvents, state.sosMessages, update]);
+
+  const correctSOSVoiceTranscript = useCallback((
+    id: string,
+    text: string,
+    source: SOSVoiceSource,
+  ) => {
+    const correctedText = text.trim().slice(0, 1200);
+    update((current) => current.sosActive
+      ? {
+          ...current,
+          sosMessages: current.sosMessages.map((message) =>
+            message.id === id && message.source === 'voice'
+              ? { ...message, text: correctedText, transcriptSource: source }
+              : message,
+          ),
+        }
+      : current);
+  }, [update]);
+
+  const shareSOSVoiceSummary = useCallback((summary: string) => {
+    const reviewedSummary = summary.trim().slice(0, 1500);
+    if (!reviewedSummary) return;
+    update((current) => current.sosActive
+      ? {
+          ...current,
+          sosEvents: current.sosEvents.map((event, index) => index === 0
+            ? { ...event, sharedMessages: [...event.sharedMessages.slice(-8), reviewedSummary] }
+            : event),
+        }
+      : current);
+  }, [update]);
 
   const endSOS = useCallback(() => {
     update((current) => ({
       ...current,
       sosActive: false,
+      sosMessages: [],
       sosEvents: current.sosEvents.map((event, index) =>
         index === 0 && event.status === 'Active'
           ? { ...event, status: 'Ended', situation: 'Child ended the simulated SOS demo.' }
@@ -1288,6 +1383,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     activateSOS,
     setSOSSignal,
     sendSOSMessage,
+    sendSOSVoiceChunk,
+    correctSOSVoiceTranscript,
+    shareSOSVoiceSummary,
     endSOS,
   }), [
     state,
@@ -1319,6 +1417,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     activateSOS,
     setSOSSignal,
     sendSOSMessage,
+    sendSOSVoiceChunk,
+    correctSOSVoiceTranscript,
+    shareSOSVoiceSummary,
     endSOS,
   ]);
 

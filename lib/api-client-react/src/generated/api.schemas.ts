@@ -892,6 +892,105 @@ export interface SOSChatResponse {
   available: boolean;
 }
 
+export type SOSVoiceChunkMessageRole = typeof SOSVoiceChunkMessageRole[keyof typeof SOSVoiceChunkMessageRole];
+
+
+export const SOSVoiceChunkMessageRole = {
+  user: 'user',
+  assistant: 'assistant',
+} as const;
+
+export interface SOSVoiceChunkMessage {
+  role: SOSVoiceChunkMessageRole;
+  /**
+     * @minLength 1
+     * @maxLength 1200
+     */
+  content: string;
+}
+
+export type SOSVoiceChunkInputFormat = typeof SOSVoiceChunkInputFormat[keyof typeof SOSVoiceChunkInputFormat];
+
+
+export const SOSVoiceChunkInputFormat = {
+  m4a: 'm4a',
+  mp4: 'mp4',
+  wav: 'wav',
+  mp3: 'mp3',
+  webm: 'webm',
+  '3gp': '3gp',
+} as const;
+
+export interface SOSVoiceChunkInput {
+  /**
+     * @minLength 100
+     * @maxLength 1400000
+     */
+  audioBase64: string;
+  format: SOSVoiceChunkInputFormat;
+  /** @maxItems 8 */
+  messages: SOSVoiceChunkMessage[];
+  spokenReplies: boolean;
+}
+
+export interface SOSVoiceChunkResponse {
+  /** @maxLength 1200 */
+  transcript: string;
+  /** @maxLength 700 */
+  reply: string;
+  available: boolean;
+  /**
+     * @maxLength 2500000
+     * @nullable
+     */
+  audioBase64: string | null;
+  /** @nullable */
+  audioContentType: string | null;
+}
+
+export type SOSVoiceSource = typeof SOSVoiceSource[keyof typeof SOSVoiceSource];
+
+
+export const SOSVoiceSource = {
+  unknown: 'unknown',
+  child_confirmed: 'child_confirmed',
+  unverified_audio_clue: 'unverified_audio_clue',
+} as const;
+
+export interface SOSVoiceSummaryMessage {
+  /**
+     * @minLength 1
+     * @maxLength 1200
+     */
+  text: string;
+  createdAt: string;
+  source: SOSVoiceSource;
+}
+
+export interface SOSVoiceSummaryInput {
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  messages: SOSVoiceSummaryMessage[];
+}
+
+export interface SOSVoiceSummaryHighlight {
+  /** @maxLength 240 */
+  detail: string;
+  source: SOSVoiceSource;
+  /** @maxLength 200 */
+  uncertainty: string;
+  createdAt: string;
+}
+
+export interface SOSVoiceSummaryResponse {
+  /** @maxLength 500 */
+  summary: string;
+  /** @maxItems 5 */
+  highlights: SOSVoiceSummaryHighlight[];
+}
+
 export type CommunityReportInputLocation = typeof CommunityReportInputLocation[keyof typeof CommunityReportInputLocation];
 
 

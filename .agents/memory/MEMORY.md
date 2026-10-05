@@ -9,5 +9,6 @@
 - [React Native Alert.alert is a no-op on web](react-native-web-alert-noop.md) — confirmation dialogs via Alert.alert silently do nothing in Expo web preview; not a Playwright artifact.
 - [Orivis account deletion boundary](orivis-account-deletion-boundary.md) — keep real deletion disabled until account-backed auth can revoke child access.
 - [Expo DevTools startup warning](expo-devtools-startup-warning.md) — missing GLib can block the DevTools subprocess without stopping Metro or the app preview.
+- [Expo Metro watcher limits](expo-metro-watcher-limits.md) — a second Metro can exhaust the workspace's shared inotify quota; changing ports does not resolve watcher exhaustion.
 - [Workspace React Query deduplication](workspace-react-query-deduplication.md) — production web builds must share one React Query instance across app and linked generated hooks.
 - [Expo pnpm install recovery](expo-pnpm-install-recovery.md) — when many Expo/RN files go missing together, restore the pnpm workspace tree before changing app dependencies.

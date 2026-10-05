@@ -49,6 +49,10 @@ import type {
   ReportSessionInput,
   SOSChatInput,
   SOSChatResponse,
+  SOSVoiceChunkInput,
+  SOSVoiceChunkResponse,
+  SOSVoiceSummaryInput,
+  SOSVoiceSummaryResponse,
   TrackingCheckinInput,
   TrackingJourneyEvent,
   TrackingJourneyResponse,
@@ -1092,6 +1096,184 @@ export const useSendSosChat = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getSendSosChatMutationOptions(options));
+    }
+
+export const getSendSosVoiceChunkUrl = () => {
+
+
+
+
+  return `/api/sos/voice-chunk`
+}
+
+/**
+ * Audio is converted and processed in memory only. Audio and transcript are not written to report history, notifications, or server logs.
+ * @summary Process a short synthetic SOS voice-chat turn
+ */
+export const sendSosVoiceChunk = async (sOSVoiceChunkInput: SOSVoiceChunkInput, options?: Parameters<typeof customFetch>[1]): Promise<SOSVoiceChunkResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SOSVoiceChunkResponse>(getSendSosVoiceChunkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sOSVoiceChunkInput)
+  }
+);}
+
+
+
+
+
+export const getSendSosVoiceChunkMutationKey = () => ['sendSosVoiceChunk'] as const;
+
+export const getSendSosVoiceChunkMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSosVoiceChunk>>, TError,SendSosVoiceChunkMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendSosVoiceChunk>>, TError,SendSosVoiceChunkMutationVariables, TContext> => {
+
+const mutationKey = getSendSosVoiceChunkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendSosVoiceChunk>>, SendSosVoiceChunkMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendSosVoiceChunk(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendSosVoiceChunkMutationResult = NonNullable<Awaited<ReturnType<typeof sendSosVoiceChunk>>>
+    export type SendSosVoiceChunkMutationBody = BodyType<SOSVoiceChunkInput>
+    export type SendSosVoiceChunkMutationError = ErrorType<ErrorResponse>
+    export type SendSosVoiceChunkMutationVariables = {data: BodyType<SOSVoiceChunkInput>}
+
+    /**
+ * @summary Process a short synthetic SOS voice-chat turn
+ */
+export const useSendSosVoiceChunk = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSosVoiceChunk>>, TError,SendSosVoiceChunkMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendSosVoiceChunk>>,
+        TError,
+        SendSosVoiceChunkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendSosVoiceChunkMutationOptions(options));
+    }
+
+export const getSummarizeSosVoiceUrl = () => {
+
+
+
+
+  return `/api/sos/voice-summary`
+}
+
+/**
+ * The summary is returned for explicit sharing only and is not stored by the server or added to notifications.
+ * @summary Summarize user-reviewed synthetic SOS voice transcripts
+ */
+export const summarizeSosVoice = async (sOSVoiceSummaryInput: SOSVoiceSummaryInput, options?: Parameters<typeof customFetch>[1]): Promise<SOSVoiceSummaryResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SOSVoiceSummaryResponse>(getSummarizeSosVoiceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sOSVoiceSummaryInput)
+  }
+);}
+
+
+
+
+
+export const getSummarizeSosVoiceMutationKey = () => ['summarizeSosVoice'] as const;
+
+export const getSummarizeSosVoiceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof summarizeSosVoice>>, TError,SummarizeSosVoiceMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof summarizeSosVoice>>, TError,SummarizeSosVoiceMutationVariables, TContext> => {
+
+const mutationKey = getSummarizeSosVoiceMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof summarizeSosVoice>>, SummarizeSosVoiceMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  summarizeSosVoice(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SummarizeSosVoiceMutationResult = NonNullable<Awaited<ReturnType<typeof summarizeSosVoice>>>
+    export type SummarizeSosVoiceMutationBody = BodyType<SOSVoiceSummaryInput>
+    export type SummarizeSosVoiceMutationError = ErrorType<ErrorResponse>
+    export type SummarizeSosVoiceMutationVariables = {data: BodyType<SOSVoiceSummaryInput>}
+
+    /**
+ * @summary Summarize user-reviewed synthetic SOS voice transcripts
+ */
+export const useSummarizeSosVoice = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof summarizeSosVoice>>, TError,SummarizeSosVoiceMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof summarizeSosVoice>>,
+        TError,
+        SummarizeSosVoiceMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSummarizeSosVoiceMutationOptions(options));
     }
 
 export const getGetMyFamilyUrl = () => {

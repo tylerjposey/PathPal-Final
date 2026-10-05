@@ -393,6 +393,96 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /sos/voice-chunk:
+    post:
+      operationId: sendSosVoiceChunk
+      tags: [reports]
+      summary: Process a short synthetic SOS voice-chat turn
+      description: Audio is converted and processed in memory only. Audio and transcript are not written to report history, notifications, or server logs.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SOSVoiceChunkInput"
+      responses:
+        "200":
+          description: Transcript and safety-support response, or a prepared fallback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SOSVoiceChunkResponse"
+        "400":
+          description: Invalid voice input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Only an approved child can use SOS voice chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: SOS voice rate limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /sos/voice-summary:
+    post:
+      operationId: summarizeSosVoice
+      tags: [reports]
+      summary: Summarize user-reviewed synthetic SOS voice transcripts
+      description: The summary is returned for explicit sharing only and is not stored by the server or added to notifications.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SOSVoiceSummaryInput"
+      responses:
+        "200":
+          description: Neutral summary with source and uncertainty labels
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SOSVoiceSummaryResponse"
+        "400":
+          description: Invalid or empty transcript list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Only an approved child can summarize SOS voice transcripts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: SOS voice rate limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /families/me:
     get:
       operationId: getMyFamily
@@ -1667,6 +1757,76 @@ components:
         reply: { type: string, maxLength: 700 }
         available: { type: boolean }
       required: [reply, available]
+    SOSVoiceChunkMessage:
+      type: object
+      properties:
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string, minLength: 1, maxLength: 1200 }
+      required: [role, content]
+    SOSVoiceChunkInput:
+      type: object
+      properties:
+        audioBase64: { type: string, minLength: 100, maxLength: 1400000 }
+        format: { type: string, enum: [m4a, mp4, wav, mp3, webm, 3gp] }
+        messages:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/SOSVoiceChunkMessage"
+        spokenReplies: { type: boolean, default: false }
+      required: [audioBase64, format, messages, spokenReplies]
+    SOSVoiceChunkResponse:
+      type: object
+      properties:
+        transcript: { type: string, maxLength: 1200 }
+        reply: { type: string, maxLength: 700 }
+        available: { type: boolean }
+        audioBase64:
+          type: [string, "null"]
+          maxLength: 2500000
+        audioContentType:
+          type: [string, "null"]
+      required: [transcript, reply, available, audioBase64, audioContentType]
+    SOSVoiceSource:
+      type: string
+      enum: [unknown, child_confirmed, unverified_audio_clue]
+    SOSVoiceSummaryMessage:
+      type: object
+      properties:
+        text: { type: string, minLength: 1, maxLength: 1200 }
+        createdAt: { type: string, format: date-time }
+        source:
+          $ref: "#/components/schemas/SOSVoiceSource"
+      required: [text, createdAt, source]
+    SOSVoiceSummaryInput:
+      type: object
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/SOSVoiceSummaryMessage"
+      required: [messages]
+    SOSVoiceSummaryHighlight:
+      type: object
+      properties:
+        detail: { type: string, maxLength: 240 }
+        source:
+          $ref: "#/components/schemas/SOSVoiceSource"
+        uncertainty: { type: string, maxLength: 200 }
+        createdAt: { type: string, format: date-time }
+      required: [detail, source, uncertainty, createdAt]
+    SOSVoiceSummaryResponse:
+      type: object
+      properties:
+        summary: { type: string, maxLength: 500 }
+        highlights:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/SOSVoiceSummaryHighlight"
+      required: [summary, highlights]
     ReportStatusEvent:
       type: object
       properties:

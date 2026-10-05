@@ -31,6 +31,15 @@
       ],
       "expo-secure-store",
       [
+        "expo-audio",
+        {
+          "microphonePermission": "PathPal uses the microphone only when you start optional simulated SOS voice chat. Short clips are processed for transcription and a response, then deleted.",
+          "recordAudioAndroid": true,
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "PathPal uses your location to match your route only while you choose to share an active journey.",

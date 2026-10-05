@@ -546,6 +546,85 @@ export const SendSosChatResponse = zod.object({
 
 
 /**
+ * Audio is converted and processed in memory only. Audio and transcript are not written to report history, notifications, or server logs.
+ * @summary Process a short synthetic SOS voice-chat turn
+ */
+export const sendSosVoiceChunkBodyAudioBase64Min = 100;
+export const sendSosVoiceChunkBodyAudioBase64Max = 1400000;
+
+export const sendSosVoiceChunkBodyMessagesItemContentMax = 1200;
+
+export const sendSosVoiceChunkBodyMessagesMax = 8;
+
+export const sendSosVoiceChunkBodySpokenRepliesDefault = false;
+
+export const SendSosVoiceChunkBody = zod.object({
+  "audioBase64": zod.string().min(sendSosVoiceChunkBodyAudioBase64Min).max(sendSosVoiceChunkBodyAudioBase64Max),
+  "format": zod.enum(['m4a', 'mp4', 'wav', 'mp3', 'webm', '3gp']),
+  "messages": zod.array(zod.object({
+  "role": zod.enum(['user', 'assistant']),
+  "content": zod.string().min(1).max(sendSosVoiceChunkBodyMessagesItemContentMax)
+})).max(sendSosVoiceChunkBodyMessagesMax),
+  "spokenReplies": zod.boolean().default(sendSosVoiceChunkBodySpokenRepliesDefault)
+})
+
+export const sendSosVoiceChunkResponseTranscriptMax = 1200;
+
+export const sendSosVoiceChunkResponseReplyMax = 700;
+
+export const sendSosVoiceChunkResponseAudioBase64Max = 2500000;
+
+
+
+export const SendSosVoiceChunkResponse = zod.object({
+  "transcript": zod.string().max(sendSosVoiceChunkResponseTranscriptMax),
+  "reply": zod.string().max(sendSosVoiceChunkResponseReplyMax),
+  "available": zod.boolean(),
+  "audioBase64": zod.string().max(sendSosVoiceChunkResponseAudioBase64Max).nullable(),
+  "audioContentType": zod.string().nullable()
+})
+
+
+/**
+ * The summary is returned for explicit sharing only and is not stored by the server or added to notifications.
+ * @summary Summarize user-reviewed synthetic SOS voice transcripts
+ */
+export const summarizeSosVoiceBodyMessagesItemTextMax = 1200;
+
+export const summarizeSosVoiceBodyMessagesMax = 20;
+
+
+
+export const SummarizeSosVoiceBody = zod.object({
+  "messages": zod.array(zod.object({
+  "text": zod.string().min(1).max(summarizeSosVoiceBodyMessagesItemTextMax),
+  "createdAt": zod.coerce.date(),
+  "source": zod.enum(['unknown', 'child_confirmed', 'unverified_audio_clue'])
+})).min(1).max(summarizeSosVoiceBodyMessagesMax)
+})
+
+export const summarizeSosVoiceResponseSummaryMax = 500;
+
+export const summarizeSosVoiceResponseHighlightsItemDetailMax = 240;
+
+export const summarizeSosVoiceResponseHighlightsItemUncertaintyMax = 200;
+
+export const summarizeSosVoiceResponseHighlightsMax = 5;
+
+
+
+export const SummarizeSosVoiceResponse = zod.object({
+  "summary": zod.string().max(summarizeSosVoiceResponseSummaryMax),
+  "highlights": zod.array(zod.object({
+  "detail": zod.string().max(summarizeSosVoiceResponseHighlightsItemDetailMax),
+  "source": zod.enum(['unknown', 'child_confirmed', 'unverified_audio_clue']),
+  "uncertainty": zod.string().max(summarizeSosVoiceResponseHighlightsItemUncertaintyMax),
+  "createdAt": zod.coerce.date()
+})).max(summarizeSosVoiceResponseHighlightsMax)
+})
+
+
+/**
  * @summary Get the family for a parent or an approved family child
  */
 export const getMyFamilyResponseInvitationCodeRegExp = new RegExp('^[0-9]{10}$');

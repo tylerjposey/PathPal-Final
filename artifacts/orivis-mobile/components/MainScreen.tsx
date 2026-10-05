@@ -28,6 +28,7 @@ import { RouteMap } from '@/components/RouteMap';
 import { JourneyScreen } from '@/components/JourneyScreen';
 import { FamilySettings } from '@/components/FamilySettings';
 import { LiveTrackingPanel } from '@/components/LiveTrackingPanel';
+import { SOSVoiceControls } from '@/components/SOSVoiceControls';
 import {
   getGetReportQueryKey,
   useGetTrackingProfile,
@@ -1694,6 +1695,7 @@ function SOSScreen({ onClose }: { onClose: () => void }) {
         </View>
         <View style={[styles.liveDot, { backgroundColor: colors.destructiveForeground }]} />
       </View>
+      <SOSVoiceControls />
       <FlatList
         data={[...state.sosMessages].reverse()}
         inverted
@@ -1706,14 +1708,17 @@ function SOSScreen({ onClose }: { onClose: () => void }) {
             <Card tone="soft">
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>Civic Center, San Jose</Text>
               <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Simulated location and notifications only. No real emergency service is contacted.</Text>
-              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI text guidance may be unavailable. Do not share your name, phone number, address, or other private information.</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>AI text and optional voice guidance may be unavailable. Do not share your name, phone number, address, or other private information.</Text>
             </Card>
             <View style={styles.wrap}>
               {['Prolonged silence', 'Unusual movement'].map((signal) => (
                 <Chip key={signal} label={`Simulate ${signal.toLowerCase()}`} active={state.sosTriggers.includes(signal)} onPress={() => setSOSSignal(signal)} tone="danger" />
               ))}
             </View>
-            <Button label="Send information to police contact" icon="send" variant="secondary" onPress={() => Alert.alert('Information sent', 'Child-provided details were sent only to the simulated police-contact view.')} />
+            <Card tone="soft">
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Police contact · simulation only</Text>
+              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>No real police service is contacted. SOS chat, voice audio, and transcripts are not sent to this simulated view.</Text>
+            </Card>
             <Button label="End simulated SOS" icon="x-circle" variant="danger" onPress={() => {
               endSOS();
               onClose();
@@ -1725,6 +1730,10 @@ function SOSScreen({ onClose }: { onClose: () => void }) {
             {item.sender === 'guide' ? (
               <Text style={[styles.whisperLabel, { color: colors.primary }]}>
                 {item.aiAvailable === false ? 'prepared safety step' : item.aiAvailable ? 'AI text guidance · demo' : 'quiet guidance'}
+              </Text>
+            ) : item.source === 'voice' ? (
+              <Text style={[styles.whisperLabel, { color: colors.primaryForeground }]}>
+                Automated voice transcript · {item.transcriptSource === 'child_confirmed' ? "child's words confirmed" : item.transcriptSource === 'unverified_audio_clue' ? 'unverified background clue' : 'speaker unknown'}
               </Text>
             ) : null}
             <Text style={[styles.chatText, { color: item.sender === 'child' ? colors.primaryForeground : colors.foreground }]}>{item.text}</Text>

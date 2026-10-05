@@ -25,7 +25,7 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
-packages = ["killall"]
+packages = ["killall", "ffmpeg"]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-00b83fdf-2f2b-4edf-8da4-b041ec9b901d"

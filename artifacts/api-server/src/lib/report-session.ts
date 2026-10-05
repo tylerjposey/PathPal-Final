@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 
-export type Role = "parent" | "child" | "citizen" | "manager" | "worker";
+export type Role = "parent" | "child" | "manager" | "worker";
 export type Claims = { role: Role; sub: string; familyId: string | null; exp: number };
 
 export class HttpError extends Error {
@@ -33,7 +33,7 @@ export function authenticate(req: Request): Claims {
 
   try {
     const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Claims;
-    const roles: Role[] = ["parent", "child", "citizen", "manager", "worker"];
+    const roles: Role[] = ["parent", "child", "manager", "worker"];
     if (!roles.includes(claims.role) || !claims.sub || claims.exp <= Math.floor(Date.now() / 1000)) {
       throw new Error("invalid");
     }

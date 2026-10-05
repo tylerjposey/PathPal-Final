@@ -279,7 +279,6 @@ async function restoreDemoReports(): Promise<CommunityReportRow[]> {
 function canView(claims: Claims, row: CommunityReportRow): boolean {
   if (claims.role === "manager") return true;
   if (claims.role === "worker") return row.assignedTeam === westCleanTeam;
-  if (claims.role === "citizen") return row.reporterAccountId === claims.sub;
   if (claims.role === "parent" || claims.role === "child") return row.familyAccountId === claims.familyId;
   return false;
 }
@@ -361,7 +360,7 @@ router.post("/reports", async (req, res): Promise<void> => {
   let uploadedKey: string | undefined;
   try {
     const claims = authenticate(req);
-    if (!["parent", "child", "citizen"].includes(claims.role)) throw new HttpError(403, "Only parent, child, or citizen demo roles may submit reports.");
+    if (!["parent", "child"].includes(claims.role)) throw new HttpError(403, "Only parent or child demo roles may submit reports.");
     if (process.env.NODE_ENV !== "development") {
       enforceCreateRateLimit(req.ip || req.socket.remoteAddress || "unknown");
     }
@@ -474,8 +473,7 @@ router.post("/reports/session", (req, res): void => {
   const role = parsed.data.role;
   const sub = role === "parent" ? "demo-family-parent-ai4sg"
     : role === "child" ? "demo-family-child-ai4sg"
-      : role === "citizen" ? demoCitizenId
-        : role === "manager" ? "Avery Patel" : "Luis Rivera";
+      : role === "manager" ? "Avery Patel" : "Luis Rivera";
   const familyId = role === "parent" || role === "child" ? demoFamilyId : null;
   const expiresAt = new Date(Date.now() + 24 * 60 * 60_000);
   const accessToken = createToken({ role, sub, familyId, exp: Math.floor(expiresAt.getTime() / 1000) }, secret);

@@ -57,8 +57,8 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
     try {
       try {
         const session = await createReportSession({
-          username: role === 'parent' || role === 'child' || role === 'citizen' ? 'AI4SG' : username,
-          password: role === 'parent' || role === 'child' || role === 'citizen' ? '1234' : password,
+          username: role === 'parent' || role === 'child' ? 'AI4SG' : username,
+          password: role === 'parent' || role === 'child' ? '1234' : password,
           role,
         });
         await saveReportSession(session);
@@ -317,11 +317,9 @@ export function AuthScreen({ onVerified }: { onVerified: (account: DemoUser) => 
                 ? 'users'
                 : item === 'child'
                   ? 'smile'
-                  : item === 'citizen'
-                    ? 'user'
-                    : item === 'manager'
-                      ? 'clipboard'
-                      : 'tool';
+                  : item === 'manager'
+                    ? 'clipboard'
+                    : 'tool';
               return (
                 <Pressable
                   key={item}

@@ -13,14 +13,13 @@ import './app.css';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 0, retry: 1, refetchOnWindowFocus: true } } });
 const STORAGE = 'orivis-demo-session';
-const roles: ReportSessionInputRole[] = ['parent', 'child', 'citizen', 'manager', 'worker'];
+const roles: ReportSessionInputRole[] = ['parent', 'child', 'manager', 'worker'];
 const categories = Object.values(CommunityReportCategory);
 const locations = Object.values(CommunityReportInputLocation);
 const statuses = Object.values(CommunityReportStatus);
 const roleCopy: Record<ReportSessionInputRole, { title: string; description: string; tag: string }> = {
   parent: { title: 'Family view', description: 'Keep an eye on the places your family moves through.', tag: 'FAMILY' },
   child: { title: 'Young neighbor', description: 'Speak up when something on your route does not feel right.', tag: 'FAMILY' },
-  citizen: { title: 'Neighbor view', description: 'Make a local concern visible and follow what happens next.', tag: 'COMMUNITY' },
   manager: { title: 'City desk', description: 'Triage reports, coordinate teams, and close the loop.', tag: 'CITY STAFF' },
   worker: { title: 'Field view', description: 'See assigned work and update its progress on the ground.', tag: 'FIELD TEAM' },
 };
@@ -96,7 +95,7 @@ function Header({ title, description, marker, action }: { title: string; descrip
 }
 
 function SignIn({ onSignIn }: { onSignIn: (session: ReportSession) => void }) {
-  const [role, setRole] = useState<ReportSessionInputRole>('citizen');
+  const [role, setRole] = useState<ReportSessionInputRole>('parent');
   const [username, setUsername] = useState('AI4SG');
   const [password, setPassword] = useState('1234');
   const [busy, setBusy] = useState(false);
@@ -117,10 +116,10 @@ function SignIn({ onSignIn }: { onSignIn: (session: ReportSession) => void }) {
     <div className="signin-right">
       <div className="signin-form-wrap"><div className="mini-label"><span className="mini-dot" /> PROTOTYPE WORKSPACE</div><h2>Step into your<br /><em>community.</em></h2><p className="signin-intro">Choose a demo perspective to explore how a report moves from the neighborhood to the city.</p>
         <form onSubmit={submit}>
-          <label className="field-label">EXPLORE AS</label><div className="role-grid">{roles.map(item => <button type="button" key={item} data-testid={`button-role-${item}`} onClick={() => setRole(item)} className={`role-option ${role === item ? 'selected' : ''}`}><span className="role-check">{role === item && <Check size={13} />}</span><span><strong>{item === 'citizen' ? 'Neighbor' : item === 'manager' ? 'City manager' : item === 'worker' ? 'Field worker' : item === 'child' ? 'Young neighbor' : 'Parent'}</strong><small>{roleCopy[item].tag}</small></span></button>)}</div>
+          <label className="field-label">EXPLORE AS</label><div className="role-grid">{roles.map(item => <button type="button" key={item} data-testid={`button-role-${item}`} onClick={() => setRole(item)} className={`role-option ${role === item ? 'selected' : ''}`}><span className="role-check">{role === item && <Check size={13} />}</span><span><strong>{item === 'manager' ? 'City manager' : item === 'worker' ? 'Field worker' : item === 'child' ? 'Young neighbor' : 'Parent'}</strong><small>{roleCopy[item].tag}</small></span></button>)}</div>
           <div className="signin-fields"><label className="field"><span>DEMO USERNAME</span><input data-testid="input-username" value={username} onChange={e => setUsername(e.target.value)} required /></label><label className="field"><span>DEMO PASSWORD</span><input data-testid="input-password" type="password" value={password} onChange={e => setPassword(e.target.value)} required /></label></div>
           {error && <div className="inline-error" role="alert" data-testid="text-login-error">{error}</div>}
-          <button className="primary-btn signin-submit" type="submit" disabled={busy} data-testid="button-sign-in">{busy ? 'Opening workspace…' : `Enter as ${role === 'citizen' ? 'neighbor' : role === 'manager' ? 'manager' : role === 'worker' ? 'worker' : role}`}<ArrowRight size={17} /></button>
+          <button className="primary-btn signin-submit" type="submit" disabled={busy} data-testid="button-sign-in">{busy ? 'Opening workspace…' : `Enter as ${role === 'manager' ? 'manager' : role === 'worker' ? 'worker' : role}`}<ArrowRight size={17} /></button>
         </form>
         <div className="demo-disclaimer"><ShieldCheck size={18} /><p><strong>Demo only.</strong> These shared credentials and roles are for prototyping, not secure accounts. Do not submit private or emergency information. For an immediate danger, call 911.</p></div>
       </div>
@@ -145,7 +144,7 @@ function Shell({ session, signOut, children }: { session: ReportSession; signOut
       <nav className="sidebar-nav">{nav.map(({ href, label, icon: Icon }) => <Link href={href} key={href} data-testid={`link-nav-${href === '/' ? 'overview' : href.replaceAll('/', '-')}`} className={`nav-item ${location === href || (href === '/reports' && location.startsWith('/reports/')) ? 'active' : ''}`}><Icon size={19} strokeWidth={1.7} />{label}{href === '/report/new' && <span className="nav-plus">+</span>}</Link>)}</nav>
       <div className="sidebar-spacer" />
       <div className="sidebar-note"><span className="sidebar-note-icon"><ShieldCheck size={19} /></span><span><strong>Neighbors first.</strong><small>Not for emergencies.<br />Call 911 for immediate danger.</small></span></div>
-      <div className="sidebar-person"><span className="person-avatar">{session.role.slice(0, 1).toUpperCase()}</span><div><strong>{session.role === 'citizen' ? 'Neighbor' : session.role === 'manager' ? 'City manager' : session.role === 'worker' ? 'Field worker' : session.role === 'child' ? 'Young neighbor' : 'Parent'}</strong><small>Demo account</small></div><button onClick={signOut} title="Sign out" aria-label="Sign out" data-testid="button-sidebar-signout"><LogOut size={17} /></button></div>
+      <div className="sidebar-person"><span className="person-avatar">{session.role.slice(0, 1).toUpperCase()}</span><div><strong>{session.role === 'manager' ? 'City manager' : session.role === 'worker' ? 'Field worker' : session.role === 'child' ? 'Young neighbor' : 'Parent'}</strong><small>Demo account</small></div><button onClick={signOut} title="Sign out" aria-label="Sign out" data-testid="button-sidebar-signout"><LogOut size={17} /></button></div>
     </aside>
     {menu && <button className="mobile-backdrop" aria-label="Close menu" onClick={() => setMenu(false)} />}
     <div className="main-column"><header className="topbar"><button className="mobile-menu" aria-label="Open menu" onClick={() => setMenu(true)} data-testid="button-open-menu"><Menu size={22} /></button><span className="topbar-location"><span className="topbar-pulse" /> SANTA CLARA COUNTY <span className="topbar-separator">/</span> COMMUNITY SAFETY</span><div className="topbar-right"><span className="demo-pill">LIVE DEMO</span><span className="topbar-date">{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span></div></header><main className="main-content">{children}</main><footer className="app-footer"><span>PATHPAL / COMMUNITY WORKSPACE</span><span>Prototype experience · Not an emergency service</span></footer></div>

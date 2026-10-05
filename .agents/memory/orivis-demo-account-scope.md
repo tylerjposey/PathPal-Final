@@ -9,6 +9,8 @@ For family invitations, store family records, globally unique invitation codes, 
 
 For live journey sharing, use the existing PathPal parent/child sign-in and never introduce a separate tracking login. The parent enables the feature in More; the child opts in for each current journey from Home. Keep the explicit per-trip consent even though the prototype roles are shared.
 
-**Why:** The user clarified that live journey sharing must use the app's existing sign-in rather than adding another sign-in option. The existing shared demo roles remain a prototype and do not identify individual people.
+The active PathPal role set is parent, child, manager, and worker. Do not reintroduce citizen as a selectable or authorized role. Keep older citizen-owned report rows as historical data rather than deleting or rewriting them.
 
-**How to apply:** Reuse existing report-session claims and family records for role scoping. Require the parent's family-level enablement and the child's separate opt-in for each current journey; do not treat demo sign-in as verified personal identity.
+**Why:** The user clarified that live journey sharing must use the app's existing sign-in rather than adding another sign-in option, and later removed citizen from the active role set while preserving historical reports. Shared demo roles remain a prototype and do not identify individual people.
+
+**How to apply:** Reuse existing report-session claims and family records for role scoping. Require the parent's family-level enablement and the child's separate opt-in for each current journey; treat citizen-owned records and saved citizen sessions as legacy only, and do not treat demo sign-in as verified personal identity.

@@ -21,20 +21,21 @@ const otherTeam = "Authorization Test Other Team";
 const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8ioAAAAASUVORK5CYII=";
 const pngBytes = Buffer.from(pngBase64, "base64");
 
-type TestRole = "citizen" | "manager" | "worker";
+type TestRole = "parent" | "child" | "manager" | "worker";
 
-function signedToken(role: TestRole, sub: string, exp = Math.floor(Date.now() / 1000) + 3600): string {
+function signedToken(role: TestRole | "citizen", sub: string, familyId: string | null = null, exp = Math.floor(Date.now() / 1000) + 3600): string {
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) {
     throw new Error("SESSION_SECRET with at least 32 characters is required to run authorization tests.");
   }
-  const payload = Buffer.from(JSON.stringify({ role, sub, familyId: null, exp })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ role, sub, familyId, exp })).toString("base64url");
   const signature = createHmac("sha256", secret).update(payload).digest("base64url");
   return `${payload}.${signature}`;
 }
 
-const reporterAToken = signedToken("citizen", testReporterA);
-const reporterBToken = signedToken("citizen", testReporterB);
+const reporterAToken = signedToken("parent", testReporterA, "authorization-test-family-a");
+const reporterBToken = signedToken("child", testReporterB, "authorization-test-family-b");
+const legacyCitizenToken = signedToken("citizen", testReporterA, "authorization-test-family-a");
 const managerToken = signedToken("manager", testManager);
 const workerToken = signedToken("worker", testWorker);
 
@@ -138,7 +139,7 @@ after(async () => {
   }
 });
 
-test("reporters list, read, and download only their own reports and photos", async () => {
+test("family accounts list, read, and download only reports and photos from their family", async () => {
   const reportAId = await createReport(reporterAToken, "reporter-a", true);
   const reportBId = await createReport(reporterBToken, "reporter-b", true);
 
@@ -157,11 +158,30 @@ test("reporters list, read, and download only their own reports and photos", asy
   assert.equal((await api(`/reports/${reportAId}`, reporterAToken)).status, 200);
   assert.equal((await api(`/reports/${reportAId}`, reporterBToken)).status, 403);
   assert.equal((await api(`/reports/${reportAId}/photo`, reporterBToken)).status, 403);
+  assert.equal((await api("/reports", legacyCitizenToken)).status, 401, "Previously issued citizen sessions must no longer authorize requests.");
 
   const ownPhoto = await api(`/reports/${reportAId}/photo`, reporterAToken);
   assert.equal(ownPhoto.status, 200);
   assert.equal(ownPhoto.headers.get("content-type"), "image/png");
   assert.deepEqual(Buffer.from(await ownPhoto.arrayBuffer()), pngBytes);
+});
+
+test("report sessions retain parent, child, manager, and worker roles but reject citizen", async () => {
+  for (const role of ["parent", "child", "manager", "worker"] as const) {
+    const response = await api("/reports/session", undefined, {
+      method: "POST",
+      body: JSON.stringify({ username: "AI4SG", password: "1234", role }),
+    });
+    assert.equal(response.status, 200, `The ${role} role should still be able to open a demo session.`);
+    const payload = await response.json() as { role?: string };
+    assert.equal(payload.role, role);
+  }
+
+  const citizenResponse = await api("/reports/session", undefined, {
+    method: "POST",
+    body: JSON.stringify({ username: "AI4SG", password: "1234", role: "citizen" }),
+  });
+  assert.equal(citizenResponse.status, 400, "The removed citizen role must not be accepted by the session endpoint.");
 });
 
 test("development mode accepts more than five report submissions from one client", async () => {
@@ -260,7 +280,7 @@ test("managers can access both reporters' reports and photos", async () => {
 test("unauthenticated, forged, and expired sessions cannot read or mutate reports", async () => {
   const reportId = createdIds[0];
   assert.ok(reportId, "A test report should exist.");
-  const expiredToken = signedToken("manager", "authorization-test-expired", 1);
+  const expiredToken = signedToken("manager", "authorization-test-expired", null, 1);
   const signatureStart = managerToken.indexOf(".") + 1;
   const forgedToken = `${managerToken.slice(0, signatureStart)}${managerToken[signatureStart] === "a" ? "b" : "a"}${managerToken.slice(signatureStart + 1)}`;
 

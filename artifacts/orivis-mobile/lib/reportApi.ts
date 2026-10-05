@@ -49,7 +49,7 @@ export async function clearReportSession() {
   await AsyncStorage.removeItem(SESSION_KEY);
 }
 
-export async function hasReportSession(role: 'parent' | 'child' | 'citizen' | 'manager' | 'worker') {
+export async function hasReportSession(role: 'parent' | 'child' | 'manager' | 'worker') {
   const raw = await AsyncStorage.getItem(SESSION_KEY);
   if (!raw) return false;
   try {

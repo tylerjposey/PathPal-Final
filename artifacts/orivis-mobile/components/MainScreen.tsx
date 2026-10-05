@@ -270,14 +270,6 @@ function tabsForRole(role: Role): { key: TabKey; label: string; icon: keyof type
       { key: 'profile', label: 'More', icon: 'menu' },
     ];
   }
-  if (role === 'citizen') {
-    return [
-      { key: 'home', label: 'Home', icon: 'home' },
-      { key: 'reports', label: 'Reports', icon: 'clipboard' },
-      { key: 'history', label: 'History', icon: 'clock' },
-      { key: 'profile', label: 'More', icon: 'menu' },
-    ];
-  }
   return [
     { key: 'home', label: 'Home', icon: 'home' },
     { key: 'map', label: 'Journey', icon: 'map' },
@@ -476,41 +468,6 @@ function Home({
   const nowGreeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
   if (role === 'manager') return <ManagerHome onCase={onCase} />;
   if (role === 'worker') return <WorkerHome onCase={onCase} />;
-  if (role === 'citizen') {
-    return (
-      <ScreenScroll>
-        <ScreenHeader
-          eyebrow="Citizen"
-          title={`${nowGreeting}, ${state.account?.name.split(' ')[0] ?? 'there'}.`}
-          subtitle="Make a neighborhood report and follow the reports submitted from your shared demo account."
-        />
-        <Card tone="soft" style={styles.communityCard}>
-          <View style={styles.quickIcon}>
-            <Feather name="map-pin" size={22} color={colors.primary} />
-          </View>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Help improve your neighborhood</Text>
-          <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
-            Submit a description, choose a category or let sample AI categorize it, and place an approximate pin for city review.
-          </Text>
-          <Button label="Create community report" icon="camera" onPress={onReport} />
-        </Card>
-        <SectionTitle title="Your saved reports" action="Open history" onAction={() => onNavigate('history')} />
-        <Card>
-          <View style={styles.profileRow}>
-            <View style={[styles.avatar, { backgroundColor: colors.secondary }]}>
-              <Feather name="clipboard" size={22} color={colors.primary} />
-            </View>
-            <View style={styles.flex}>
-              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Shared report history</Text>
-              <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>View saved reports from the server, newest first.</Text>
-            </View>
-          </View>
-          <Button label="View saved reports" icon="arrow-right" variant="secondary" onPress={() => onNavigate('history')} />
-        </Card>
-      </ScreenScroll>
-    );
-  }
-
   const journey = state.selectedJourney ?? DEFAULT_DEMO_JOURNEY;
   const milestones = useMemo(() => buildJourneyMilestones(journey), [journey]);
   const currentIndex = state.milestoneIndex;
@@ -849,23 +806,8 @@ function MapScreen({ role, onCase }: { role: Role; onCase: (report: SafetyReport
 function ReportsScreen({ role, onCreate, onCase }: { role: Role; onCreate: () => void; onCase: (report: SafetyReport) => void }) {
   const colors = useColors();
   const { state, reportsError, reportsLoading } = useDemo();
-  const citizenScope = state.account ? reportAccountScope(state.account) : 'anonymous';
-  const citizenReportsQuery = useListReports({
-    query: {
-      enabled: role === 'citizen' && !state.account?.reportServiceUnavailable,
-      staleTime: 0,
-      refetchOnMount: 'always',
-      queryKey: reportListQueryKey(citizenScope),
-    },
-  });
-  const citizenQueryMatchesScope = citizenReportsQuery.queryKey[1] === 'account' && citizenReportsQuery.queryKey[2] === citizenScope;
   const [filter, setFilter] = useState<'All' | CaseStatus>('All');
-  const sourceReports = role === 'citizen'
-    ? citizenQueryMatchesScope && citizenReportsQuery.isSuccess && !citizenReportsQuery.isError
-      ? (citizenReportsQuery.data ?? []).map(toSafetyReport)
-      : []
-    : state.reports;
-  const reports = filter === 'All' ? sourceReports : sourceReports.filter((report) => report.status === filter);
+  const reports = filter === 'All' ? state.reports : state.reports.filter((report) => report.status === filter);
   return (
     <ScreenScroll>
       <ScreenHeader
@@ -879,20 +821,13 @@ function ReportsScreen({ role, onCreate, onCase }: { role: Role; onCreate: () =>
           <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Report service unavailable</Text>
           <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{state.account.reportServiceError ?? 'New submissions, shared case updates, and server history require a connection. Local family journey, check-ins, and simulated SOS remain available.'}</Text>
         </Card>
-      ) : role === 'citizen' && citizenReportsQuery.isPending ? (
-        <Card><Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Loading your reports from the server…</Text></Card>
-      ) : role === 'citizen' && citizenReportsQuery.isError ? (
-        <Card tone="danger">
-          <Text style={[styles.cardTitle, { color: colors.destructiveForeground }]}>Your reports could not be loaded</Text>
-          <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>{reportError(citizenReportsQuery.error)}</Text>
-        </Card>
-      ) : role !== 'citizen' && reportsError ? (
+      ) : reportsError ? (
         <Card tone="danger">
           <Text style={[styles.cardBody, { color: colors.destructiveForeground }]}>
             The report service is unavailable. This page may include older device-only reports; they are not confirmation of a database save. New submissions and updates require a server connection.
           </Text>
         </Card>
-      ) : role !== 'citizen' && reportsLoading ? (
+      ) : reportsLoading ? (
         <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>Syncing shared cases…</Text>
       ) : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
@@ -901,9 +836,6 @@ function ReportsScreen({ role, onCreate, onCase }: { role: Role; onCreate: () =>
         ))}
       </ScrollView>
       <View style={styles.reportList}>
-        {role === 'citizen' && !citizenReportsQuery.isPending && !citizenReportsQuery.isError && reports.length === 0 ? (
-          <Card tone="soft"><Text style={[styles.cardBody, { color: colors.mutedForeground }]}>No reports have been submitted from this citizen demo account yet.</Text></Card>
-        ) : null}
         {reports.map((report) => <CaseRow key={report.id} report={report} onPress={() => onCase(report)} />)}
       </View>
       {role !== 'manager' ? <Button label="Create community report" icon="camera" onPress={onCreate} /> : null}

@@ -27,7 +27,7 @@ import React, {
   type ReactNode,
 } from 'react';
 
-export type Role = 'parent' | 'child' | 'citizen' | 'manager' | 'worker';
+export type Role = 'parent' | 'child' | 'manager' | 'worker';
 export type ReportCategory =
   | 'Blight'
   | 'Illegal dumping'
@@ -179,7 +179,6 @@ export const DEFAULT_DEMO_JOURNEY: SelectedJourney = {
 export const ROLE_LABELS: Record<Role, string> = {
   parent: 'Parent',
   child: 'Child',
-  citizen: 'Citizen',
   manager: 'City Case Manager',
   worker: 'City Worker',
 };
@@ -524,6 +523,11 @@ function visibleReports(serverReports: SafetyReport[], legacyReports: SafetyRepo
 
 const STORAGE_KEY = 'orivis-demo-v1';
 
+function isRemovedCitizenRole(account: unknown): boolean {
+  return typeof account === 'object' && account !== null &&
+    (account as { role?: unknown }).role === 'citizen';
+}
+
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -661,6 +665,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
             const parsed = JSON.parse(raw) as Partial<DemoState>;
             const initial = createInitialDemoState();
             const saved = { ...initial, ...parsed };
+            const removedCitizenAccount = isRemovedCitizenRole(saved.account);
             saved.parentProfile = {
               ...initial.parentProfile,
               ...parsed.parentProfile,
@@ -698,9 +703,14 @@ export function DemoProvider({ children }: { children: ReactNode }) {
               ]);
             }
             saved.legacyReportsByAccount = buckets;
-            saved.reportScopeKey = savedScope;
-            saved.reports = visibleReports([], savedScope ? buckets[savedScope] ?? [] : []);
-            if (saved.account && !(saved.account.reportServiceUnavailable && ['parent', 'child'].includes(saved.account.role))) {
+            saved.account = removedCitizenAccount ? null : saved.account;
+            saved.reportScopeKey = removedCitizenAccount ? null : savedScope;
+            saved.reports = removedCitizenAccount
+              ? []
+              : visibleReports([], savedScope ? buckets[savedScope] ?? [] : []);
+            if (removedCitizenAccount) {
+              await clearReportSession().catch(() => undefined);
+            } else if (saved.account && !(saved.account.reportServiceUnavailable && ['parent', 'child'].includes(saved.account.role))) {
               const valid = await hasReportSession(saved.account.role);
               if (!valid) saved.account = null;
             }
@@ -754,7 +764,6 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       const names: Record<Role, string> = {
         parent: state.parentProfile.name,
         child: state.child.name,
-        citizen: 'Taylor Morgan',
         manager: 'Avery Patel',
         worker: 'Luis Rivera',
       };

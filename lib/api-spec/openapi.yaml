@@ -1381,7 +1381,7 @@ components:
       properties:
         username: { type: string, minLength: 1, maxLength: 100 }
         password: { type: string, minLength: 1, maxLength: 200 }
-        role: { type: string, enum: [parent, child, citizen, manager, worker] }
+        role: { type: string, enum: [parent, child, manager, worker] }
       required: [username, password, role]
     ReportSession:
       type: object
@@ -1389,7 +1389,7 @@ components:
         accessToken: { type: string }
         tokenType: { type: string, enum: [Bearer] }
         expiresAt: { type: string, format: date-time }
-        role: { type: string, enum: [parent, child, citizen, manager, worker] }
+        role: { type: string, enum: [parent, child, manager, worker] }
         prototypeOnly: { type: boolean, enum: [true] }
       required: [accessToken, tokenType, expiresAt, role, prototypeOnly]
     CommunityReportUpdate:

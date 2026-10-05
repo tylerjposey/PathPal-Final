@@ -503,14 +503,14 @@ export const createReportSessionBodyPasswordMax = 200;
 export const CreateReportSessionBody = zod.object({
   "username": zod.string().min(1).max(createReportSessionBodyUsernameMax),
   "password": zod.string().min(1).max(createReportSessionBodyPasswordMax),
-  "role": zod.enum(['parent', 'child', 'citizen', 'manager', 'worker'])
+  "role": zod.enum(['parent', 'child', 'manager', 'worker'])
 })
 
 export const CreateReportSessionResponse = zod.object({
   "accessToken": zod.string(),
   "tokenType": zod.enum(['Bearer']),
   "expiresAt": zod.coerce.date(),
-  "role": zod.enum(['parent', 'child', 'citizen', 'manager', 'worker']),
+  "role": zod.enum(['parent', 'child', 'manager', 'worker']),
   "prototypeOnly": zod.literal(true)
 })
 

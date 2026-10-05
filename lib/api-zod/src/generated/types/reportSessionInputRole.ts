@@ -12,7 +12,6 @@ export type ReportSessionInputRole = typeof ReportSessionInputRole[keyof typeof 
 export const ReportSessionInputRole = {
   parent: 'parent',
   child: 'child',
-  citizen: 'citizen',
   manager: 'manager',
   worker: 'worker',
 } as const;

@@ -1,0 +1,55 @@
+Switch PathPal’s existing **SOS chatbot and community report analysis** from my personal `OPENAI_API_KEY` to **Replit-managed AI Integrations**.
+
+Reuse the working implementation and existing screens. This is a provider-connection change, not an app rebuild.
+
+**Managed integration**
+
+Provision the official Replit-managed integration through the supported setup and approval flow. Use the credentials and endpoint supplied by Replit; do not invent configuration values or reuse managed credentials from another app.
+
+Select supported models suitable for conversational SOS responses and structured report analysis, including image analysis where available. Confirm support for our current API features and adapt the integration as necessary.
+
+If managed integration is unavailable for this project or plan, explain the blocker before changing working code. Do not silently fall back to my personal key.
+
+**SOS chatbot**
+
+Provide real, conversational AI replies in the existing SOS chat, retaining context within the active session so the person can exchange multiple messages naturally.
+
+Keep responses brief, calm, age-appropriate, and focused on safety or calming support. Retain the quiet text interface and any existing optional voice playback. Never start audio automatically.
+
+Redirect unrelated questions back to safety. Repeated off-topic messages may be flagged for review, but must not automatically close SOS or classify the emergency as false.
+
+Preserve the countdown, cancel option, parent notification flow, and explicit End SOS control. Keep these independent of AI availability.
+
+Police contact, silence detection, unusual movement, and emergency dispatch remain simulated. Never claim real police have been notified.
+
+If the managed AI request fails or credits run out, show the existing fallback clearly while keeping SOS controls operational.
+
+**Report analysis**
+
+Preserve analysis of submitted descriptions and photos, producing a validated category, summary, suggested severity, priority, department, supporting evidence, and uncertainty.
+
+Save reports before analysis. Keep original AI assessments separate from manager approvals or overrides, with review reasons and timestamps.
+
+AI ratings remain suggestions requiring case-manager review. Do not automatically resolve reports, delegate crews, or award rewards.
+
+If image analysis or structured output is unsupported by a selected model, select an appropriate supported model or report the limitation. Do not silently replace real analysis with simulated results.
+
+**Privacy and costs**
+
+Continue using synthetic reports, fictional users, and fictional SOS conversations for testing. Preserve redaction, image metadata removal, family permissions, staff permissions, and existing data-minimization controls.
+
+Preserve `store: false` where supported and document actual retention settings. Do not claim Replit-managed AI provides Zero Data Retention.
+
+Retain request limits, bounded retries, short responses, and efficient conversation context. Avoid repeated report analysis or AI requests during ordinary screen rendering.
+
+**Verification and cleanup**
+
+Verify a real generated SOS reply, a follow-up reply using session context, off-topic redirection, report analysis, manager review, and API-failure fallback through authenticated development screens.
+
+Use the normal parent-approval process for the synthetic child account. Do not bypass family approval.
+
+Confirm both features use Replit-managed AI and explain where usage appears in Replit billing. Do not display credentials.
+
+After verification, remove reliance on the personal `OPENAI_API_KEY` and identify whether its Secret can be removed. Do not revoke anything in my OpenAI account.
+
+Summarize what changed, actual test results, and any remaining production migration or deployment requirements.

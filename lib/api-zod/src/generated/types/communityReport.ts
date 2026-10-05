@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CommunityReportAiAnalysisStatus } from './communityReportAiAnalysisStatus';
 import type { CommunityReportCategory } from './communityReportCategory';
 import type { CommunityReportLocation } from './communityReportLocation';
 import type { CommunityReportPriority } from './communityReportPriority';
@@ -61,4 +62,5 @@ export interface CommunityReport {
   assignedAt: Date | null;
   /** @nullable */
   resolvedAt: Date | null;
+  aiAnalysisStatus: CommunityReportAiAnalysisStatus;
 }

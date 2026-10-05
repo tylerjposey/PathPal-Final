@@ -21,6 +21,7 @@ import type {
 
 import type {
   CommunityReport,
+  CommunityReportAiReviewInput,
   CommunityReportDetail,
   CommunityReportInput,
   CommunityReportUpdate,
@@ -46,6 +47,8 @@ import type {
   JourneyPlaceDetailsResponse,
   ReportSession,
   ReportSessionInput,
+  SOSChatInput,
+  SOSChatResponse,
   TrackingCheckinInput,
   TrackingJourneyEvent,
   TrackingJourneyResponse,
@@ -1000,6 +1003,95 @@ export const useCreateReportSession = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreateReportSessionMutationOptions(options));
+    }
+
+export const getSendSosChatUrl = () => {
+
+
+
+
+  return `/api/sos/chat`
+}
+
+/**
+ * Chat content is processed for this request only and is not stored in report history or notifications.
+ * @summary Get a concise safety-support reply for the active simulated SOS
+ */
+export const sendSosChat = async (sOSChatInput: SOSChatInput, options?: Parameters<typeof customFetch>[1]): Promise<SOSChatResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<SOSChatResponse>(getSendSosChatUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(sOSChatInput)
+  }
+);}
+
+
+
+
+
+export const getSendSosChatMutationKey = () => ['sendSosChat'] as const;
+
+export const getSendSosChatMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSosChat>>, TError,SendSosChatMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendSosChat>>, TError,SendSosChatMutationVariables, TContext> => {
+
+const mutationKey = getSendSosChatMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendSosChat>>, SendSosChatMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendSosChat(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendSosChatMutationResult = NonNullable<Awaited<ReturnType<typeof sendSosChat>>>
+    export type SendSosChatMutationBody = BodyType<SOSChatInput>
+    export type SendSosChatMutationError = ErrorType<ErrorResponse>
+    export type SendSosChatMutationVariables = {data: BodyType<SOSChatInput>}
+
+    /**
+ * @summary Get a concise safety-support reply for the active simulated SOS
+ */
+export const useSendSosChat = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSosChat>>, TError,SendSosChatMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendSosChat>>,
+        TError,
+        SendSosChatMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendSosChatMutationOptions(options));
     }
 
 export const getGetMyFamilyUrl = () => {
@@ -2146,6 +2238,169 @@ export const useUpdateReport = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateReportMutationOptions(options));
+    }
+
+export const getRetryReportAnalysisUrl = (id: string,) => {
+
+
+
+
+  return `/api/reports/${id}/analysis/retry`
+}
+
+/**
+ * @summary Explicitly retry analysis of an existing report without creating a case
+ */
+export const retryReportAnalysis = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<CommunityReportDetail> => {
+
+  return customFetch<CommunityReportDetail>(getRetryReportAnalysisUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryReportAnalysisMutationKey = () => ['retryReportAnalysis'] as const;
+
+export const getRetryReportAnalysisMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryReportAnalysis>>, TError,RetryReportAnalysisMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryReportAnalysis>>, TError,RetryReportAnalysisMutationVariables, TContext> => {
+
+const mutationKey = getRetryReportAnalysisMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryReportAnalysis>>, RetryReportAnalysisMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryReportAnalysis(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryReportAnalysisMutationResult = NonNullable<Awaited<ReturnType<typeof retryReportAnalysis>>>
+
+    export type RetryReportAnalysisMutationError = ErrorType<ErrorResponse>
+    export type RetryReportAnalysisMutationVariables = {id: string}
+
+    /**
+ * @summary Explicitly retry analysis of an existing report without creating a case
+ */
+export const useRetryReportAnalysis = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryReportAnalysis>>, TError,RetryReportAnalysisMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryReportAnalysis>>,
+        TError,
+        RetryReportAnalysisMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRetryReportAnalysisMutationOptions(options));
+    }
+
+export const getReviewReportAnalysisUrl = (id: string,) => {
+
+
+
+
+  return `/api/reports/${id}/analysis/review`
+}
+
+/**
+ * @summary Record a case manager's approval or override of the AI suggestion
+ */
+export const reviewReportAnalysis = async (id: string,
+    communityReportAiReviewInput: CommunityReportAiReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<CommunityReportDetail> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<CommunityReportDetail>(getReviewReportAnalysisUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(communityReportAiReviewInput)
+  }
+);}
+
+
+
+
+
+export const getReviewReportAnalysisMutationKey = () => ['reviewReportAnalysis'] as const;
+
+export const getReviewReportAnalysisMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewReportAnalysis>>, TError,ReviewReportAnalysisMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewReportAnalysis>>, TError,ReviewReportAnalysisMutationVariables, TContext> => {
+
+const mutationKey = getReviewReportAnalysisMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewReportAnalysis>>, ReviewReportAnalysisMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewReportAnalysis(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewReportAnalysisMutationResult = NonNullable<Awaited<ReturnType<typeof reviewReportAnalysis>>>
+    export type ReviewReportAnalysisMutationBody = BodyType<CommunityReportAiReviewInput>
+    export type ReviewReportAnalysisMutationError = ErrorType<ErrorResponse>
+    export type ReviewReportAnalysisMutationVariables = {id: string;data: BodyType<CommunityReportAiReviewInput>}
+
+    /**
+ * @summary Record a case manager's approval or override of the AI suggestion
+ */
+export const useReviewReportAnalysis = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewReportAnalysis>>, TError,ReviewReportAnalysisMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewReportAnalysis>>,
+        TError,
+        ReviewReportAnalysisMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReviewReportAnalysisMutationOptions(options));
     }
 
 export const getGetReportPhotoUrl = (id: string,) => {

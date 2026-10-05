@@ -348,6 +348,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /sos/chat:
+    post:
+      operationId: sendSosChat
+      tags: [reports]
+      summary: Get a concise safety-support reply for the active simulated SOS
+      description: Chat content is processed for this request only and is not stored in report history or notifications.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SOSChatInput"
+      responses:
+        "200":
+          description: Safety-support reply or prepared fallback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SOSChatResponse"
+        "400":
+          description: Invalid or excessive conversation context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Only an approved family role can use the child-facing SOS chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: SOS chat rate limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /families/me:
     get:
       operationId: getMyFamily
@@ -810,6 +855,98 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /reports/{id}/analysis/retry:
+    post:
+      operationId: retryReportAnalysis
+      tags: [reports]
+      summary: Explicitly retry analysis of an existing report without creating a case
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current report detail after the analysis attempt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityReportDetail"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Only a case manager may retry report analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Report analysis rate limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /reports/{id}/analysis/review:
+    post:
+      operationId: reviewReportAnalysis
+      tags: [reports]
+      summary: Record a case manager's approval or override of the AI suggestion
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityReportAiReviewInput"
+      responses:
+        "200":
+          description: Updated report detail with the review history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityReportDetail"
+        "400":
+          description: Invalid review decision or override values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid bearer session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Only a case manager may review AI suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: No completed AI assessment is available to review
           content:
             application/json:
               schema:
@@ -1416,7 +1553,10 @@ components:
         updatedAt: { type: string, format: date-time }
         assignedAt: { type: ["string", "null"], format: date-time }
         resolvedAt: { type: ["string", "null"], format: date-time }
-      required: [id, category, summary, description, severity, status, location, x, y, photoUri, photoReference, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints, reporterAccountId, familyAccountId, selectedCategory, latitude, longitude, managerNotes, routeAssignment, updatedAt, assignedAt, resolvedAt]
+        aiAnalysisStatus:
+          type: string
+          enum: [pending, complete, unavailable]
+      required: [id, category, summary, description, severity, status, location, x, y, photoUri, photoReference, submittedAt, recommendedDepartment, priority, assignedTeam, awardedPoints, reporterAccountId, familyAccountId, selectedCategory, latitude, longitude, managerNotes, routeAssignment, updatedAt, assignedAt, resolvedAt, aiAnalysisStatus]
     CommunityReportDetail:
       allOf:
         - $ref: "#/components/schemas/CommunityReport"
@@ -1426,7 +1566,107 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/ReportStatusEvent"
-          required: [statusHistory]
+            aiAssessment:
+              anyOf:
+                - $ref: "#/components/schemas/CommunityReportAiAssessment"
+                - type: "null"
+            aiReviewHistory:
+              type: array
+              items:
+                $ref: "#/components/schemas/CommunityReportAiReview"
+          required: [statusHistory, aiAssessment, aiReviewHistory]
+    ReportAiEvidence:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [report_text, image]
+        detail: { type: string, maxLength: 300 }
+      required: [source, detail]
+    CommunityReportAiAssessment:
+      type: object
+      properties:
+        id: { type: integer }
+        suggestedCategory:
+          type: string
+          enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns]
+        summary: { type: string, maxLength: 500 }
+        suggestedSeverity: { type: integer, minimum: 1, maximum: 10 }
+        suggestedPriority:
+          type: string
+          enum: [Low, Medium, High]
+        evidence:
+          type: array
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/ReportAiEvidence"
+        uncertainty: { type: string, maxLength: 1000 }
+        recommendedDepartment: { type: string, maxLength: 100 }
+        urgentHumanReview: { type: boolean }
+        model: { type: string, maxLength: 120 }
+        instructionVersion: { type: string, maxLength: 80 }
+        analyzedAt: { type: string, format: date-time }
+      required: [id, suggestedCategory, summary, suggestedSeverity, suggestedPriority, evidence, uncertainty, recommendedDepartment, urgentHumanReview, model, instructionVersion, analyzedAt]
+    CommunityReportAiReview:
+      type: object
+      properties:
+        id: { type: integer }
+        assessmentId: { type: integer }
+        decision:
+          type: string
+          enum: [approved, overridden]
+        reason: { type: string, maxLength: 1500 }
+        finalCategory:
+          type: string
+          enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns]
+        finalSeverity: { type: integer, minimum: 1, maximum: 10 }
+        finalPriority:
+          type: string
+          enum: [Low, Medium, High]
+        finalDepartment: { type: string, maxLength: 100 }
+        reviewedBy: { type: string, maxLength: 120 }
+        reviewedAt: { type: string, format: date-time }
+      required: [id, assessmentId, decision, reason, finalCategory, finalSeverity, finalPriority, finalDepartment, reviewedBy, reviewedAt]
+    CommunityReportAiReviewInput:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [approved, overridden]
+        reason: { type: string, minLength: 8, maxLength: 1500 }
+        finalCategory:
+          type: string
+          enum: [Blight, Illegal dumping, Unsafe bus stops, Damaged sidewalks, Poor lighting, Suspicious activity, Other concerns]
+        finalSeverity: { type: integer, minimum: 1, maximum: 10 }
+        finalPriority:
+          type: string
+          enum: [Low, Medium, High]
+        finalDepartment: { type: string, minLength: 1, maxLength: 100 }
+      required: [decision, reason]
+    SOSChatMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content: { type: string, minLength: 1, maxLength: 1200 }
+      required: [role, content]
+    SOSChatInput:
+      type: object
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/SOSChatMessage"
+      required: [messages]
+    SOSChatResponse:
+      type: object
+      properties:
+        reply: { type: string, maxLength: 700 }
+        available: { type: boolean }
+      required: [reply, available]
     ReportStatusEvent:
       type: object
       properties:

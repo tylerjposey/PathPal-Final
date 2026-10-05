@@ -613,6 +613,15 @@ export const CommunityReportSelectedCategory = {
   Other_concerns: 'Other concerns',
 } as const;
 
+export type CommunityReportAiAnalysisStatus = typeof CommunityReportAiAnalysisStatus[keyof typeof CommunityReportAiAnalysisStatus];
+
+
+export const CommunityReportAiAnalysisStatus = {
+  pending: 'pending',
+  complete: 'complete',
+  unavailable: 'unavailable',
+} as const;
+
 export interface CommunityReport {
   id: string;
   category: CommunityReportCategory;
@@ -663,6 +672,7 @@ export interface CommunityReport {
   assignedAt: string | null;
   /** @nullable */
   resolvedAt: string | null;
+  aiAnalysisStatus: CommunityReportAiAnalysisStatus;
 }
 
 export type ReportStatusEventToStatus = typeof ReportStatusEventToStatus[keyof typeof ReportStatusEventToStatus];
@@ -683,9 +693,204 @@ export interface ReportStatusEvent {
   changedAt: string;
 }
 
-export type CommunityReportDetail = CommunityReport & {
+export type CommunityReportAiAssessmentSuggestedCategory = typeof CommunityReportAiAssessmentSuggestedCategory[keyof typeof CommunityReportAiAssessmentSuggestedCategory];
+
+
+export const CommunityReportAiAssessmentSuggestedCategory = {
+  Blight: 'Blight',
+  Illegal_dumping: 'Illegal dumping',
+  Unsafe_bus_stops: 'Unsafe bus stops',
+  Damaged_sidewalks: 'Damaged sidewalks',
+  Poor_lighting: 'Poor lighting',
+  Suspicious_activity: 'Suspicious activity',
+  Other_concerns: 'Other concerns',
+} as const;
+
+export type CommunityReportAiAssessmentSuggestedPriority = typeof CommunityReportAiAssessmentSuggestedPriority[keyof typeof CommunityReportAiAssessmentSuggestedPriority];
+
+
+export const CommunityReportAiAssessmentSuggestedPriority = {
+  Low: 'Low',
+  Medium: 'Medium',
+  High: 'High',
+} as const;
+
+export type ReportAiEvidenceSource = typeof ReportAiEvidenceSource[keyof typeof ReportAiEvidenceSource];
+
+
+export const ReportAiEvidenceSource = {
+  report_text: 'report_text',
+  image: 'image',
+} as const;
+
+export interface ReportAiEvidence {
+  source: ReportAiEvidenceSource;
+  /** @maxLength 300 */
+  detail: string;
+}
+
+export interface CommunityReportAiAssessment {
+  id: number;
+  suggestedCategory: CommunityReportAiAssessmentSuggestedCategory;
+  /** @maxLength 500 */
+  summary: string;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  suggestedSeverity: number;
+  suggestedPriority: CommunityReportAiAssessmentSuggestedPriority;
+  /** @maxItems 4 */
+  evidence: ReportAiEvidence[];
+  /** @maxLength 1000 */
+  uncertainty: string;
+  /** @maxLength 100 */
+  recommendedDepartment: string;
+  urgentHumanReview: boolean;
+  /** @maxLength 120 */
+  model: string;
+  /** @maxLength 80 */
+  instructionVersion: string;
+  analyzedAt: string;
+}
+
+export type CommunityReportAiReviewDecision = typeof CommunityReportAiReviewDecision[keyof typeof CommunityReportAiReviewDecision];
+
+
+export const CommunityReportAiReviewDecision = {
+  approved: 'approved',
+  overridden: 'overridden',
+} as const;
+
+export type CommunityReportAiReviewFinalCategory = typeof CommunityReportAiReviewFinalCategory[keyof typeof CommunityReportAiReviewFinalCategory];
+
+
+export const CommunityReportAiReviewFinalCategory = {
+  Blight: 'Blight',
+  Illegal_dumping: 'Illegal dumping',
+  Unsafe_bus_stops: 'Unsafe bus stops',
+  Damaged_sidewalks: 'Damaged sidewalks',
+  Poor_lighting: 'Poor lighting',
+  Suspicious_activity: 'Suspicious activity',
+  Other_concerns: 'Other concerns',
+} as const;
+
+export type CommunityReportAiReviewFinalPriority = typeof CommunityReportAiReviewFinalPriority[keyof typeof CommunityReportAiReviewFinalPriority];
+
+
+export const CommunityReportAiReviewFinalPriority = {
+  Low: 'Low',
+  Medium: 'Medium',
+  High: 'High',
+} as const;
+
+export interface CommunityReportAiReview {
+  id: number;
+  assessmentId: number;
+  decision: CommunityReportAiReviewDecision;
+  /** @maxLength 1500 */
+  reason: string;
+  finalCategory: CommunityReportAiReviewFinalCategory;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  finalSeverity: number;
+  finalPriority: CommunityReportAiReviewFinalPriority;
+  /** @maxLength 100 */
+  finalDepartment: string;
+  /** @maxLength 120 */
+  reviewedBy: string;
+  reviewedAt: string;
+}
+
+export type CommunityReportDetail = CommunityReport & ({
   statusHistory: ReportStatusEvent[];
-};
+  aiAssessment: CommunityReportAiAssessment | null;
+  aiReviewHistory: CommunityReportAiReview[];
+});
+
+export type CommunityReportAiReviewInputDecision = typeof CommunityReportAiReviewInputDecision[keyof typeof CommunityReportAiReviewInputDecision];
+
+
+export const CommunityReportAiReviewInputDecision = {
+  approved: 'approved',
+  overridden: 'overridden',
+} as const;
+
+export type CommunityReportAiReviewInputFinalCategory = typeof CommunityReportAiReviewInputFinalCategory[keyof typeof CommunityReportAiReviewInputFinalCategory];
+
+
+export const CommunityReportAiReviewInputFinalCategory = {
+  Blight: 'Blight',
+  Illegal_dumping: 'Illegal dumping',
+  Unsafe_bus_stops: 'Unsafe bus stops',
+  Damaged_sidewalks: 'Damaged sidewalks',
+  Poor_lighting: 'Poor lighting',
+  Suspicious_activity: 'Suspicious activity',
+  Other_concerns: 'Other concerns',
+} as const;
+
+export type CommunityReportAiReviewInputFinalPriority = typeof CommunityReportAiReviewInputFinalPriority[keyof typeof CommunityReportAiReviewInputFinalPriority];
+
+
+export const CommunityReportAiReviewInputFinalPriority = {
+  Low: 'Low',
+  Medium: 'Medium',
+  High: 'High',
+} as const;
+
+export interface CommunityReportAiReviewInput {
+  decision: CommunityReportAiReviewInputDecision;
+  /**
+     * @minLength 8
+     * @maxLength 1500
+     */
+  reason: string;
+  finalCategory?: CommunityReportAiReviewInputFinalCategory;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  finalSeverity?: number;
+  finalPriority?: CommunityReportAiReviewInputFinalPriority;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  finalDepartment?: string;
+}
+
+export type SOSChatMessageRole = typeof SOSChatMessageRole[keyof typeof SOSChatMessageRole];
+
+
+export const SOSChatMessageRole = {
+  user: 'user',
+  assistant: 'assistant',
+} as const;
+
+export interface SOSChatMessage {
+  role: SOSChatMessageRole;
+  /**
+     * @minLength 1
+     * @maxLength 1200
+     */
+  content: string;
+}
+
+export interface SOSChatInput {
+  /**
+     * @minItems 1
+     * @maxItems 8
+     */
+  messages: SOSChatMessage[];
+}
+
+export interface SOSChatResponse {
+  /** @maxLength 700 */
+  reply: string;
+  available: boolean;
+}
 
 export type CommunityReportInputLocation = typeof CommunityReportInputLocation[keyof typeof CommunityReportInputLocation];
 

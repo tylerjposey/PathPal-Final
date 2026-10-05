@@ -6,8 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CommunityReport } from './communityReport';
+import type { CommunityReportAiAssessment } from './communityReportAiAssessment';
+import type { CommunityReportAiReview } from './communityReportAiReview';
 import type { ReportStatusEvent } from './reportStatusEvent';
 
-export type CommunityReportDetail = CommunityReport & {
+export type CommunityReportDetail = CommunityReport & ({
   statusHistory: ReportStatusEvent[];
-};
+  aiAssessment: CommunityReportAiAssessment | null;
+  aiReviewHistory: CommunityReportAiReview[];
+});

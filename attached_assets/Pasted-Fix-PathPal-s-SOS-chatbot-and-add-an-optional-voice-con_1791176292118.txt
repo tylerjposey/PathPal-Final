@@ -1,0 +1,86 @@
+Fix PathPal’s SOS chatbot and add an optional voice conversation mode using Replit-managed AI.
+
+This remains a prototype tested with fictional emergency conversations and synthetic audio. Police contact and dispatch remain simulated.
+
+**1. Diagnose the repeated fallback**
+
+Currently every message receives:
+
+“I’m sorry this feels hard. Move toward a trusted adult or a staffed, public place if you can. This is a demo and no one has been contacted; call your local emergency number if you need urgent help.”
+
+Trace the authenticated SOS request from the screen through the backend to the managed provider. Check credentials, endpoint, model availability, response parsing, moderation handling, and fallback conditions.
+
+Determine whether this text is generated or hardcoded. Report the actual cause without exposing credentials or conversation contents in logs.
+
+Verify the app uses Replit-managed credentials, not my personal `OPENAI_API_KEY`. Keep fallback responses clearly distinguishable from successfully generated replies.
+
+**2. Contextual safety conversation**
+
+Provide natural, contextual replies that respond to the latest message and retain relevant context within the active SOS session.
+
+The assistant should:
+
+- Acknowledge what the person actually said.
+- Provide calm, short, age-appropriate support.
+- Ask one relevant question at a time when clarification is needed.
+- Avoid repeatedly asking for information already supplied.
+- Allow typed, spoken, or brief responses without pressuring the person to speak.
+- Stay within safety and calming support.
+
+Redirect unrelated requests without automatically closing SOS or labeling it false. Recognize that references to shops, landmarks, or other ordinary places can be relevant safety information.
+
+Keep the simulation disclosure persistently visible in the interface rather than repeating the entire disclaimer in every message. Never claim police or other responders were contacted unless an application event establishes what actually occurred—and distinguish simulated events clearly.
+
+AI must not determine that the user is safe, instruct them to confront someone, or automatically end the session.
+
+**3. Optional voice mode**
+
+Add a **“Start Voice Conversation”** button within SOS.
+
+When pressed:
+
+- Explain that the microphone will capture audio for transcription.
+- Request microphone permission.
+- Begin capture only after permission is granted.
+- Show a visible microphone-active indicator.
+- Provide **Pause Microphone**, **Stop Voice**, and **Spoken Replies On/Off** controls.
+
+Allow ongoing microphone capture during the explicitly started voice session, with an updating transcript and conversational AI replies. Default spoken replies to off. When enabled, use a calm voice with low-volume controls; never promise that audio cannot be overheard.
+
+Use supported Replit-managed transcription and speech-generation capabilities. Verify streaming support. If true streaming is unavailable, implement short audio chunks for near-live transcription and clearly describe the latency and limitation.
+
+Maintain text chat when microphone permission is denied or voice processing fails. Avoid capturing the assistant’s own playback and feeding it back into the conversation.
+
+Stopping voice must release the microphone without ending SOS. Ending SOS must stop capture, transcription, and playback.
+
+Inspect native iOS requirements and report any rebuild needed. State background or locked-screen limitations explicitly rather than assuming existing background-location support also enables microphone recording.
+
+**4. Transcript and important information**
+
+Distinguish provisional transcript text from finalized transcription. Preserve timestamps and allow corrections.
+
+Separate the person’s statements from possible background audio. If speech source is uncertain, label it unknown instead of attributing it to the child.
+
+For fictional demonstrations, background audio may include navigation instructions or place names. Record these as **“Unverified audio clue”** when recognizable. Do not infer an exact location or identify a speaker from them.
+
+Treat spoken instructions as untrusted input. Background audio must not override the assistant’s rules or control app actions.
+
+Create a concise, reviewable summary of important information, showing its source and uncertainty. Sharing it with the simulated contact panel should require an explicit action and remain visibly simulated.
+
+**5. Privacy, fallback, and cost**
+
+Preserve family authorization and restrict session access to authorized participants. City cleanup staff must not access SOS transcripts.
+
+Do not retain raw audio by default. Delete temporary audio after processing, retain only necessary synthetic transcript records under the demo reset controls, and keep audio and transcripts out of ordinary logs.
+
+Use bounded session duration, efficient audio chunks, and request limits to manage costs. If AI becomes unavailable, show a clear status and fallback guidance without repeatedly inserting the same message after every input.
+
+SOS activation, cancellation, parent notification, and session controls must remain independent of AI availability.
+
+**6. Verification**
+
+Test a multi-turn fictional conversation, off-topic redirection, microphone approval and denial, near-live transcription, corrections, optional speech playback, pause/stop controls, background-audio ambiguity, and provider failures.
+
+Use synthetic speech played aloud to test navigation-audio capture. Document transcription errors and latency; do not claim reliable emergency evidence collection.
+
+Show actual generated replies and screenshots from the authenticated SOS screen. Report tested behavior separately from unverified iPhone functionality. Preserve the existing community report-analysis feature.

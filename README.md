@@ -2,6 +2,7 @@
 
 Client: City of San José, Community Safety
 Team: Tyler Posey, Ryan Morla, Desiree Lopez, Man Ngo, Rishaan Singh, Aug–Oct 2026
+
 My part: I wrote the AI governance analysis (who is accountable when the AI flags a risk) and helped red-team the prototype using the TRACE framework.
 
 ## The problem
